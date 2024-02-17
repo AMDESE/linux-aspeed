@@ -42,6 +42,17 @@ config I3C_MUX_IMX3102
 	help
 	  Say y to enable Renesas IMX3102 I3C 2:1 multiplexer.
 
+config I3C_HUB
+	tristate "I3C HUB support"
+	depends on I3C
+	select REGMAP_I3C
+	help
+	  This enables support for I3C HUB. Say Y here to use I3C HUB driver to
+	  configure I3C HUB device.
+
+	  I3C HUB drivers will be loaded automatically when I3C device with BCR
+	  equals to 0xC2 (HUB device) is detected on the bus.
+
 source "drivers/i3c/mctp/Kconfig"
 source "drivers/i3c/master/Kconfig"
 endif # I3C

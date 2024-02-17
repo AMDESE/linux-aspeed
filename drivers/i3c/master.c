@@ -2495,6 +2495,8 @@ static int of_populate_i3c_bus(struct i3c_master_controller *master)
 	int ret, i;
 	u32 val;
 	u8 context;
+	bool ignore_hub_node = false;
+	char *addr_pid;
 
 	if (!i3cbus_np)
 		return 0;
@@ -2516,10 +2518,19 @@ static int of_populate_i3c_bus(struct i3c_master_controller *master)
 	}
 
 	for_each_available_child_of_node(i3cbus_np, node) {
-		ret = of_i3c_master_add_dev(master, node);
-		if (ret) {
-			of_node_put(node);
-			return ret;
+		ignore_hub_node = false;
+		if (node->full_name && strstr(node->full_name, "hub")) {
+			addr_pid = strchr(node->full_name, '@');
+			if (addr_pid && strcmp(addr_pid, "@0,0") == 0)
+				ignore_hub_node = true;
+		}
+
+		if (!ignore_hub_node) {
+			ret = of_i3c_master_add_dev(master, node);
+			if (ret) {
+				of_node_put(node);
+				return ret;
+			}
 		}
 	}
 
