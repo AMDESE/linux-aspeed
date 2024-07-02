@@ -52,6 +52,13 @@ config ASPEED_SOCINFO
 	help
 	  Say yes to support decoding of ASPEED BMC information.
 
+config ASPEED_UDMA
+	tristate "Aspeed UDMA Engine Driver"
+	depends on ARCH_ASPEED || COMPILE_TEST
+	help
+	  Enable support for the Aspeed UDMA engine used by the Aspeed UART
+	  driver for DMA TX/RX between memory buffers and UART devices.
+
 endmenu
 
 endif

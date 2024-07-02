@@ -29,7 +29,6 @@ config FTMAC100
 config FTGMAC100
 	tristate "Faraday FTGMAC100 Gigabit Ethernet support"
 	depends on ARM || COMPILE_TEST
-	depends on !64BIT || BROKEN
 	select PHYLIB
 	select FIXED_PHY
 	select MDIO_ASPEED if MACH_ASPEED_G6
