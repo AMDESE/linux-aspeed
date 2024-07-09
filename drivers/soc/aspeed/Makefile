@@ -5,3 +5,5 @@ obj-$(CONFIG_ASPEED_UART_ROUTING)	+= aspeed-uart-routing.o
 obj-$(CONFIG_ASPEED_P2A_CTRL)		+= aspeed-p2a-ctrl.o
 obj-$(CONFIG_ASPEED_SOCINFO)		+= aspeed-socinfo.o
 obj-$(CONFIG_ASPEED_UDMA)		+= aspeed-udma.o
+obj-$(CONFIG_AST2600_ESPI)              += ast2600-espi.o
+obj-$(CONFIG_AST2700_ESPI)              += ast2700-espi.o

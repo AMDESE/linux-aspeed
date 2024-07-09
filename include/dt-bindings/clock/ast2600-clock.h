@@ -89,6 +89,7 @@
 #define ASPEED_CLK_FSI			72
 
 /* Only list resets here that are not part of a clock gate + reset pair */
+#define ASPEED_RESET_ESPI		57
 #define ASPEED_RESET_ADC		55
 #define ASPEED_RESET_JTAG_MASTER2	54
 
