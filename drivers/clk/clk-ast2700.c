@@ -141,7 +141,7 @@ static const struct clk_div_table ast2700_clk_div_table2[] = {
 };
 
 /* HPLL/DPLL: 2000Mhz(default) */
-struct clk_hw *ast2700_soc0_hw_pll(const char *name, const char *parent_name, u32 val)
+static struct clk_hw *ast2700_soc0_hw_pll(const char *name, const char *parent_name, u32 val)
 {
 	unsigned int mult, div;
 
@@ -162,7 +162,7 @@ struct clk_hw *ast2700_soc0_hw_pll(const char *name, const char *parent_name, u3
 };
 
 /* MPLL 1600Mhz(default) */
-struct clk_hw *ast2700_calc_mpll(const char *name, const char *parent_name, u32 val)
+static struct clk_hw *ast2700_calc_mpll(const char *name, const char *parent_name, u32 val)
 {
 	unsigned int mult, div;
 
@@ -209,7 +209,7 @@ static struct clk_hw *ast2700_calc_huclk(const char *name, u32 val)
 	return clk_hw_register_fixed_factor(NULL, name, "huxclk", 0, mult, div);
 };
 
-struct clk_hw *ast2700_calc_soc1_pll(const char *name, const char *parent_name, u32 val)
+static struct clk_hw *ast2700_calc_soc1_pll(const char *name, const char *parent_name, u32 val)
 {
 	unsigned int mult, div;
 
