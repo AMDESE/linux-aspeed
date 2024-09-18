@@ -382,7 +382,7 @@ static bool aspeed_expr_is_gpio(const struct aspeed_sig_expr *expr)
 	 * if the signal prefix is "GPI" and the signal name matches the
 	 * function name.
 	 */
-	return !strncmp(expr->signal, "GPI", 3) &&
+	return !strncmp(expr->signal, "GPI", sizeof("GPI") - 1) &&
 			!strcmp(expr->signal, expr->function);
 }
 
@@ -475,9 +475,15 @@ int aspeed_g7_gpio_request_enable(struct pinctrl_dev *pctldev,
 	const struct aspeed_g7_pincfg *pin_cfg = pinctrl->pinmux.configs_g7;
 	const struct aspeed_g7_funcfg *funcfg = pin_cfg[offset].funcfg;
 
-	for (i = 0; i < pin_cfg[offset].nfuncfg; i++)
+	for (i = 0; i < pin_cfg[offset].nfuncfg; i++) {
+		if (!strncmp(funcfg[i].name, "GPI", sizeof("GPI") - 1)) {
+			regmap_update_bits(pinctrl->scu, funcfg[i].reg,
+					   funcfg[i].mask, funcfg[i].val);
+			break;
+		}
 		regmap_update_bits(pinctrl->scu, funcfg[i].reg, funcfg[i].mask,
 				   0);
+	}
 	return 0;
 }
 
