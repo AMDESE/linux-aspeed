@@ -182,6 +182,10 @@ static void aspeed_i3c_phy_init(struct i3c_hci *hci)
 						 FIELD_PREP(PHY_I2C_FMP_CTRL3_AHD_DAT, lcnt));
 
 	ast_phy_write(PHY_PULLUP_EN, 0x0);
+	ast_phy_write(PHY_SW_FORCE_CTRL, PHY_SW_FORCE_CTRL_SCL_PULLUP_EN |
+						 PHY_SW_FORCE_CTRL_SDA_PULLUP_EN |
+						 FIELD_PREP(PHY_SW_FORCE_CTRL_SCL_PULLUP, 2) |
+						 FIELD_PREP(PHY_SW_FORCE_CTRL_SDA_PULLUP, 2));
 }
 
 static void aspeed_i3c_of_populate_bus_timing(struct i3c_hci *hci, struct device_node *np)

@@ -174,6 +174,13 @@
 #define ast_phy_read(r)			readl(hci->PHY_regs + (r))
 #define ast_phy_write(r, v)		writel(v, hci->PHY_regs + (r))
 
+#define PHY_SW_FORCE_CTRL 0x4
+#define PHY_SW_FORCE_CTRL_SCL_PULLUP_EN BIT(28)
+#define PHY_SW_FORCE_CTRL_SDA_PULLUP_EN BIT(24)
+#define PHY_SW_FORCE_CTRL_SCL_PULLUP	GENMASK(10, 8)
+#define PHY_SW_FORCE_CTRL_SDA_PULLUP 	GENMASK(2, 0)
+
+
 /* I2C FM: 400K */
 #define PHY_I2C_FM_CTRL0		0x8
 #define PHY_I2C_FM_CTRL0_CAS		GENMASK(25, 16)
