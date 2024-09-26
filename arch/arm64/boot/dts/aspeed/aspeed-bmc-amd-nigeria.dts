@@ -291,6 +291,16 @@
         status = "okay";
 };
 
-&jtag0 {
+&ltpi0 {
+	status = "okay";
+};
+
+&uart9 {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+	status = "okay";
+};
+
+&jtag1 {
 	status = "okay";
 };
