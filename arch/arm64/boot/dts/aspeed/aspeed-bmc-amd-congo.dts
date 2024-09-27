@@ -51,13 +51,12 @@
 		};
 
 		video_engine_memory0: video0 {
-			size = <0x0 0x04000000>;	/* 64M */
-			alignment = <0x0 0x00010000>;
-			compatible = "shared-dma-pool";
-			reusable;
-		};
+                        size = <0x0 0x04000000>;        /* 64M */
+                        alignment = <0x0 0x00010000>;
+                        compatible = "shared-dma-pool";
+                        reusable;
+                };
 	};
-
 	aliases {
 #ifdef EEPROM_PROG_ENABLE
 		i2c100 = &channel_0_0;
@@ -151,17 +150,6 @@
 		spi-tx-bus-width = <1>;
 		spi-rx-bus-width = <1>;
 	};
-};
-
-&ltpi0 {
-        status = "okay";
-};
-
-//Host console
-&uart9 {
-	/delete-property/ pinctrl-names;
-	/delete-property/ pinctrl-0;
-	status = "okay";
 };
 
 //BMC Console
@@ -360,32 +348,12 @@
 	};
 };
 
-
-&i3c0 {
-	/* I3C_MNG_BMC_SCM */
-	initial-role = "primary";
-	status = "okay";
-};
-
-&i3c1 {
-	/* I3C_SPD_SCM */
-	initial-role = "primary";
-	status = "okay";
-};
-
 &i3c4 {
-	  /* I3C_PFR_BMC */
         initial-role = "primary";
         status = "okay";
-	jdec-spd;
+        bus-context = /bits/ 8 <I3C_BUS_CONTEXT_JESD403>;
 
-	i3c-scl-hz = <2000000>;
-        i3c-od-scl-hi-period-ns = <380>;
-        i3c-od-scl-lo-period-ns = <620>;
-        i3c-pp-scl-hi-period-ns = <250>;
-        i3c-pp-scl-lo-period-ns = <250>;
-
-	sbtsi_p0_0: sbtsi@4c,22400000001 {
+        sbtsi_p0_0: sbtsi@4c,22400000001 {
                 reg = <0x4c 0x224 0x00000001>;
                 assigned-address = <0x4c>;
         };
@@ -393,7 +361,43 @@
                 reg = <0x3c 0x224 0x00000002>;
                 assigned-address = <0x3c>;
         };
+};
 
+#define JESD300_SPD_I3C_MODE(bus, index, addr) \
+spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
+        reg = <0x ## addr 0x4cc 0x5118 ## index ## 000>; \
+        assigned-address = <0x ## addr>; \
+        dcr = /bits/ 8 <0xda>; \
+        bcr = /bits/ 8 <0x6>; \
+}
+
+&i3c8 {
+        status = "okay";
+        initial-role = "primary";
+        bus-context = /bits/ 8 <I3C_BUS_CONTEXT_JESD403>;
+	i3c-scl-hz = <1000000>;
+
+        i3c_hub0: i3chub0@70,4CC00000000 {
+                reg = <0x70 0x4CC 0x00000000>;
+                assigned-address = <0x70>;
+                dcr = <0xd1>;
+                bcr = /bits/ 8 <0x6>;
+        };
+        i3c_hub1: i3chub1@71,4CC00000001 {
+                reg = <0x71 0x4CC 0x00000001>;
+                assigned-address = <0x71>;
+                dcr = <0xd1>;
+                bcr = /bits/ 8 <0x6>;
+        };
+
+        JESD300_SPD_I3C_MODE(1, 0, 50);
+	JESD300_SPD_I3C_MODE(1, 1, 51);
+	JESD300_SPD_I3C_MODE(1, 2, 52);
+	JESD300_SPD_I3C_MODE(1, 3, 53);
+	JESD300_SPD_I3C_MODE(1, 4, 54);
+	JESD300_SPD_I3C_MODE(1, 5, 55);
+	JESD300_SPD_I3C_MODE(1, 6, 56);
+	JESD300_SPD_I3C_MODE(1, 7, 57);
 };
 
 &gpio0 {
@@ -434,7 +438,7 @@
 				"P0_MGMT_MON_THERMTRIP_L",
 				"P0_MGMT_MON_PWR_GOOD","P0_ASSERT_RSMRST",
 				"P0_MGMT_SOC_RESET_L",
-				"P0_MGMT_MON_PSP_SOFT_FUSE_NOTIFY",
+				"P0_MGMT_MON_PSP_SOFT_FUSE_NTFY",
                 /*AD0-AD7*/     "P0_I3C_APML_ALERT_L","MGMT_HDT_SEL",
 				"SCM_JTAG_DBREQ","JTAG_TRST_N","P1_PRESENT_L",
 				"","","",
@@ -464,5 +468,15 @@
         port-addr-hbits-select = <0x1>;
         port-addr-xbits = <0x3>;
 
-	status = "okay";
+        status = "okay";
+};
+
+&ltpi0 {
+       status = "okay";
+};
+
+&uart9 {
+       /delete-property/ pinctrl-names;
+       /delete-property/ pinctrl-0;
+       status = "okay";
 };
