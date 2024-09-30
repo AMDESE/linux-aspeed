@@ -49,9 +49,9 @@
 			no-map;
 		};
 
-		video_engine_memory: jpegbuffer {
-			size = <0x02000000>;	/* 32M */
-			alignment = <0x01000000>;
+		video_engine_memory0: video0 {
+			size = <0x0 0x04000000>;
+			alignment = <0x0 0x00010000>;
 			compatible = "shared-dma-pool";
 			reusable;
 		};
@@ -402,7 +402,7 @@
 
 &video0 {
 	status = "okay";
-	memory-region = <&video_engine_memory>;
+	memory-region = <&video_engine_memory0>;
 };
 
 &espi0 {
@@ -432,4 +432,19 @@
        /delete-property/ pinctrl-names;
        /delete-property/ pinctrl-0;
        status = "okay";
+};
+&vhuba1 {
+	status = "okay";
+};
+
+&usb3ahp {
+	status = "okay";
+};
+
+&phy2a {
+	status = "okay";
+};
+
+&phy3a {
+	status = "okay";
 };
