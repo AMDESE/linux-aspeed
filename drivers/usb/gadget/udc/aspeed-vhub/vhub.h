@@ -388,6 +388,9 @@ struct ast_vhub {
 	spinlock_t			lock;
 	struct work_struct		wake_work;
 	struct clk			*clk;
+#ifdef CONFIG_MACH_ASPEED_G7
+	struct reset_control *rst;
+#endif
 
 	/* EP0 DMA buffers allocated in one chunk */
 	void				*ep0_bufs;
@@ -419,6 +422,7 @@ struct ast_vhub {
 
 	/* Upstream bus speed captured at bus reset */
 	unsigned int			speed;
+	u8				current_config;
 
 	/* Standard USB Descriptors of the vhub. */
 	struct usb_device_descriptor	vhub_dev_desc;
