@@ -156,7 +156,7 @@
 #define AST_EP_DMA_DESC_PID_DATA1	(2 << 14)
 #define AST_EP_DMA_DESC_PID_MDATA	(3 << 14)
 #define EP_DESC1_IN_LEN(x)		((x) & 0x1fff)
-#define AST_EP_DMA_DESC_MAX_LEN		(7680) /* Max packet length for trasmit in 1 desc */
+#define AST_EP_DMA_DESC_MAX_LEN		(4096) /* Max packet length for trasmit in 1 desc */
 
 struct ast_udc_request {
 	struct usb_request	req;
@@ -1301,6 +1301,7 @@ static int ast_udc_start(struct usb_gadget *gadget,
 	UDC_DBG(udc, "\n");
 	udc->driver = driver;
 	udc->gadget.dev.of_node = udc->pdev->dev.of_node;
+	udc->gadget.dev.of_node_reused = true;
 
 	for (i = 0; i < AST_UDC_NUM_ENDPOINTS; i++) {
 		ep = &udc->ep[i];
