@@ -77,6 +77,9 @@
 		i2c126 = &adc_2_6;
 		i2c127 = &pdb_adc_2_0;
 		i2c202 = &p1_channel_0_2;
+                i2c200 = &picpwr_fan_0;
+                i2c203 = &churro_fans_0_0;
+                i2c204 = &churro_fans_0_1;
 	};
 };
 
@@ -168,6 +171,94 @@
 };
 
 // I2C configs
+&i2c2 {
+        status = "okay";
+        i2cswitch@70 {
+                compatible = "nxp,pca9548";
+                reg = <0x70>;
+                #address-cells = <1>;
+                #size-cells = <0>;
+
+                picpwr_fan_0: i2c@0 {
+                        #address-cells = <1>;
+                        #size-cells = <0>;
+                        reg = <0>;
+
+                        i2cswitch@76 {
+                                compatible = "nxp,pca9546";
+                                #address-cells = <1>;
+                                #size-cells = <0>;
+                                reg = <0x76>;
+
+                                churro_fans_0_0: i2c@0 {
+                                        #address-cells = <1>;
+                                        #size-cells = <0>;
+                                        reg = <0>;
+
+                                        emc2305@4d {
+                                                compatible = "smsc,emc2305";
+                                                reg = <0x4d>;
+                                                #cooling-cells = <0x02>;
+
+                                                fan@0 {
+                                                        min-rpm = /bits/ 16 <1000>;
+                                                        max-rpm = /bits/ 16 <16000>;
+                                                };
+                                                fan@1 {
+                                                        min-rpm = /bits/ 16 <1000>;
+                                                        max-rpm = /bits/ 16 <16000>;
+                                                };
+                                                fan@2 {
+                                                        min-rpm = /bits/ 16 <1000>;
+                                                        max-rpm = /bits/ 16 <16000>;
+                                                };
+                                                fan@3 {
+                                                        min-rpm = /bits/ 16 <1000>;
+                                                        max-rpm = /bits/ 16 <16000>;
+                                                };
+                                                fan@4 {
+                                                        min-rpm = /bits/ 16 <1000>;
+                                                        max-rpm = /bits/ 16 <16000>;
+                                                };
+                                        };
+                                };
+                                churro_fans_0_1: i2c@1 {
+                                        #address-cells = <1>;
+                                        #size-cells = <0>;
+                                        reg = <1>;
+
+                                        emc2305@4d {
+                                                compatible = "smsc,emc2305";
+                                                reg = <0x4d>;
+                                                #cooling-cells = <0x02>;
+
+                                                fan@0 {
+                                                        min-rpm = /bits/ 16 <1000>;
+                                                        max-rpm = /bits/ 16 <16000>;
+                                                };
+                                                fan@1 {
+                                                        min-rpm = /bits/ 16 <1000>;
+                                                        max-rpm = /bits/ 16 <16000>;
+                                                };
+                                                fan@2 {
+                                                        min-rpm = /bits/ 16 <1000>;
+                                                        max-rpm = /bits/ 16 <16000>;
+                                                };
+                                                fan@3 {
+                                                        min-rpm = /bits/ 16 <1000>;
+                                                        max-rpm = /bits/ 16 <16000>;
+                                                };
+                                                fan@4 {
+                                                        min-rpm = /bits/ 16 <1000>;
+                                                        max-rpm = /bits/ 16 <16000>;
+                                                };
+                                        };
+                                };
+                        };
+                };
+        };
+};
+
 &i2c7 {
 	status = "okay";
 	scmeeprom@50 {
@@ -605,3 +696,8 @@
 	status = "okay";
 };
 
+&lpc0_kcs2 {
+	status = "okay";
+	kcs-io-addr = <0xca2>;
+	kcs-channel = <2>;
+};

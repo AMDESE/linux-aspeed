@@ -539,3 +539,9 @@
 &phy3a {
 	status = "okay";
 };
+
+&lpc0_kcs2 {
+	status = "okay";
+	kcs-io-addr = <0xca2>;
+	kcs-channel = <2>;
+};
