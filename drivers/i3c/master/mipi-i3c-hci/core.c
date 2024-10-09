@@ -11,6 +11,7 @@
 #include <linux/device.h>
 #include <linux/errno.h>
 #include <linux/clk.h>
+#include <linux/moduleparam.h>
 #include <linux/reset.h>
 #include <linux/i3c/master.h>
 #include <linux/i3c/target.h>
@@ -125,6 +126,10 @@
 
 #ifdef CONFIG_ARCH_ASPEED
 
+static bool i3c_device_power = false;
+module_param(i3c_device_power, bool, 0644);
+MODULE_PARM_DESC(i3c_device_power, "I3C device power status");
+
 static u32 aspeed_i3c_get_sdr_phy_reg(struct i3c_hci *hci)
 {
 	struct i3c_bus *bus = i3c_master_get_bus(&hci->master);
@@ -195,6 +200,11 @@ static void aspeed_i3c_of_populate_bus_timing(struct i3c_hci *hci, struct device
 	core_rate = clk_get_rate(hci->clk);
 	/* core_period is in nanosecond */
 	core_period = DIV_ROUND_UP(1000000000, core_rate);
+
+	if (!i3c_device_power) {
+		hci->master.bus.scl_rate.i3c = 1000000;
+		dev_info(&hci->master.dev, "Updated clock to 1Mhz");
+	}
 
 	dev_info(&hci->master.dev, "core rate = %ld core period = %ld ns", core_rate, core_period);
 
@@ -454,6 +464,11 @@ static int i3c_hci_send_ccc_cmd(struct i3c_master_controller *m,
 	DBG("cmd=%#x rnw=%d dbp=%d db=%#x ndests=%d data[0].len=%d", ccc->id,
 	    ccc->rnw, ccc->dbp, ccc->db, ccc->ndests,
 	    ccc->dests[0].payload.len);
+
+	if (!i3c_device_power) {
+		 dev_info(&hci->master.dev,"User requested to skipp CCC commands \n");
+		 return 0;
+	}
 
 	xfer = hci_alloc_xfer(nxfers);
 	if (!xfer)
