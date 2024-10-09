@@ -50,8 +50,8 @@
 			no-map;
 		};
 
-		video_engine_memory0: jpegbuffer {
-			size = <0x04000000>;	/* 64M */
+		video_engine_memory0: video0 {
+			size = <0x0 0x04000000>;  /* 64M */
 			alignment = <0x0 0x00010000>;
 			compatible = "shared-dma-pool";
 			reusable;
@@ -152,6 +152,17 @@
 
 //BMC Console
 &uart12 {
+	status = "okay";
+};
+
+&i2c0 {
+	/* FPGA_I2C_SDA<2>
+	 *
+	 * AST2700 I2C0 through I2C5 will be tunneled through the LTP,
+	 * eliminating the need for physical pins on the AST2700.
+	 */
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
 	status = "okay";
 };
 
@@ -291,6 +302,38 @@
         status = "okay";
 };
 
-&jtag0 {
+&ltpi0 {
+	status = "okay";
+};
+
+&uart9 {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+	status = "okay";
+};
+
+&vhuba1 {
+        status = "okay";
+};
+
+&usb3ahp {
+        status = "okay";
+};
+
+&phy2a {
+        status = "okay";
+};
+
+&phy3a {
+        status = "okay";
+};
+
+&lpc0_kcs2 {
+	status = "okay";
+	kcs-io-addr = <0xca2>;
+	kcs-channel = <2>;
+};
+
+&jtag1 {
 	status = "okay";
 };
