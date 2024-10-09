@@ -23,6 +23,8 @@ source "drivers/firmware/Kconfig"
 
 source "drivers/gnss/Kconfig"
 
+source "drivers/jtag/Kconfig"
+
 source "drivers/mtd/Kconfig"
 
 source "drivers/of/Kconfig"
