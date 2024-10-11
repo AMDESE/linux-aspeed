@@ -111,22 +111,51 @@ static long jtag_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 		if (copy_from_user(&xfer, (const void __user *)arg,
 				   sizeof(struct jtag_xfer)))
+		{
+			dev_err(jtag->miscdev.parent,
+				"JTAG_IOCXFER: copy from user Failed size 0x%lx \n",
+				sizeof(struct jtag_xfer));
 			return -EFAULT;
+		}
 
 		if (xfer.length >= JTAG_MAX_XFER_DATA_LEN)
+		{
+			dev_err(jtag->miscdev.parent,
+				"JTAG_IOCXFER: Error bad length 0x%x \n",
+				xfer.length);
 			return -EINVAL;
+		}
 
 		if (xfer.type > JTAG_SDR_XFER)
+		{
+			dev_err(jtag->miscdev.parent,
+				"JTAG_IOCXFER: Error bad type 0x%x \n",
+				xfer.type);
 			return -EINVAL;
+		}
 
 		if (xfer.direction > JTAG_READ_WRITE_XFER)
+		{
+			dev_err(jtag->miscdev.parent,
+				"JTAG_IOCXFER: Error bad direction 0x%x \n",
+				xfer.direction);
 			return -EINVAL;
+		}
 
 		if (xfer.from > JTAG_STATE_CURRENT)
+		{
+			dev_err(jtag->miscdev.parent,
+				"JTAG_IOCXFER: Error bad from 0x%x \n",
+				xfer.from);
 			return -EINVAL;
-
+		}
 		if (xfer.endstate > JTAG_STATE_CURRENT)
+		{
+			dev_err(jtag->miscdev.parent,
+				"JTAG_IOCXFER: Error bad endstate 0x%x \n",
+				xfer.endstate);
 			return -EINVAL;
+		}
 
 		data_size = DIV_ROUND_UP(xfer.length, BITS_PER_BYTE);
 		xfer_data = memdup_user(u64_to_user_ptr(xfer.tdio), data_size);
@@ -139,20 +168,29 @@ static long jtag_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 
 		if (IS_ERR(xfer_data))
+		{
+			dev_err(jtag->miscdev.parent,
+				"JTAG_IOCXFER: Error in xfer_data \n");
 			return -EFAULT;
+		}
 		padding.int_value = xfer.padding;
 		dev_dbg(jtag->miscdev.parent,
-			"JTAG_IOCXFER: type: %s direction: %d, END : %s, padding: (value: %d) pre_pad: %d post_pad: %d, len: %d\n",
+			"JTAG_IOCXFER: type: %s direction: %d, From: 0x%x END: %s, tdio: %lld, len: %d\n",
 			xfer.type ? "DR" : "IR", xfer.direction,
-			end_status_str[xfer.endstate], padding.pad_data,
-			padding.pre_pad_number, padding.post_pad_number,
+			xfer.from, end_status_str[xfer.endstate], xfer.tdio,
 			xfer.length);
+		dev_dbg(jtag->miscdev.parent,
+                        "JTAG_IOCXFER: padding: (value: %d) pre_pad: %d post_pad: %d \n",
+                        padding.pad_data,
+                        padding.pre_pad_number, padding.post_pad_number);
 
 		print_hex_dump_debug("I:", DUMP_PREFIX_NONE, 16, 1, xfer_data,
 				     data_size, false);
 
 		err = jtag->ops->xfer(jtag, &xfer, xfer_data);
 		if (err) {
+			dev_err(jtag->miscdev.parent,
+				"JTAG_IOCXFER: Error jtag->ops->xfer 0x%x \n", err);
 			kfree(xfer_data);
 			return err;
 		}
@@ -164,15 +202,30 @@ static long jtag_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		xfer_data[data_size - 1] = (xfer_data[data_size - 1]
 					    & ubit_mask) | remaining_bits;
 
+		dev_dbg(jtag->miscdev.parent,
+			"JTAG_IOCXFER: copy_to_user tdio 0x%llx %p xfer_data %p size 0x%x\n",
+			xfer.tdio, u64_to_user_ptr(xfer.tdio), xfer_data, data_size );
 		err = copy_to_user(u64_to_user_ptr(xfer.tdio),
 				   (void *)xfer_data, data_size);
+		if (err) {
+			dev_err(jtag->miscdev.parent,
+				"JTAG_IOCXFER: Failed copy_to_user err 0x%x \n", err);
+		}
 		kfree(xfer_data);
 		if (err)
+		{
+			dev_err(jtag->miscdev.parent,
+				"JTAG_IOCXFER: Failed to free xfer_data \n");
 			return -EFAULT;
+		}
 
 		if (copy_to_user((void __user *)arg, (void *)&xfer,
 				 sizeof(struct jtag_xfer)))
+		{
+			dev_err(jtag->miscdev.parent,
+                        "JTAG_IOCXFER: Failed to copy to user area for size 0x%lx \n", sizeof(struct jtag_xfer));
 			return -EFAULT;
+		}
 		break;
 	}
 
