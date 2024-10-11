@@ -345,7 +345,11 @@ static void i3c_hci_bus_cleanup(struct i3c_master_controller *m)
 	struct platform_device *pdev = to_platform_device(m->dev.parent);
 
 	DBG("");
-
+#ifdef CONFIG_ARCH_ASPEED
+	if (hci->EXTCAPS_regs == hci->INHOUSE_regs)
+		/* Reset the inhouse register back to default */
+		ast_inhouse_write(ASPEED_I3C_CTRL, 0x2400);
+#endif
 	reg_clear(HC_CONTROL, HC_CONTROL_BUS_ENABLE);
 	synchronize_irq(platform_get_irq(pdev, 0));
 	hci->io->cleanup(hci);
@@ -1377,7 +1381,7 @@ static int i3c_hci_probe(struct platform_device *pdev)
 			"missing or invalid reset controller device tree entry");
 		return PTR_ERR(hci->rst);
 	}
-	reset_control_assert(hci->rst);
+
 	reset_control_deassert(hci->rst);
 
 	hci->dma_rst = devm_reset_control_get_shared_by_index(&pdev->dev, 1);
@@ -1422,7 +1426,7 @@ static void i3c_hci_remove(struct platform_device *pdev)
 {
 	struct i3c_hci *hci = platform_get_drvdata(pdev);
 
-	i3c_master_unregister(&hci->master);
+	i3c_unregister(&hci->master);
 }
 
 static const __maybe_unused struct of_device_id i3c_hci_of_match[] = {
