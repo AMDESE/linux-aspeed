@@ -701,3 +701,7 @@
 	kcs-io-addr = <0xca2>;
 	kcs-channel = <2>;
 };
+
+&jtag1 {
+	status = "okay";
+};
