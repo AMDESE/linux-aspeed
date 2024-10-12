@@ -50,8 +50,8 @@
 			no-map;
 		};
 
-		video_engine_memory0: jpegbuffer {
-			size = <0x04000000>;    /* 64M */
+		video_engine_memory0: video0 {
+			size = <0x0 0x04000000>;  /* 64M */
 			alignment = <0x0 0x00010000>;
 			compatible = "shared-dma-pool";
 			reusable;
@@ -281,16 +281,47 @@
 };
 
 &lpc0_pcc {
-        port-addr = <0x80>;
-        dma-mode;
-        A2600-15;
-        rec-mode = <0x1>;
-        port-addr-hbits-select = <0x1>;
-        port-addr-xbits = <0x3>;
-
-        status = "okay";
+	port-addr = <0x80>;
+	dma-mode;
+	A2600-15;
+	rec-mode = <0x1>;
+	port-addr-hbits-select = <0x1>;
+	port-addr-xbits = <0x3>;
+	status = "okay";
 };
 
-&jtag0 {
+&ltpi0 {
+	status = "okay";
+};
+
+&uart9 {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+	status = "okay";
+};
+
+&vhuba1 {
+	status = "okay";
+};
+
+&usb3ahp {
+	status = "okay";
+};
+
+&phy2a {
+	status = "okay";
+};
+
+&phy3a {
+	status = "okay";
+};
+
+&lpc0_kcs2 {
+	status = "okay";
+	kcs-io-addr = <0xca2>;
+	kcs-channel = <2>;
+};
+
+&jtag1 {
 	status = "okay";
 };
