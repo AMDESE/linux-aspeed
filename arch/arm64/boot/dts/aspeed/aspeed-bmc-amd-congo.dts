@@ -600,3 +600,7 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	kcs-io-addr = <0xca2>;
 	kcs-channel = <2>;
 };
+
+&jtag1 {
+	status = "okay";
+};
