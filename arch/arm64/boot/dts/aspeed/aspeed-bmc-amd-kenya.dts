@@ -60,6 +60,7 @@
 	};
 
 	aliases {
+		i2c102 = &channel_0_2;
 		i2c120 = &vr_2_0;
 		i2c121 = &temp_2_1;
 		i2c122 = &lcd_2_2;
@@ -181,6 +182,34 @@
 	hpmeeprom@50 {
 		compatible = "microchip,24lc256","atmel,24c256";
 		reg = <0x50>;
+	};
+
+	i2cswitch@70 {
+		compatible = "nxp,pca9546";
+		reg = <0x70>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		channel_0_2: i2c@2 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <2>;
+			pvddcrcpu0@61 {
+				//PVDDCR_CPU0_VDDIO_MEM_S3_P0_CONTROLLER
+				compatible = "isil,isl68137";
+				reg = <0x61>;
+			};
+			pvddcrcpu1@62 {
+				//PVDDCR_CPU1_PVDDCR_SOC_P0_CONTROLLER
+				compatible = "isil,isl68137";
+				reg = <0x62>;
+			};
+			pvddiop0@63 {
+				//PVDDIO_P0_CONTROLLER
+				compatible = "isil,isl68137";
+				reg = <0x63>;
+			};
+		};
 	};
 };
 
