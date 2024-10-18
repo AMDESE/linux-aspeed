@@ -8,6 +8,7 @@
 #include "aspeed-g7.dtsi"
 #include "dt-bindings/gpio/aspeed-gpio.h"
 #include <dt-bindings/i2c/i2c.h>
+#include <dt-bindings/i3c/i3c.h>
 
 / {
 	model = "AMD Nigeria PRB";
@@ -155,6 +156,13 @@
 	status = "okay";
 };
 
+&i2c0 {
+	// FPGA_I2C_SDA<2>
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+	status = "okay";
+};
+
 &i2c7 {
 	status = "okay";
 	scmeeprom@50 {
@@ -218,6 +226,80 @@
 			#size-cells = <0>;
 		};
 	};
+};
+
+&i3c4 {
+	status = "okay";
+	initial-role = "primary";
+	bus-context = /bits/ 8 <I3C_BUS_CONTEXT_JESD403>;
+	i3c-scl-hz = <6000000>;
+	i2c-scl-hz = <1000000>;
+	sbtsi_p0_0: sbtsi@4c,22400000001 {
+		reg = <0x4c 0x224 0x00000001>;
+		assigned-address = <0x4c>;
+	};
+	sbrmi_p0_1: sbrmi@3c,22400000002 {
+		reg = <0x3c 0x224 0x00000002>;
+		assigned-address = <0x3c>;
+	};
+};
+
+#define JESD300_SPD_I3C_MODE(bus, index, addr) \
+spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
+	reg = <0x ## addr 0x4cc 0x5118 ## index ## 000>; \
+	assigned-address = <0x ## addr>; \
+	dcr = /bits/ 8 <0xda>; \
+	bcr = /bits/ 8 <0x6>; \
+}
+
+&i3c8 {
+	status = "okay";
+	initial-role = "primary";
+	bus-context = /bits/ 8 <I3C_BUS_CONTEXT_JESD403>;
+	internal-pullup = <2>;
+	i3c-scl-hz = <10000000>;
+	i2c-scl-hz = <1000000>;
+	i3c_hub0: i3chub0@70,4CC00000000 {
+		reg = <0x70 0x4CC 0x00000000>;
+		assigned-address = <0x70>;
+	};
+	i3c_hub1: i3chub1@71,4CC00000001 {
+		reg = <0x71 0x4CC 0x00000001>;
+		assigned-address = <0x71>;
+	};
+	JESD300_SPD_I3C_MODE(0, 0, 50);
+	JESD300_SPD_I3C_MODE(0, 1, 51);
+	JESD300_SPD_I3C_MODE(0, 2, 52);
+	JESD300_SPD_I3C_MODE(0, 3, 53);
+	JESD300_SPD_I3C_MODE(0, 4, 54);
+	JESD300_SPD_I3C_MODE(0, 5, 55);
+	JESD300_SPD_I3C_MODE(0, 6, 56);
+	JESD300_SPD_I3C_MODE(0, 7, 57);
+};
+
+&i3c9 {
+	status = "okay";
+	initial-role = "primary";
+	bus-context = /bits/ 8 <I3C_BUS_CONTEXT_JESD403>;
+	internal-pullup = <2>;
+	i3c-scl-hz = <10000000>;
+	i2c-scl-hz = <1000000>;
+	i3c_hub2: i3chub0@70,4CC00000000 {
+		reg = <0x70 0x4CC 0x00000000>;
+		assigned-address = <0x70>;
+	};
+	i3c_hub3: i3chub1@71,4CC00000001 {
+		reg = <0x71 0x4CC 0x00000001>;
+		assigned-address = <0x71>;
+	};
+	JESD300_SPD_I3C_MODE(1, 0, 50);
+	JESD300_SPD_I3C_MODE(1, 1, 51);
+	JESD300_SPD_I3C_MODE(1, 2, 52);
+	JESD300_SPD_I3C_MODE(1, 3, 53);
+	JESD300_SPD_I3C_MODE(1, 4, 54);
+	JESD300_SPD_I3C_MODE(1, 5, 55);
+	JESD300_SPD_I3C_MODE(1, 6, 56);
+	JESD300_SPD_I3C_MODE(1, 7, 57);
 };
 
 &gpio0 {
@@ -305,6 +387,14 @@
 };
 
 &usb3ahp {
+	status = "okay";
+};
+
+&usb2ahp {
+	status = "okay";
+};
+
+&usb2bhp {
 	status = "okay";
 };
 
