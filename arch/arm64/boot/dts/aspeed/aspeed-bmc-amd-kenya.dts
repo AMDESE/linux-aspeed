@@ -60,13 +60,18 @@
 	};
 
 	aliases {
-		i2c102 = &channel_0_2;
+		i2c100 = &p0_0_0;
+		i2c101 = &p0_0_1;
+		i2c102 = &p0_0_2;
+		i2c103 = &p0_0_3;
 		i2c120 = &vr_2_0;
 		i2c121 = &temp_2_1;
 		i2c122 = &lcd_2_2;
 		i2c123 = &clk_2_3;
 		i2c124 = &usb_2_4;
 		i2c125 = &adc_2_5;
+		i2c126 = &rio_2_6;
+		i2c127 = &fio_2_7;
 	};
 };
 
@@ -190,7 +195,19 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		channel_0_2: i2c@2 {
+		p0_0_0: i2c@0 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0>;
+		};
+
+		p0_0_1: i2c@1 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <1>;
+		};
+
+		p0_0_2: i2c@2 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <2>;
@@ -209,6 +226,12 @@
 				compatible = "isil,isl68137";
 				reg = <0x63>;
 			};
+		};
+
+		p0_0_3: i2c@3 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <3>;
 		};
 	};
 };
@@ -255,6 +278,18 @@
 
 		adc_2_5: i2c@5 {
 			reg = <5>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		rio_2_6: i2c@6 {
+			reg = <6>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		fio_2_7: i2c@7 {
+			reg = <7>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 		};
@@ -397,6 +432,10 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 
 &vhuba1 {
         status = "okay";
+};
+
+&usb2bhp {
+	status = "okay";
 };
 
 &usb3ahp {
