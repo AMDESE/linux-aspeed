@@ -2190,7 +2190,7 @@
 		clocks = <&syscon1 AST2700_SOC1_CLK_APB>;
 		resets = <&syscon1 ASPEED_RESET_I2C>;
 		interrupts-extended = <&soc0_intc2 7>;
-		clock-frequency = <100000>;
+		clock-frequency = <400000>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_i2c7_default>;
 		status = "disabled";
@@ -2207,7 +2207,7 @@
 		clocks = <&syscon1 AST2700_SOC1_CLK_APB>;
 		resets = <&syscon1 ASPEED_RESET_I2C>;
 		interrupts-extended = <&soc0_intc2 8>;
-		clock-frequency = <100000>;
+		clock-frequency = <400000>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_i2c8_default>;
 		status = "disabled";
@@ -2224,7 +2224,7 @@
 		clocks = <&syscon1 AST2700_SOC1_CLK_APB>;
 		resets = <&syscon1 ASPEED_RESET_I2C>;
 		interrupts-extended = <&soc0_intc2 9>;
-		clock-frequency = <100000>;
+		clock-frequency = <400000>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_i2c9_default>;
 		status = "disabled";
@@ -2241,7 +2241,7 @@
 		clocks = <&syscon1 AST2700_SOC1_CLK_APB>;
 		resets = <&syscon1 ASPEED_RESET_I2C>;
 		interrupts-extended = <&soc0_intc2 10>;
-		clock-frequency = <100000>;
+		clock-frequency = <400000>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_i2c10_default>;
 		status = "disabled";
