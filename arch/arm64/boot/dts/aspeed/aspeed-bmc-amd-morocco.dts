@@ -76,6 +76,9 @@
 		i2c124 = &fans_2_4;
 		i2c125 = &fans_2_5;
 		i2c126 = &adc_2_6;
+		i2c150 = &p0_pcie_slot0;
+		i2c151 = &p0_pcie_slot1;
+		i2c152 = &p0_pcie_slot2;
 		i2c127 = &pdb_adc_2_0;
 		i2c202 = &p1_channel_0_2;
                 i2c200 = &picpwr_fan_0;
@@ -273,6 +276,14 @@
 	// Net name SCM_I2C<0>
 	status = "okay";
         clock-frequency = <400000>;
+
+	multi-master;
+	mctp-controller;
+	mctp@10 {
+		compatible = "mctp-i2c-controller";
+		reg = <(0x10 | I2C_OWN_SLAVE_ADDRESS)>;
+	};
+
 	hpmeeprom@50 {
 		compatible = "microchip,24lc256","atmel,24c256";
 		reg = <0x50>;
@@ -331,6 +342,31 @@
 				compatible = "pmbus";
 				reg = <0x47>;
 			};
+		};
+	};
+	i2cswitch@71 {
+		compatible = "nxp,pca9546";
+		reg = <0x71>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		p0_pcie_slot0: i2c@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			mctp-controller;
+		};
+		p0_pcie_slot1: i2c@1 {
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			mctp-controller;
+		};
+		p0_pcie_slot2: i2c@2 {
+			reg = <2>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			mctp-controller;
 		};
 	};
 };
