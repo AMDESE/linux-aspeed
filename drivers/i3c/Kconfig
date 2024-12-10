@@ -42,5 +42,6 @@ config I3C_MUX_IMX3102
         help
           Say y to enable Renesas IMX3102 I3C 2:1 multiplexer.
 
+source "drivers/i3c/mctp/Kconfig"
 source "drivers/i3c/master/Kconfig"
 endif # I3C
