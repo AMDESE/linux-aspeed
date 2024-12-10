@@ -632,10 +632,18 @@
 
 &i3c5 {
 	status = "okay";
+#if 0
 	initial-role = "primary";
+#else
+	initial-role = "target";
+	pid = <0x000007ec 0x06000000>;
+	dcr = /bits/ 8 <0xcc>;
+	status = "okay";
+#endif
 	internal-pullup = <2>;
 	i3c-scl-hz = <12500000>;
 	i2c-scl-hz = <1000000>;
+#if 0
 	mctp-controller;
 
 	sbtsi_p1_0: sbtsi@48,22400000001 {
@@ -646,6 +654,7 @@
 		reg = <0x38 0x224 0x00000002>;
 		assigned-address = <0x38>;
 	};
+#endif
 };
 
 #define JESD300_SPD_I3C_MODE(bus, index, addr) \
