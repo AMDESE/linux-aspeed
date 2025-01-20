@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-only
+menu "APML driver support"
+
+config APML_SBRMI
+    tristate "AMD side band RMI support"
+    depends on I3C
+    help
+      Side band RMI over I3C support for AMD out of band management.
+
+      This driver can also be built as a module.
+
+endmenu
