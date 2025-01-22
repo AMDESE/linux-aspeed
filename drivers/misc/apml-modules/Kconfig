@@ -9,4 +9,11 @@ config APML_SBRMI
 
       This driver can also be built as a module.
 
+config APML_SBTSI
+    tristate "AMD side band TSI support"
+    depends on I3C
+    help
+      Side band TSI over I3C support for AMD out of band management.
+
+      This driver can also be built as a module.
 endmenu
