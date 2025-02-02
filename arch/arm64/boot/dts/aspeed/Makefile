@@ -5,3 +5,4 @@ dtb-$(CONFIG_ARCH_ASPEED) += \
 	aspeed-bmc-amd-marley.dtb \
 	aspeed-bmc-amd-morocco.dtb \
 	aspeed-bmc-amd-nigeria.dtb \
+	aspeed-bmc-amd-senegal.dtb \
