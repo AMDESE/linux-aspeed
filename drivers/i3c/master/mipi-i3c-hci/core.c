@@ -1349,6 +1349,7 @@ static int i3c_hci_init(struct i3c_hci *hci)
 		return -EINVAL;
 	}
 
+#if 0
 	/* Try activating DMA operations first */
 	if (hci->RHS_regs) {
 		reg_clear(HC_CONTROL, HC_CONTROL_PIO_MODE);
@@ -1365,6 +1366,7 @@ static int i3c_hci_init(struct i3c_hci *hci)
 			dev_info(&hci->master.dev, "Using DMA\n");
 		}
 	}
+#endif
 
 	/* If no DMA, try PIO */
 	if (!hci->io && hci->PIO_regs) {
