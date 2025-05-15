@@ -80,6 +80,18 @@
 			compatible = "shared-dma-pool";
 			no-map;
 		};
+
+		mctp0_reserved: mctp0_reserved@431080000 {
+			reg = <0x4 0x31080000 0x0 0x10000>;
+			compatible = "shared-dma-pool";
+			no-map;
+                };
+
+                mctp1_reserved: mctp1_reserved@431090000 {
+			reg = <0x4 0x31090000 0x0 0x10000>;
+			compatible = "shared-dma-pool";
+			no-map;
+                };
 	};
 	aliases {
 		i2c100 = &NC_1;
@@ -864,6 +876,34 @@
 	};
 };
 
+/* P1-SEC */
+&i2c14 {
+	status = "okay";
+	pinctrl-0 = <&pinctrl_di2c14_default>;
+        clock-frequency = <400000>;
+
+	multi-master;
+	mctp-controller;
+	mctp@10 {
+		compatible = "mctp-i2c-controller";
+		reg = <(0x10 | I2C_OWN_SLAVE_ADDRESS)>;
+	};
+};
+
+/* P0-SEC */
+&i2c15 {
+	status = "okay";
+	pinctrl-0 = <&pinctrl_di2c15_default>;
+        clock-frequency = <400000>;
+
+	multi-master;
+	mctp-controller;
+	mctp@10 {
+		compatible = "mctp-i2c-controller";
+		reg = <(0x10 | I2C_OWN_SLAVE_ADDRESS)>;
+	};
+};
+
 &i3c4 {
 	status = "okay";
 	initial-role = "primary";
@@ -1048,7 +1088,7 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 &ltpi0_gpio {
 	status = "okay";
 	gpio-line-names =
-		/*00-07*/ "","HPM_STBY_EN","",
+		/*00-07*/ "","","",
 			"P0_MGMT_ASSERT_CLR_CMOS","P0_MGMT_MON_PROCHOT_L","P0_MGMT_ASSERT_PROCHOT_L",
 			"P0_MGMT_MON_RSMRST_L","P0_ASSERT_RSMRST",
 		/*08-15*/ "P0_MGMT_MON_THERMTRIP_L","P0_MGMT_ASSERT_THERMTRIP_L","P0_PRESENT_L",
@@ -1061,19 +1101,22 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 		/*32-39*/ "","P0_MGMT_SOC_RESET_L","",
 			"MGMT_HDT_SEL","","SCM_JTAG_DBREQ","","JTAG_TRST_N",
 		/*40-47*/ "","P0_MGMT_ASSERT_WARM_RST_BTN_L","","","","","","",
-		/*48-55*/ "","","","","","","","",
+		/*48-55*/ "","","P1_MGMT_MON_THERMTRIP_L","P1_MGMT_ASSERT_THERMTRIP",
+			"P1_MGMT_MON_PROCHOT_L","P1_MGMT_ASSERT_PROCHOT",
+			"P1_MGMT_MON_RSMRST_L","P1_ASSERT_RSMRST",
 		/*56-63*/ "","","","","","","","",
 		/*64-71*/ "","","","","","","","",
-		/*72-79*/ "","","","","","","","",
-		/*80-87*/ "","","","","","","","",
-		/*88-95*/ "","","","","","","","",
-		/*96-103*/ "","","","","","","","",
-		/*104-111*/ "","","","","","","","",
+		/*72-79*/ "P1_MGMT_MON_POST_COMPLETE","","","","","","","",
+		/*80-87*/ "P1_MGMT_MON_PSP_SOFT_FUSE_NOTIFY","","P1_MGMT_MON_PWR_GOOD","","","","","",
+		/*88-95*/ "","","","","","","","P1_MGMT_ASSERT_WARM_RST_BTN_L",
+		/*96-103*/ "","P1_MGMT_SOC_RESET_L","","P1_MGMT_ASSERT_NMI_BTN_L","",
+			"P1_MGMT_ASSERT_CLR_CMOS","MGMT_MON_PLATFORM_CONFIG","MGMT_ASSERT_PLATFORM_CONFIG",
+		/*104-111*/ "","","","","","HPM_STBY_EN","","",
 		/*112-119*/ "","","","","","","","",
 		/*120-127*/ "","","","","","","","",
 		/*128-135*/ "P0_MGMT_MON_RST_BTN_L","P0_MGMT_ASSERT_RST_BTN_L","P0_MGMT_MON_PWR_BTN_L",
-			"P0_MGMT_ASSERT_PWR_BTN_L","","",
-			"","",
+			"P0_MGMT_ASSERT_PWR_BTN_L","P1_MGMT_MON_RST_BTN_L","P1_MGMT_ASSERT_RST_BTN_L",
+			"P1_MGMT_MON_PWR_BTN_L","P1_MGMT_ASSERT_PWR_BTN_L",
 		/*136-143*/ "","","","","","","","",
 		/*144-151*/ "","","","","","","","",
 		/*152-159*/ "","","","","","","","",
@@ -1085,10 +1128,6 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 		/*200-207*/ "","","","","","","","",
 		/*208-215*/ "","","","","","","","",
 		/*216-223*/ "","","","","","","","";
-};
-
-&sgpios {
-        status = "okay";
 };
 
 &video0 {
@@ -1154,4 +1193,16 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 
 &jtag1 {
 	status = "okay";
+};
+
+&mctp0 {
+	status = "okay";
+	memory-region = <&mctp0_reserved>;
+	mctp-controller;
+};
+
+&mctp1 {
+	status = "okay";
+	memory-region = <&mctp1_reserved>;
+	mctp-controller;
 };
