@@ -522,6 +522,20 @@
 	};
 };
 
+/* P0-SEC */
+&i2c15 {
+        status = "okay";
+        pinctrl-0 = <&pinctrl_di2c15_default>;
+        clock-frequency = <400000>;
+
+        multi-master;
+        mctp-controller;
+        mctp@10 {
+                compatible = "mctp-i2c-controller";
+                reg = <(0x10 | I2C_OWN_SLAVE_ADDRESS)>;
+        };
+};
+
 &i3c4 {
 	status = "okay";
 	initial-role = "primary";
@@ -603,6 +617,19 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 
 &gpio0 {
 	status = "okay";
+
+	/*
+         * by default the direction of the SEL_P0_SEC_I2C_ROT_BMC (GPIO B0)
+         * is "in". It should be set to "out" and value of "1" for the
+         * I2C bus to be owned by the BMC.
+         */
+        p0_sec_i2c {
+                gpio-hog;
+                gpios = <8 GPIO_ACTIVE_HIGH>;
+                output-high;
+                line-name = "SEL_P0_SEC_I2C_ROT_BMC";
+        };
+
 	espi_default {
 		gpio-hog;
 		gpios = <10 GPIO_ACTIVE_HIGH>;
@@ -618,7 +645,7 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 &ltpi0_gpio {
 	status = "okay";
 	gpio-line-names =
-		/*00-07*/ "","HPM_STBY_EN","",
+		/*00-07*/ "","","",
 			"P0_MGMT_ASSERT_CLR_CMOS","P0_MGMT_MON_PROCHOT_L","P0_MGMT_ASSERT_PROCHOT_L",
 			"P0_MGMT_MON_RSMRST_L","P0_ASSERT_RSMRST",
 		/*08-15*/ "P0_MGMT_MON_THERMTRIP_L","P0_MGMT_ASSERT_THERMTRIP_L","P0_PRESENT_L",
@@ -638,7 +665,7 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 		/*80-87*/ "","","","","","","","",
 		/*88-95*/ "","","","","","","","",
 		/*96-103*/ "","","","","","","","",
-		/*104-111*/ "","","","","","","","",
+		/*104-111*/ "","","","","","HPM_STBY_EN","","",
 		/*112-119*/ "","","","","","","","",
 		/*120-127*/ "","","","","","","","",
 		/*128-135*/ "P0_MGMT_MON_RST_BTN_L","P0_MGMT_ASSERT_RST_BTN_L","P0_MGMT_MON_PWR_BTN_L",
@@ -655,10 +682,6 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 		/*200-207*/ "","","","","","","","",
 		/*208-215*/ "","","","","","","","",
 		/*216-223*/ "","","","","","","","";
-};
-
-&sgpios {
-	status = "okay";
 };
 
 &video0 {
