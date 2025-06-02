@@ -7,11 +7,21 @@
 
 #include <linux/types.h>
 
-/*
- * Currently signal 33 to 64 are unused,
- * using user signal number from that range
- */
-#define USR_SIGNAL	44
+#ifndef BIT
+#define BIT(n) (1U << (n))
+#endif
+
+enum apml_ras_alert_src {
+	APML_FATAL_ALERT	= BIT(0),
+	APML_FCH_ALERT		= BIT(1),
+	APML_RESET_CTRL_ALERT	= BIT(2),
+	APML_MCA_ALERT		= BIT(3),
+	APML_DRAM_CECC_ALERT	= BIT(4),
+	APML_PCIE_ALERT		= BIT(5),
+	APML_CPU_SHUTDOWN	= BIT(6),
+	APML_TEMP_LOW_ALERT	= BIT(27),
+	APML_TEMP_HIGH_ALERT	= BIT(28),
+};
 
 enum apml_protocol {
 	APML_CPUID	= 0x1000,
