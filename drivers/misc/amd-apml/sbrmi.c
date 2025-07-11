@@ -209,6 +209,14 @@ static int sbrmi_read(struct device *dev, enum hwmon_sensor_types type,
 			ret = rmi_mailbox_xfer(rmi_dev, &msg);
 			if (ret == -EPROTOTYPE)
 				dev_dbg(dev, "FW error code:0x%x\n", msg.fw_ret_code);
+			/*
+			 * ipmid hangs and phosphor-pid-control stops when a
+			 * DIMM read fails, so report 0 instead of the error.
+			 */
+			if (ret < 0) {
+				msg.data_out.mb_out[RD_WR_DATA_INDEX] = 0;
+				ret = 0;
+			}
 			break;
 		default:
 			ret = -EINVAL;
