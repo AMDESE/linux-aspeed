@@ -1269,3 +1269,16 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	status = "okay";
 	memory-region = <&bmc_dev0_memory>;
 };
+
+&emmc_controller {
+	status = "okay";
+	mmc-hs200-1_8v;
+};
+
+&emmc {
+	status = "okay";
+	bus-width = <4>;
+	pinctrl-0 = <&pinctrl_emmc_default &pinctrl_emmcg8_default>;
+	non-removable;
+	max-frequency = <200000000>;
+};
