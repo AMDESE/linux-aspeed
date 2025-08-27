@@ -25,7 +25,7 @@
 #include <linux/version.h>
 
 #include <linux/amd-apml.h>
-
+#include "sbtsi-common.h"
 /*
  * SB-TSI registers only support SMBus byte data access. "_INT" registers are
  * the integer part of a temperature value or limit, and "_DEC" registers are
@@ -59,13 +59,6 @@
 #define SBTSI_INT_OFFSET	3
 #define SBTSI_DEC_OFFSET	5
 #define SBTSI_DEC_MASK		0x7
-
-struct apml_sbtsi_device {
-	struct miscdevice sbtsi_misc_dev;
-	struct regmap *regmap;
-	struct mutex lock;
-	u8 dev_static_addr;
-} __packed;
 
 /*
  * From SB-TSI spec: CPU temperature readings and limit registers encode the
@@ -301,12 +294,11 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 		.val_bits = 8,
 	};
 	struct regmap *regmap;
+	const char *hwmon_dev_name;
 
 	dev_err(dev, "SBTSI: PID: %llx\n", i3cdev->desc->info.pid);
-	if (!((i3cdev->desc->info.pid == 0x0) || (i3cdev->desc->info.pid == 0x22400000001) ||
-		(i3cdev->desc->info.pid == 0x118) || (i3cdev->desc->info.pid == 0x010118) ||
-		(i3cdev->desc->info.pid == 0x01000118) || (i3cdev->desc->info.pid == 0x01010118)))
-	{
+	if (!(I3C_PID_INSTANCE_ID(i3cdev->desc->info.pid) == 0 ||
+	      i3cdev->desc->info.pid == 0x22400000001)) {
 		dev_err(dev, "SBTSI: Error PID: %llx\n", i3cdev->desc->info.pid);
 		return -ENXIO;
 	}
@@ -328,8 +320,29 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 	tsi_dev->regmap = regmap;
 	mutex_init(&tsi_dev->lock);
 
+	/* Need to verify for the static address for i3cdev */
+	tsi_dev->dev_static_addr = i3cdev->desc->info.static_addr;
+
+	switch (tsi_dev->dev_static_addr) {
+	case 0x44:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbtsi_%s", "0.1");
+		break;
+	case 0x45:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbtsi_%s", "1.1");
+		break;
+	case 0x48:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbtsi_%s", "1.0");
+		break;
+	case 0x4c:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbtsi_%s", "0.0");
+		break;
+	default:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbtsi_");
+		break;
+	}
+
 	dev_set_drvdata(dev, (void *)tsi_dev);
-	hwmon_dev = devm_hwmon_device_register_with_info(dev, "sbtsi_i3c", tsi_dev,
+	hwmon_dev = devm_hwmon_device_register_with_info(dev, hwmon_dev_name, tsi_dev,
 							 &sbtsi_chip_info, NULL);
 
 	if (!hwmon_dev)
@@ -337,9 +350,6 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 		dev_err(dev, "SBTSI: Error hwmon_device_register \n" );
 		return PTR_ERR_OR_ZERO(hwmon_dev);
 	}
-
-	/* Need to verify for the static address for i3cdev */
-	tsi_dev->dev_static_addr = i3cdev->desc->info.static_addr;
 
 	return create_misc_tsi_device(tsi_dev, dev);
 }
@@ -358,6 +368,7 @@ static int sbtsi_i2c_probe(struct i2c_client *client)
 		.reg_bits = 8,
 		.val_bits = 8,
 	};
+	const char *hwmon_dev_name;
 
 	tsi_dev = devm_kzalloc(dev, sizeof(struct apml_sbtsi_device), GFP_KERNEL);
 	if (!tsi_dev)
@@ -370,15 +381,33 @@ static int sbtsi_i2c_probe(struct i2c_client *client)
 
 	dev_set_drvdata(dev, (void *)tsi_dev);
 
-	hwmon_dev = devm_hwmon_device_register_with_info(dev, client->name,
+	tsi_dev->dev_static_addr = client->addr;
+
+	switch (tsi_dev->dev_static_addr) {
+	case 0x44:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbtsi_%s", "0.1");
+		break;
+	case 0x45:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbtsi_%s", "1.1");
+		break;
+	case 0x48:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbtsi_%s", "1.0");
+		break;
+	case 0x4c:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbtsi_%s", "0.0");
+		break;
+	default:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbtsi_");
+		break;
+	}
+
+	hwmon_dev = devm_hwmon_device_register_with_info(dev, hwmon_dev_name,
 							 tsi_dev,
 							 &sbtsi_chip_info,
 							 NULL);
 
 	if (!hwmon_dev)
 		return PTR_ERR_OR_ZERO(hwmon_dev);
-
-	tsi_dev->dev_static_addr = client->addr;
 
 	return create_misc_tsi_device(tsi_dev, dev);
 }
@@ -425,6 +454,10 @@ static const struct i3c_device_id sbtsi_i3c_id[] = {
 	I3C_DEVICE_EXTRA_INFO(0, 0x0101, 0x118, NULL), /* P1 - IOD1 - SBTSI */
 	I3C_DEVICE_EXTRA_INFO(0x112, 0, 0x1, NULL),
 	I3C_DEVICE_EXTRA_INFO(0, 0x0, 0x0, NULL),
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x118, NULL), /* Socket:0, IOD:0 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x1, 0x118, NULL), /* Socket:0, IOD:1 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x118, NULL), /* Socket:1 IOD:0 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x101, 0x118, NULL), /* Socket:1 IOD:1 */
 	{}
 };
 MODULE_DEVICE_TABLE(i3c, sbtsi_i3c_id);
@@ -464,6 +497,26 @@ static struct i2c_driver sbtsi_driver = {
 };
 
 module_i3c_i2c_driver(sbtsi_i3c_driver, &sbtsi_driver)
+
+int sbtsi_match_i3c(struct device *dev, const void *data)
+{
+	const struct device_node *node = (const struct device_node *)data;
+
+	if (dev->of_node == node && dev->driver == &sbtsi_i3c_driver.driver)
+		return 1;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(sbtsi_match_i3c);
+
+int sbtsi_match_i2c(struct device *dev, const void *data)
+{
+	const struct device_node *node = (const struct device_node *)data;
+
+	if (dev->of_node == node && dev->driver == &sbtsi_driver.driver)
+		return 1;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(sbtsi_match_i2c);
 
 MODULE_AUTHOR("Kun Yi <kunyi@google.com>");
 MODULE_DESCRIPTION("Hwmon driver for AMD SB-TSI emulated sensor");

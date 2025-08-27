@@ -458,6 +458,7 @@ static int sbrmi_i2c_probe(struct i2c_client *client)
 	struct device *dev = &client->dev;
 	struct device *hwmon_dev;
 	struct apml_sbrmi_device *rmi_dev;
+	const char *hwmon_dev_name;
 
 	rmi_dev = devm_kzalloc(dev, sizeof(struct apml_sbrmi_device), GFP_KERNEL);
 	if (!rmi_dev)
@@ -470,15 +471,27 @@ static int sbrmi_i2c_probe(struct i2c_client *client)
 
 	dev_set_drvdata(dev, (void *)rmi_dev);
 
-	hwmon_dev = devm_hwmon_device_register_with_info(dev, client->name,
+	rmi_dev->dev_static_addr = client->addr;
+
+	switch (rmi_dev->dev_static_addr) {
+	case 0x3c:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbrmi_%s", "0.0");
+		break;
+	case 0x38:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbrmi_%s", "1.0");
+		break;
+	default:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbrmi_");
+		break;
+	}
+
+	hwmon_dev = devm_hwmon_device_register_with_info(dev, hwmon_dev_name,
 							 rmi_dev,
 							 &sbrmi_chip_info,
 							 NULL);
 
 	if (!hwmon_dev)
 		return PTR_ERR_OR_ZERO(hwmon_dev);
-
-	rmi_dev->dev_static_addr = client->addr;
 
 	init_completion(&rmi_dev->misc_fops_done);
 	return create_misc_rmi_device(rmi_dev, dev);
@@ -623,11 +636,12 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 	struct device *hwmon_dev;
 	struct apml_sbrmi_device *rmi_dev;
 	int ret;
+	const char *hwmon_dev_name;
 
 	dev_info(dev, "SBRMI: PID: %llx\n", i3cdev->desc->info.pid);
-	if (!((i3cdev->desc->info.pid == 0x1000) || (i3cdev->desc->info.pid == 0x22400000002) ||
-		(i3cdev->desc->info.pid == 0x1118) || (i3cdev->desc->info.pid == 0x1001118)))
-	{
+
+	if (!(I3C_PID_INSTANCE_ID(i3cdev->desc->info.pid) == 1 ||
+	      i3cdev->desc->info.pid == 0x22400000002)) {
 		dev_info(dev, "SBRMI: PID Error: %llx\n", i3cdev->desc->info.pid);
 		return -ENXIO;
 	}
@@ -646,7 +660,22 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 
 	dev_set_drvdata(dev, (void *)rmi_dev);
 
-	hwmon_dev = devm_hwmon_device_register_with_info(dev, "sbrmi_i3c", rmi_dev,
+	/* Need to verify for the static address for i3cdev */
+	rmi_dev->dev_static_addr = i3cdev->desc->info.static_addr;
+
+	switch (rmi_dev->dev_static_addr) {
+	case 0x3c:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbrmi_%s", "0.0");
+		break;
+	case 0x38:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbrmi_%s", "1.0");
+		break;
+	default:
+		hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbrmi_");
+		break;
+	}
+
+	hwmon_dev = devm_hwmon_device_register_with_info(dev, hwmon_dev_name, rmi_dev,
 							 &sbrmi_chip_info, NULL);
 
 	if (!hwmon_dev)
@@ -654,9 +683,6 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 		dev_info(dev, "SBRMI: Error HWMON Device Register\n");
 		return PTR_ERR_OR_ZERO(hwmon_dev);
 	}
-
-	/* Need to verify for the static address for i3cdev */
-	rmi_dev->dev_static_addr = i3cdev->desc->info.static_addr;
 
 	i3c_sbrmi_cache = kmem_cache_create_usercopy("i3c-data-cache",
 					sizeof(struct i3c_sbrmi_data), 0, 0, 0,
@@ -767,9 +793,11 @@ static const struct of_device_id __maybe_unused sbrmi_of_match[] = {
 MODULE_DEVICE_TABLE(of, sbrmi_of_match);
 
 static const struct i3c_device_id sbrmi_i3c_id[] = {
-	I3C_DEVICE_EXTRA_INFO(0, 0x000, 0x1118, NULL), /* P0 - IOD0 - SBRMI */
-	I3C_DEVICE_EXTRA_INFO(0, 0x100, 0x1118, NULL), /* P1 - IOD0 - SBRMI */
+	I3C_DEVICE_EXTRA_INFO(0, 0x000, 0x118, NULL), /* P0 - IOD0 - SBRMI */
+	I3C_DEVICE_EXTRA_INFO(0, 0x100, 0x118, NULL), /* P1 - IOD0 - SBRMI */
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x2, NULL),
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x118, NULL), /* Socket:0, IOD:0 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x118, NULL), /* Socket:1 IOD:0 */
 	I3C_DEVICE_EXTRA_INFO(0, 0x0, 0x0, NULL),
 	{}
 };
