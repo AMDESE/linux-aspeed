@@ -20,7 +20,8 @@
 #include <net/sock.h>
 
 struct mctp_dump_cb {
-	unsigned long ifindex;
+	int h;
+	int idx;
 	size_t a_idx;
 };
 
@@ -114,36 +115,43 @@ static int mctp_dump_addrinfo(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	struct mctp_dump_cb *mcb = (void *)cb->ctx;
 	struct net *net = sock_net(skb->sk);
+	struct hlist_head *head;
 	struct net_device *dev;
 	struct ifaddrmsg *hdr;
 	struct mctp_dev *mdev;
-	int ifindex = 0, rc;
+	int ifindex;
+	int idx = 0, rc;
 
-	/* Filter by ifindex if a header is provided */
-	if (cb->nlh->nlmsg_len >= nlmsg_msg_size(sizeof(*hdr))) {
-		hdr = nlmsg_data(cb->nlh);
-		ifindex = hdr->ifa_index;
-	} else {
-		if (cb->strict_check) {
-			NL_SET_ERR_MSG(cb->extack, "mctp: Invalid header for addr dump request");
-			return -EINVAL;
-		}
-	}
+	hdr = nlmsg_data(cb->nlh);
+	// filter by ifindex if requested
+	ifindex = hdr->ifa_index;
 
 	rcu_read_lock();
-	for_each_netdev_dump(net, dev, mcb->ifindex) {
-		if (ifindex && ifindex != dev->ifindex)
-			continue;
-		mdev = __mctp_dev_get(dev);
-		if (!mdev)
-			continue;
-		rc = mctp_dump_dev_addrinfo(mdev, skb, cb);
-		mctp_dev_put(mdev);
-		if (rc < 0)
-			break;
-		mcb->a_idx = 0;
+	for (; mcb->h < NETDEV_HASHENTRIES; mcb->h++, mcb->idx = 0) {
+		idx = 0;
+		head = &net->dev_index_head[mcb->h];
+		hlist_for_each_entry_rcu(dev, head, index_hlist) {
+			if (idx >= mcb->idx &&
+			    (ifindex == 0 || ifindex == dev->ifindex)) {
+				mdev = __mctp_dev_get(dev);
+				if (mdev) {
+					rc = mctp_dump_dev_addrinfo(mdev,
+								    skb, cb);
+					mctp_dev_put(mdev);
+					// Error indicates full buffer, this
+					// callback will get retried.
+					if (rc < 0)
+						goto out;
+				}
+			}
+			idx++;
+			// reset for next iteration
+			mcb->a_idx = 0;
+		}
 	}
+out:
 	rcu_read_unlock();
+	mcb->idx = idx;
 
 	return skb->len;
 }
