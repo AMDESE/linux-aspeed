@@ -376,14 +376,16 @@ static int create_misc_rmi_device(struct apml_sbrmi_device *rmi_dev,
 {
 	int ret;
 
-	rmi_dev->sbrmi_misc_dev.name		= devm_kasprintf(dev, GFP_KERNEL,
-						  "sbrmi-%x", rmi_dev->dev_static_addr);
-	rmi_dev->sbrmi_misc_dev.minor		= MISC_DYNAMIC_MINOR;
-	rmi_dev->sbrmi_misc_dev.fops		= &sbrmi_fops;
-	rmi_dev->sbrmi_misc_dev.parent		= dev;
-	rmi_dev->sbrmi_misc_dev.nodename	= devm_kasprintf(dev, GFP_KERNEL,
-						  "sbrmi-%x", rmi_dev->dev_static_addr);
-	rmi_dev->sbrmi_misc_dev.mode		= 0600;
+	rmi_dev->sbrmi_misc_dev.name = devm_kasprintf(dev, GFP_KERNEL,
+		  "sbrmi-%d-%llx", rmi_dev->bus_id,
+		  rmi_dev->dev_static_addr ?: rmi_dev->pid);
+	rmi_dev->sbrmi_misc_dev.minor = MISC_DYNAMIC_MINOR;
+	rmi_dev->sbrmi_misc_dev.fops = &sbrmi_fops;
+	rmi_dev->sbrmi_misc_dev.parent= dev;
+	rmi_dev->sbrmi_misc_dev.nodename = devm_kasprintf(dev, GFP_KERNEL,
+		  "sbrmi-%d-%llx", rmi_dev->bus_id,
+		  rmi_dev->dev_static_addr ?: rmi_dev->pid);
+	rmi_dev->sbrmi_misc_dev.mode = 0600;
 
 	ret = misc_register(&rmi_dev->sbrmi_misc_dev);
 	if (ret)
