@@ -76,6 +76,8 @@ struct apml_sbtsi_device {
 	struct regmap *regmap;
 	struct mutex lock;
 	u8 dev_static_addr;
+	int bus_id;
+	u64 pid;
 } __packed;
 
 /*
@@ -436,14 +438,16 @@ static int create_misc_tsi_device(struct apml_sbtsi_device *tsi_dev,
 {
 	int ret;
 
-	tsi_dev->sbtsi_misc_dev.name		= devm_kasprintf(dev, GFP_KERNEL,
-						  "sbtsi-%x", tsi_dev->dev_static_addr);
-	tsi_dev->sbtsi_misc_dev.minor		= MISC_DYNAMIC_MINOR;
-	tsi_dev->sbtsi_misc_dev.fops		= &sbtsi_fops;
-	tsi_dev->sbtsi_misc_dev.parent		= dev;
-	tsi_dev->sbtsi_misc_dev.nodename	= devm_kasprintf(dev, GFP_KERNEL,
-						  "sbtsi-%x", tsi_dev->dev_static_addr);
-	tsi_dev->sbtsi_misc_dev.mode		= 0600;
+	tsi_dev->sbtsi_misc_dev.name = devm_kasprintf(dev, GFP_KERNEL,
+		"sbtsi-%d-%llx", tsi_dev->bus_id,
+		tsi_dev->dev_static_addr ?: tsi_dev->pid);
+	tsi_dev->sbtsi_misc_dev.minor = MISC_DYNAMIC_MINOR;
+	tsi_dev->sbtsi_misc_dev.fops = &sbtsi_fops;
+	tsi_dev->sbtsi_misc_dev.parent= dev;
+	tsi_dev->sbtsi_misc_dev.nodename = devm_kasprintf(dev, GFP_KERNEL,
+		"sbtsi-%d-%llx", tsi_dev->bus_id,
+		tsi_dev->dev_static_addr ?: tsi_dev->pid);
+	tsi_dev->sbtsi_misc_dev.mode = 0600;
 
 	ret = misc_register(&tsi_dev->sbtsi_misc_dev);
 	if (ret)
