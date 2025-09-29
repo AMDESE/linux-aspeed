@@ -890,11 +890,6 @@
 		assigned-address = <0x4c>;
 	};
 
-	sbtsi_p0_iod1: sbtsi@44,22400010118 {
-		reg = <0x44 0x224 0x00010118>;
-		assigned-address = <0x44>;
-	};
-
 	sbrmi_p0_iod0: sbrmi@3c,22400001118 {
 		reg = <0x3c 0x224 0x00001118>;
 		assigned-address = <0x3c>;
