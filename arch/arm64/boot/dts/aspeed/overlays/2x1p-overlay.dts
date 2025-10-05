@@ -1,0 +1,67 @@
+/dts-v1/;
+/plugin/;
+/ {
+	/*
+	 * Device Tree Overlay for 2x1P System Configuration:
+	 *
+	 * In both 2P and 2x1P modes, the APML stack—including the APML library
+	 * and APML Tool infrastructure—expects SBTSI and SBRMI device nodes to
+	 * be created at consistent paths:
+	 *   - /dev/sbtsi-4c for SBTSI (P0 static address: 0x4C)
+	 *   - /dev/sbrmi-3c for SBRMI (P0 static address: 0x3C)
+	 *   - /dev/sbtsi-48 for SBTSI (P1 static address: 0x48)
+	 *   - /dev/sbrmi-38 for SBRMI (P1 static address: 0x38)
+	 *
+	 * In 2x1P mode:
+	 * - Both P0 and P1 can be powered on and operate independently.
+	 * - However, the SBTSI and SBRMI devices on IOD0 in the P1 node use
+	 *   the same static addresses as those in P0 (i.e., SBTSI at 0x4C,
+	 *   SBRMI at 0x3C).
+	 * - This causes device node creation failure for P1, as the kernel
+	 *   cannot create duplicate nodes (e.g., /dev/sbtsi-4c) that already
+	 *   exist for P0.
+	 *
+	 * Resolution:
+	 * - The 'assigned-address' property is removed from the
+	 *   SBTSI and SBRMI device nodes in the P1 node from 2P mode.
+	 * - The static addresses used by P1 (SBTSI: 0x48, SBRMI: 0x38) are
+	 *   explicitly assigned as dynamic addresses to the corresponding
+	 *   devices in the P1 node since they assume the static addresses 0x4C
+	 *   and 0x3C as on the P0 node.
+	 * - This ensures that device nodes are created only once at the
+	 *   expected paths (/dev/sbtsi-4c, /dev/sbrmi-3c, /dev/sbtsi-48, and
+	 *   /dev/sbrmi-38), and avoids conflicts during enumeration.
+	 *
+	 * These changes are essential to maintain compatibility with the APML
+	 * stack, which relies on consistent device node naming and expects
+	 * seamless operation across both 2P and 2x1P configurations. Without
+	 * these device nodes being created at the expected paths, the APML
+	 * library and tools will fail.
+	 */
+	fragment@0 {
+		target-path = "/soc@14000000/i3c5@14c25000/sbtsi@0,22400000118";
+		__overlay__ {
+			assigned-address = <0x48>;
+		};
+	};
+
+	fragment@1 {
+		target-path = "/soc@14000000/i3c5@14c25000/sbtsi@0,22401000118";
+		__overlay__ {
+			/delete-property/ assigned-address;
+		};
+	};
+	fragment@2 {
+		target-path = "/soc@14000000/i3c5@14c25000/sbtsi@0,22400001118";
+		__overlay__ {
+			assigned-address = <0x38>;
+		};
+	};
+
+	fragment@3 {
+		target-path = "/soc@14000000/i3c5@14c25000/sbtsi@0,22401001118";
+		__overlay__ {
+			/delete-property/ assigned-address;
+		};
+	};
+};
