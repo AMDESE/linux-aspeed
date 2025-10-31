@@ -110,53 +110,22 @@
                 };
 	};
 	aliases {
-		i2c100 = &NC_1;
-		i2c101 = &NC_2;
-		i2c102 = &P0_pce;
-		i2c103 = &NC_3;
-		i2c104 = &fan_pdb;
-		i2c105 = &P0_pcp;
-		i2c106 = &NC_4;
-		i2c107 = &NC_5;
-		i2c108 = &P1_pce_conn;
-		i2c109 = &NC_6;
-		i2c110 = &P1_pce_mgmt;
-		i2c111 = &NC_7;
-		i2c112 = &NC_8;
-		i2c113 = &P1_pcp;
-		i2c114 = &NC_9;
-		i2c115 = &NC_10;
 		i2c116 = &P0_id;
 		i2c117 = &P0_clk;
 		i2c118 = &P0_vr;
-		i2c119 = &NC_11;
-		i2c120 = &sys_regs;
+		i2c119 = &NC_1;
+		i2c120 = &sys_vr;
 		i2c121 = &temp;
-		i2c122 = &fan_0;
-		i2c123 = &fan_1;
-		i2c124 = &fan_2;
-		i2c125 = &fan_3;
+		i2c122 = &adc_0;
+		i2c123 = &adc_1;
+		i2c124 = &rio_p1;
+		i2c125 = &NC_2;
 		i2c126 = &adc_fpga;
-		i2c127 = &lom;
-		i2c128 = &adc_pdb;
-		i2c129 = &adc_brd;
-		i2c130 = &NC_12;
-		i2c131 = &NC_13;
+		i2c127 = &rio_p0;
 		i2c132 = &P1_id;
 		i2c133 = &P1_clk;
 		i2c134 = &P1_vr;
-		i2c135 = &NC_14;
-		i2c180 = &p0_pcie_slot0;
-		i2c181 = &p0_pcie_slot1;
-		i2c182 = &p0_pcie_slot2;
-		i2c200 = &picpwr_fan_0;
-		i2c201 = &picpwr_fan_1;
-		i2c202 = &picpwr_pdb;
-		i2c203 = &churro_fans_0_0;
-		i2c204 = &churro_fans_0_1;
-		i2c205 = &churro_id;
-		i2c206 = &churro_mcu;
-		i2c207 = &NC_15;
+		i2c135 = &NC_3;
 	};
 };
 
@@ -281,6 +250,18 @@
 	status = "okay";
 };
 
+&i2c0 {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+	status = "okay";
+};
+
+&i2c1 {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+	status = "okay";
+};
+
 &i2c2 {
 	/delete-property/ pinctrl-names;
 	/delete-property/ pinctrl-0;
@@ -308,202 +289,9 @@
 	status = "okay";
         clock-frequency = <400000>;
 
-	multi-master;
-	mctp-controller;
-	mctp@10 {
-		compatible = "mctp-i2c-controller";
-		reg = <(0x10 | I2C_OWN_SLAVE_ADDRESS)>;
-	};
-
 	hpmeeprom@50 {
 		compatible = "microchip,24lc256","atmel,24c256";
 		reg = <0x50>;
-	};
-
-	i2cswitch@70 {
-		compatible = "nxp,pca9548";
-		reg = <0x70>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		NC_1: i2c@0 {
-			reg = <0>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_2: i2c@1 {
-			reg = <1>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		P0_pce: i2c@2 {
-			reg = <2>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-			i2cswitch@71 {
-				compatible = "nxp,pca9548";
-				reg = <0x71>;
-				#address-cells = <1>;
-				#size-cells = <0>;
-
-				p0_pcie_slot0: i2c@0 {
-					reg = <0>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-					mctp-controller;
-				};
-				p0_pcie_slot1: i2c@1 {
-					reg = <1>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-					mctp-controller;
-				};
-				p0_pcie_slot2: i2c@2 {
-					reg = <2>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-					mctp-controller;
-				};
-			};
-		};
-
-		NC_3: i2c@3 {
-			reg = <3>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		P0_pcp: i2c@4 {
-			reg = <4>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		fan_pdb: i2c@5 {
-			reg = <5>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-			i2cswitch@71 {
-				compatible = "nxp,pca9546";
-				reg = <0x71>;
-				#address-cells = <1>;
-				#size-cells = <0>;
-
-				picpwr_fan_0: i2c@0 {
-					reg = <0>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-					i2cswitch@76 {
-						compatible = "nxp,pca9546";
-						reg = <0x76>;
-						#address-cells = <1>;
-						#size-cells = <0>;
-
-						churro_fans_0_0: i2c@0 {
-							reg = <0>;
-							#address-cells = <1>;
-							#size-cells = <0>;
-
-							emc2305@4d {
-								compatible = "smsc,emc2305";
-								reg = <0x4d>;
-								#cooling-cells = <0x02>;
-
-								fan@0 {
-									min-rpm = /bits/ 16 <1000>;
-									max-rpm = /bits/ 16 <16000>;
-								};
-								fan@1 {
-									min-rpm = /bits/ 16 <1000>;
-									max-rpm = /bits/ 16 <16000>;
-								};
-								fan@2 {
-									min-rpm = /bits/ 16 <1000>;
-									max-rpm = /bits/ 16 <16000>;
-								};
-								fan@3 {
-									min-rpm = /bits/ 16 <1000>;
-									max-rpm = /bits/ 16 <16000>;
-								};
-							};
-						};
-
-						churro_fans_0_1: i2c@1 {
-							reg = <1>;
-							#address-cells = <1>;
-							#size-cells = <0>;
-
-							emc2305@4d {
-								compatible = "smsc,emc2305";
-								reg = <0x4d>;
-								#cooling-cells = <0x02>;
-
-								fan@0 {
-									min-rpm = /bits/ 16 <1000>;
-									max-rpm = /bits/ 16 <16000>;
-								};
-								fan@1 {
-									min-rpm = /bits/ 16 <1000>;
-									max-rpm = /bits/ 16 <16000>;
-								};
-								fan@2 {
-									min-rpm = /bits/ 16 <1000>;
-									max-rpm = /bits/ 16 <16000>;
-								};
-								fan@3 {
-									min-rpm = /bits/ 16 <1000>;
-									max-rpm = /bits/ 16 <16000>;
-								};
-							};
-						};
-
-						churro_id: i2c@2 {
-							reg = <2>;
-							#address-cells = <1>;
-							#size-cells = <0>;
-						};
-
-						churro_mcu: i2c@3 {
-							reg = <3>;
-							#address-cells = <1>;
-							#size-cells = <0>;
-						};
-					};
-				};
-
-				picpwr_fan_1: i2c@1 {
-					reg = <1>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-				};
-
-				picpwr_pdb: i2c@2 {
-					reg = <2>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-				};
-
-				NC_15: i2c@3 {
-					reg = <3>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-				};
-			};
-		};
-
-		NC_4: i2c@6 {
-			reg = <6>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_5: i2c@7 {
-			reg = <7>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
 	};
 };
 
@@ -511,67 +299,13 @@
 	// Net name SCM_I2C<1>
 	status = "okay";
         clock-frequency = <400000>;
-
-	i2cswitch@70 {
-		compatible = "nxp,pca9548";
-		reg = <0x70>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		P1_pce_conn: i2c@0 {
-			reg = <0>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_6: i2c@1 {
-			reg = <1>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		P1_pce_mgmt: i2c@2 {
-			reg = <2>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_7: i2c@3 {
-			reg = <3>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_8: i2c@4 {
-			reg = <6>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		P1_pcp: i2c@5 {
-			reg = <5>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_9: i2c@6 {
-			reg = <6>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_10: i2c@7 {
-			reg = <7>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-	};
 };
 
 &i2c12 {
 	// Net name i2c2 (SCM_I2C2) - P0 /FAN/LM75/ADC
 	status = "okay";
         clock-frequency = <400000>;
+
 	i2cswitch@70 {
 		compatible = "nxp,pca9546";
 		reg = <0x70>;
@@ -610,10 +344,10 @@
 				compatible = "raa229641";
 				reg = <0x42>;
 			};
-			p0vdd33s5run@46 {
+			p0vdd33s5run@08 {
 				//P0_VDD_33_S5_RUN
 				compatible = "pmbus";
-				reg = <0x46>;
+				reg = <0x08>;
 			};
 			p0vdd18s5run@47 {
 				//P0_VDD_18_S5_RUN
@@ -622,7 +356,7 @@
 			};
 		};
 
-		NC_11: i2c@3 {
+		NC_1: i2c@3 {
 			reg = <3>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -635,30 +369,30 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		sys_regs: i2c@0 {
+		sys_vr: i2c@0 {
 			reg = <0>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			vdd33dual@43 {
-				//VDD_33_DUAL VRM
+			p3v3aux@43 {
+				//P3V3_AUX VRM
 				compatible = "pmbus";
 				reg = <0x43>;
 			};
-			vdd33runb@44 {
-				//VDD_33_RUN_B VRM
+			p5vs5@08 {
+				//P5V_S5 VRM
 				compatible = "pmbus";
-				reg = <0x44>;
+				reg = <0x08>;
 			};
-			vdd33run@45 {
-				//VDD_33_RUN VRM
+			p1v8aux@09 {
+				//P1V8_AUX VRM
 				compatible = "pmbus";
-				reg = <0x45>;
+				reg = <0x09>;
 			};
-			vdd33run@48 {
-				//VDD_5_DUAL VRM
+			p0v85aux@0A {
+				//P0V85_AUX VRM
 				compatible = "pmbus";
-				reg = <0x48>;
+				reg = <0x0A>;
 			};
 		};
 
@@ -668,134 +402,28 @@
 			#size-cells = <0>;
 		};
 
-		fan_0: i2c@2 {
+		adc_0: i2c@2 {
 			reg = <2>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-
-			emc2305@4d {
-				compatible = "smsc,emc2305";
-				reg = <0x4d>;
-				#cooling-cells = <0x02>;
-
-				fan@0 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-				fan@1 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-
-				fan@2 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-
-				fan@3 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-			};
 		};
 
-		fan_1: i2c@3 {
+		adc_1: i2c@3 {
 			reg = <3>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-
-			emc2305@4d {
-				compatible = "smsc,emc2305";
-				reg = <0x4d>;
-				#cooling-cells = <0x02>;
-
-				fan@0 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-				fan@1 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-				fan@2 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-				fan@3 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-				fan@4 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-			};
 		};
 
-		fan_2: i2c@4 {
+		rio_p1: i2c@4 {
 			reg = <4>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-
-			emc2305@4d {
-				compatible = "smsc,emc2305";
-				reg = <0x4d>;
-				#cooling-cells = <0x02>;
-
-				fan@0 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-				fan@1 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-				fan@2 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-				fan@3 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-				fan@4 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-			};
 		};
 
-		fan_3: i2c@5 {
+		NC_2: i2c@5 {
 			reg = <5>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-
-			emc2305@4d {
-				compatible = "smsc,emc2305";
-				reg = <0x4d>;
-				#cooling-cells = <0x02>;
-
-				fan@0 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-				fan@1 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-				fan@2 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-				fan@3 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-				fan@4 {
-					min-rpm = /bits/ 16 <1000>;
-					max-rpm = /bits/ 16 <16000>;
-				};
-			};
 		};
 
 		adc_fpga: i2c@6 {
@@ -804,39 +432,8 @@
 			#size-cells = <0>;
 		};
 
-		lom: i2c@7 {
+		rio_p0: i2c@7 {
 			reg = <7>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-	};
-
-	i2cswitch@72 {
-		compatible = "nxp,pca9546";
-		reg = <0x72>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		adc_pdb: i2c@0 {
-			reg = <1>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		adc_brd: i2c@1 {
-			reg = <1>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-                NC_12: i2c@2 {
-			reg = <2>;
-                        #address-cells = <1>;
-                        #size-cells = <0>;
-		};
-
-		NC_13: i2c@3 {
-			reg = <3>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 		};
@@ -886,10 +483,10 @@
 				compatible = "raa229641";
 				reg = <0x42>;
 			};
-			p1vdd33s5run@46 {
+			p1vdd33s5run@08 {
 				//P0_VDD_33_S5_RUN
 				compatible = "pmbus";
-				reg = <0x46>;
+				reg = <0x08>;
 			};
 			p1vdd18s5run@47 {
 				//P0_VDD_18_S5_RUN
@@ -898,7 +495,7 @@
 			};
 		};
 
-		NC_14: i2c@3 {
+		NC_3: i2c@3 {
 			reg = <3>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -1073,8 +670,8 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 		/*88-95*/ "","","","","","","","",
 		/*96-103*/ "","","","","",
 			"","MGMT_MON_PLATFORM_CONFIG","MGMT_ASSERT_PLATFORM_CONFIG",
-		/*104-111*/ "P1_I3C_APML_ALERT_L","","","","","HPM_STBY_EN","","",
-		/*112-119*/ "","","","","","","","",
+		/*104-111*/ "P1_I3C_APML_ALERT_L","","MGMT_MON_INTR_CHASSIS_L","","","HPM_STBY_EN","","",
+		/*112-119*/ "","P1_MGMT_SOC_RESET_L","","","","","","",
 		/*120-127*/ "","","","","","","","",
 		/*128-135*/ "P0_MGMT_MON_RST_BTN_L","P0_MGMT_ASSERT_RST_BTN_L","P0_MGMT_MON_PWR_BTN_L",
 			"P0_MGMT_ASSERT_PWR_BTN_L","P1_MGMT_MON_RST_BTN_L","P1_MGMT_ASSERT_RST_BTN_L",
@@ -1086,10 +683,14 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 		/*168-175*/ "","","","","","","","",
 		/*176-183*/ "","","","","","","","",
 		/*184-191*/ "","","","","","","","",
-		/*192-199*/ "","P1_MGMT_ASSERT_WARM_RST_BTN_L","","P1_MGMT_SOC_RESET_L","","P1_MGMT_ASSERT_NMI_BTN_L","","",
+		/*192-199*/ "","P1_MGMT_ASSERT_WARM_RST_BTN_L","","","","P1_MGMT_ASSERT_NMI_BTN_L","","",
 		/*200-207*/ "","","","","","","","",
 		/*208-215*/ "","","","","","","","",
 		/*216-223*/ "","","","","","","","";
+};
+
+&ltpi1 {
+	status = "okay";
 };
 
 &video0 {
@@ -1223,6 +824,12 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	status = "okay";
 	kcs-io-addr = <0xca2>;
 	kcs-channel = <2>;
+};
+
+&lpc1_kcs3 {
+	status = "okay";
+	kcs-io-addr = <0xca4>;
+	kcs-channel = <4>;
 };
 
 &jtag1 {
