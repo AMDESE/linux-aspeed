@@ -828,7 +828,7 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 
 &lpc1_kcs3 {
 	status = "okay";
-	kcs-io-addr = <0xca4>;
+	kcs-io-addr = <0xca2>;
 	kcs-channel = <4>;
 };
 
