@@ -44,6 +44,13 @@
 #define TBAI_FLUSH_RD_LEN		0x4  /* flush buffer read length */
 #define MAX_PROTO_RD_SZ			32   /* Maximum bytes read in one transaction */
 #define DWORD_TO_BYTES			0x4  /* Number of bytes in dword */
+
+/* TBAI Input structure index */
+#define TBAI_IN_LUT_INDEX		0  /* LUT index */
+#define TBAI_IN_OFF_LO			1  /* Low offset index */
+#define TBAI_IN_OFF_HI			2  /* Hi offset index */
+#define TBAI_IN_DWORD_COUNT		3  /* Number of Dwords index */
+
 /* Maximum dwords possible to read in one transaction */
 #define MAX_DWORDS_READ			0x8
 
@@ -260,43 +267,48 @@ static int tbai_protocol(struct apml_sbtsi_device *tsi_dev, u8 cmd, u8 *input,
 
 static int flush_trace_buffer(struct apml_sbtsi_device *tsi_dev, struct apml_tbai_msg *tbai_msg)
 {
-	u8 input[4] = {0};
-	u8 output[4] = {0};
-	int ret, i;
+	u8 input[TBAI_WR_LEN] = {0};
+	u8 output[TBAI_FLUSH_RD_LEN] = {0};
+	int ret;
 
-	ret = tbai_protocol(tsi_dev, tbai_msg->reg_in[TBAI_CMD_INDEX], input, 4, output);
+	ret = tbai_protocol(tsi_dev, tbai_msg->reg_in[TBAI_CMD_INDEX], input,
+			    TBAI_FLUSH_RD_LEN, output);
 	if (ret)
 		return ret;
-	for (i = 0; i < TBAI_FLUSH_RD_LEN; i++)
-		tbai_msg->data_out.bytes_out[i] = output[i];
+
+	memcpy(tbai_msg->data_out.bytes_out, output, TBAI_FLUSH_RD_LEN);
 	return ret;
 }
 
 static int acquire_trace_buffer(struct apml_sbtsi_device *tsi_dev, struct apml_tbai_msg *tbai_msg)
 {
-	int dword_read, dword_remain, i, j, ret;
+	int dword_read, dword_remain, i, ret;
+	u32 total_dwords;
 	u16 offset, offset_new;
 	u8 input[TBAI_WR_LEN] = {0};
-	/* TODO: static memory as max supported is 8 Dwords */
 	u8 *output;
 
 	/* Dwords to read from user*/
-	dword_remain = tbai_msg->reg_in[TBAI_DWORD_RD_INDEX];
+	total_dwords = tbai_msg->reg_in[TBAI_DWORD_RD_INDEX];
+	dword_remain = total_dwords;
 	/* Extract the offset to update, if more than 8 Dwords require to read */
 	offset = tbai_msg->reg_in[TBAI_OFFSET_HI] << 8 |
 		 tbai_msg->reg_in[TBAI_OFFSET_LO];
 
 	/* If Dwords to read is 0 or more than 32, return */
-	if (tbai_msg->reg_in[TBAI_DWORD_RD_INDEX] == 0 ||
-	    tbai_msg->reg_in[TBAI_DWORD_RD_INDEX] > MAX_TBAI_DWORDS)
+	if (total_dwords == 0 || total_dwords > MAX_TBAI_DWORDS)
 		return -EINVAL;
+
+	/* Allocate memory at once for all dwords to be read */
+	output = kcalloc(total_dwords * DWORD_TO_BYTES, sizeof(u8), GFP_KERNEL);
+	if (!output)
+		return -ENOMEM;
 
 	/*
 	 * Set required variables to read dwords
 	 * Maximum dwords supported from i3c protocol is 8
 	 */
-	for (i = 0; i <= tbai_msg->reg_in[TBAI_DWORD_RD_INDEX] / 8 &&
-	     dword_remain > 0; i++) {
+	for (i = 0; i <= total_dwords / MAX_DWORDS_READ && dword_remain > 0; i++) {
 		if (dword_remain > MAX_DWORDS_READ) {
 			dword_remain -= MAX_DWORDS_READ;
 			dword_read = MAX_DWORDS_READ;
@@ -306,36 +318,23 @@ static int acquire_trace_buffer(struct apml_sbtsi_device *tsi_dev, struct apml_t
 		}
 		/* update offset if more than 8 Dwords require to read */
 		offset_new = i * MAX_PROTO_RD_SZ + offset;
-		input[0] = tbai_msg->reg_in[TBAI_LUT_INDEX];
-		input[1] = offset_new & 0xFF;
-		input[2] = (offset_new >> 8) & 0xFF;
-		input[3] = dword_read - 1;
+		input[TBAI_IN_LUT_INDEX] = tbai_msg->reg_in[TBAI_LUT_INDEX];
+		input[TBAI_IN_OFF_LO] = offset_new & 0xFF;
+		input[TBAI_IN_OFF_HI] = (offset_new >> 8) & 0xFF;
+		input[TBAI_IN_DWORD_COUNT] = dword_read - 1;
 
-		/*
-		 * TODO: Optimize to allocate memory at once as per user request
-		 * Currently in A0, only one Dword can be read, due to bug.
-		 * Optimize in B0.
-		 */
-		output = kcalloc(dword_read * DWORD_TO_BYTES, sizeof(u8), GFP_KERNEL);
-		if (!output)
-			return -ENOMEM;
-
-		ret = tbai_protocol(tsi_dev, tbai_msg->reg_in[TBAI_CMD_INDEX],
-				    input, dword_read * DWORD_TO_BYTES, output);
+		ret = tbai_protocol(tsi_dev, tbai_msg->reg_in[TBAI_CMD_INDEX], input,
+				    dword_read * DWORD_TO_BYTES, &output[i * MAX_PROTO_RD_SZ]);
 		if (ret) {
 			kfree(output);
 			return ret;
 		}
-		for (j = 0; j < dword_read * DWORD_TO_BYTES; j++) {
-			/*
-			 * TODO: In A0, only one Dword is supported
-			 * APML module is optimized to read max of 32 Dwords at a time.
-			 * dwords exceeding 8 need to be tested in B0 platform.
-			 */
-			tbai_msg->data_out.bytes_out[j + (i * MAX_PROTO_RD_SZ)] = output[j];
-		}
-		kfree(output);
 	}
+
+	/* Copy data to user */
+	memcpy(tbai_msg->data_out.bytes_out, output, total_dwords * DWORD_TO_BYTES);
+	kfree(output);
+
 	return 0;
 }
 
