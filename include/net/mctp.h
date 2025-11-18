@@ -177,6 +177,13 @@ struct mctp_sk_key {
 	 * is used.
 	 */
 	bool		manual_alloc;
+
+#ifdef CONFIG_MCTP_SERIALIZE_PER_BUS
+	/* tracks if this key is holding the device tx_lock for
+	 * request/response serialization
+	 */
+	bool		tx_lock_held;
+#endif
 };
 
 struct mctp_skb_cb {

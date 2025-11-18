@@ -21,3 +21,18 @@ config MCTP_FLOWS
 	bool
 	depends on MCTP
 	select SKB_EXTENSIONS
+
+config MCTP_SERIALIZE_PER_BUS
+	bool "Serialize MCTP requests per bus"
+	depends on MCTP
+	help
+	  This option enables per-bus serialization of MCTP requests.
+	  When enabled, only one MCTP request can be transmitted on a
+	  given bus at a time. The transmit lock is held from when a
+	  request is sent until either a response is received or a
+	  timeout occurs.
+
+	  This is useful for buses that require strict request/response
+	  serialization, such as certain I2C or SMBus implementations.
+
+	  If unsure, say N.

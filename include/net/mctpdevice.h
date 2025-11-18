@@ -30,6 +30,11 @@ struct mctp_dev {
 	size_t			num_addrs;
 	spinlock_t		addrs_lock;
 
+#ifdef CONFIG_MCTP_SERIALIZE_PER_BUS
+	/* Serialize transmissions on this device/bus */
+	struct mutex		tx_lock;
+#endif
+
 	struct rcu_head		rcu;
 };
 

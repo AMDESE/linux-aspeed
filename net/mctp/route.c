@@ -26,6 +26,26 @@
 
 #include <trace/events/mctp.h>
 
+#ifdef CONFIG_MCTP_SERIALIZE_PER_BUS
+bool mctp_serialize_debug __read_mostly;
+EXPORT_SYMBOL_GPL(mctp_serialize_debug);
+module_param(mctp_serialize_debug, bool, 0644);
+MODULE_PARM_DESC(mctp_serialize_debug,
+		 "Enable debug logging for MCTP per-bus serialization");
+
+#define mctp_serialize_log(fmt, ...) \
+	do { \
+		if (mctp_serialize_debug) \
+			pr_info("MCTP_SERIALIZE: " fmt, ##__VA_ARGS__); \
+	} while (0)
+
+#define mctp_serialize_err(fmt, ...) \
+	pr_err("MCTP_SERIALIZE_ERR: " fmt, ##__VA_ARGS__)
+#else
+#define mctp_serialize_log(fmt, ...) do { } while (0)
+#define mctp_serialize_err(fmt, ...) do { } while (0)
+#endif
+
 static const unsigned int mctp_message_maxlen = 64 * 1024;
 static const unsigned long mctp_key_lifetime = 6 * CONFIG_HZ;
 
@@ -501,6 +521,12 @@ static int mctp_route_output(struct mctp_route *route, struct sk_buff *skb)
 	char *daddr = NULL;
 	unsigned int mtu;
 	int rc;
+#if defined(CONFIG_MCTP_FLOWS) && defined(CONFIG_MCTP_SERIALIZE_PER_BUS)
+	struct mctp_flow *flow;
+	struct mctp_sk_key *key = NULL;
+	unsigned long flags;
+	bool lock_held = false;
+#endif
 
 	skb->protocol = htons(ETH_P_MCTP);
 
@@ -533,7 +559,78 @@ static int mctp_route_output(struct mctp_route *route, struct sk_buff *skb)
 
 	mctp_flow_prepare_output(skb, route->dev);
 
+#if defined(CONFIG_MCTP_FLOWS) && defined(CONFIG_MCTP_SERIALIZE_PER_BUS)
+	/* Check if this is a request with a key - if so, hold the lock
+	 * until response or timeout
+	 */
+	flow = skb_ext_find(skb, SKB_EXT_MCTP);
+	if (flow && flow->key) {
+		bool should_lock = false;
+
+		key = flow->key;
+		spin_lock_irqsave(&key->lock, flags);
+		if (key->valid && !key->tx_lock_held) {
+			should_lock = true;
+			mctp_serialize_log("dev=%s src=%d dst=%d tag=0x%02x: will acquire lock for request (key=%p)\n",
+					   route->dev->dev->name, hdr->src, hdr->dest,
+					   hdr->flags_seq_tag & MCTP_HDR_TAG_MASK, key);
+		} else if (key->tx_lock_held) {
+			mctp_serialize_err("dev=%s src=%d dst=%d tag=0x%02x: WARN - key already holding lock (key=%p)\n",
+					   route->dev->dev->name, hdr->src, hdr->dest,
+					   hdr->flags_seq_tag & MCTP_HDR_TAG_MASK, key);
+		} else if (!key->valid) {
+			mctp_serialize_log("dev=%s src=%d dst=%d tag=0x%02x: skipping lock (key invalid, key=%p)\n",
+					   route->dev->dev->name, hdr->src, hdr->dest,
+					   hdr->flags_seq_tag & MCTP_HDR_TAG_MASK, key);
+		}
+		spin_unlock_irqrestore(&key->lock, flags);
+
+		/* Acquire mutex outside of spinlock to avoid sleeping in atomic context */
+		if (should_lock) {
+			if (!mutex_trylock(&route->dev->tx_lock)) {
+				mctp_serialize_log("dev=%s src=%d dst=%d tag=0x%02x: CONTENTION - waiting for lock (key=%p)\n",
+						   route->dev->dev->name, hdr->src, hdr->dest,
+						   hdr->flags_seq_tag & MCTP_HDR_TAG_MASK, key);
+				mutex_lock(&route->dev->tx_lock);
+			}
+
+			/* Mark key as holding the lock - need to take spinlock again */
+			spin_lock_irqsave(&key->lock, flags);
+			key->tx_lock_held = true;
+			lock_held = true;
+			spin_unlock_irqrestore(&key->lock, flags);
+
+			mctp_serialize_log("dev=%s src=%d dst=%d tag=0x%02x: lock acquired, will hold until response/timeout (key=%p)\n",
+					   route->dev->dev->name, hdr->src, hdr->dest,
+					   hdr->flags_seq_tag & MCTP_HDR_TAG_MASK, key);
+		}
+	}
+#endif
+
+#ifdef CONFIG_MCTP_SERIALIZE_PER_BUS
+	/* Serialize transmissions on this device/bus */
+	if (!lock_held) {
+		mctp_serialize_log("dev=%s src=%d dst=%d: acquiring lock for non-keyed transmission\n",
+				   route->dev->dev->name, hdr->src, hdr->dest);
+		mutex_lock(&route->dev->tx_lock);
+	}
+#endif
+
 	rc = dev_queue_xmit(skb);
+
+#ifdef CONFIG_MCTP_SERIALIZE_PER_BUS
+	/* Release lock immediately if not held for request/response */
+	if (!lock_held) {
+		mutex_unlock(&route->dev->tx_lock);
+		mctp_serialize_log("dev=%s src=%d dst=%d: lock released after transmission (rc=%d)\n",
+				   route->dev->dev->name, hdr->src, hdr->dest, rc);
+	} else {
+		mctp_serialize_log("dev=%s src=%d dst=%d tag=0x%02x: transmission complete, lock still held (rc=%d, key=%p)\n",
+				   route->dev->dev->name, hdr->src, hdr->dest,
+				   hdr->flags_seq_tag & MCTP_HDR_TAG_MASK, rc, key);
+	}
+#endif
+
 	if (rc)
 		rc = net_xmit_errno(rc);
 

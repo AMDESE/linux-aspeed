@@ -19,6 +19,23 @@
 #include <net/mctpdevice.h>
 #include <net/sock.h>
 
+#ifdef CONFIG_MCTP_SERIALIZE_PER_BUS
+/* Use extern to access the debug flag from route.c */
+extern bool mctp_serialize_debug;
+
+#define mctp_serialize_log(fmt, ...) \
+	do { \
+		if (mctp_serialize_debug) \
+			pr_info("MCTP_SERIALIZE: " fmt, ##__VA_ARGS__); \
+	} while (0)
+
+#define mctp_serialize_err(fmt, ...) \
+	pr_err("MCTP_SERIALIZE_ERR: " fmt, ##__VA_ARGS__)
+#else
+#define mctp_serialize_log(fmt, ...) do { } while (0)
+#define mctp_serialize_err(fmt, ...) do { } while (0)
+#endif
+
 struct mctp_dump_cb {
 	int h;
 	int idx;
@@ -313,6 +330,11 @@ void mctp_dev_hold(struct mctp_dev *mdev)
 void mctp_dev_put(struct mctp_dev *mdev)
 {
 	if (mdev && refcount_dec_and_test(&mdev->refs)) {
+#ifdef CONFIG_MCTP_SERIALIZE_PER_BUS
+		mctp_serialize_log("dev=%s: destroying per-bus serialization mutex (refcount=0)\n",
+				   mdev->dev->name);
+		mutex_destroy(&mdev->tx_lock);
+#endif
 		kfree(mdev->addrs);
 		dev_put(mdev->dev);
 		kfree_rcu(mdev, rcu);
@@ -324,6 +346,23 @@ void mctp_dev_release_key(struct mctp_dev *dev, struct mctp_sk_key *key)
 {
 	if (!dev)
 		return;
+
+#ifdef CONFIG_MCTP_SERIALIZE_PER_BUS
+	/* Release tx_lock if this key was holding it for request/response
+	 * serialization. This handles both response received and timeout cases.
+	 */
+	if (key->tx_lock_held) {
+		mctp_serialize_log("dev=%s peer=%d local=%d tag=0x%02x: releasing lock (key=%p, valid=%d, manual=%d)\n",
+				   dev->dev->name, key->peer_addr, key->local_addr,
+				   key->tag, key, key->valid, key->manual_alloc);
+		mutex_unlock(&dev->tx_lock);
+		key->tx_lock_held = false;
+		mctp_serialize_log("dev=%s peer=%d local=%d tag=0x%02x: lock released, next request can proceed (key=%p)\n",
+				   dev->dev->name, key->peer_addr, key->local_addr,
+				   key->tag, key);
+	}
+#endif
+
 	if (dev->ops && dev->ops->release_flow)
 		dev->ops->release_flow(dev, key);
 	key->dev = NULL;
@@ -335,6 +374,10 @@ void mctp_dev_set_key(struct mctp_dev *dev, struct mctp_sk_key *key)
 {
 	mctp_dev_hold(dev);
 	key->dev = dev;
+#ifdef CONFIG_MCTP_SERIALIZE_PER_BUS
+	mctp_serialize_log("dev=%s: key associated (key=%p, peer=%d, local=%d, tag=0x%02x)\n",
+			   dev->dev->name, key, key->peer_addr, key->local_addr, key->tag);
+#endif
 }
 
 static struct mctp_dev *mctp_add_dev(struct net_device *dev)
@@ -348,6 +391,11 @@ static struct mctp_dev *mctp_add_dev(struct net_device *dev)
 		return ERR_PTR(-ENOMEM);
 
 	spin_lock_init(&mdev->addrs_lock);
+#ifdef CONFIG_MCTP_SERIALIZE_PER_BUS
+	mutex_init(&mdev->tx_lock);
+	mctp_serialize_log("dev=%s: initialized with per-bus serialization mutex\n",
+			   dev->name);
+#endif
 
 	mdev->net = mctp_default_net(dev_net(dev));
 
