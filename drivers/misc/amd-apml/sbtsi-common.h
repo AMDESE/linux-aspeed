@@ -21,7 +21,4 @@ struct apml_sbtsi_device {
 	u8 dev_static_addr;
 } __packed;
 
-int sbtsi_match_i2c(struct device *dev, const void *data);
-int sbtsi_match_i3c(struct device *dev, const void *data);
-
 #endif
