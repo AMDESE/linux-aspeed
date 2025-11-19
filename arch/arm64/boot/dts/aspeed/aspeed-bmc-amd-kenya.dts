@@ -577,9 +577,8 @@
 	alertl_sock0 {
 		compatible = "apml-alertl";
 		status = "okay";
+		socket-num =  /bits/ 8 <0>;
 		gpios = <&ltpi0_gpio 20 GPIO_ACTIVE_LOW>;
-		sbrmi = <&sbrmi_p0_iod0>;
-		sbtsi = <&sbtsi_p0_iod0>;
 	};
 };
 
