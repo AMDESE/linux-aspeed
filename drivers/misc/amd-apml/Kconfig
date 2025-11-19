@@ -3,6 +3,18 @@
 # AMD APML BMC interface drivers
 #
 
+config APML_COMMON
+    tristate "AMD APML common device registration framework"
+    default n
+    help
+      Enable support for the AMD APML (Advanced Platform Management Link)
+      common device registration framework. This module provides a centralized
+      registry where APML devices (SBRMI and SBTSI) can register themselves
+      for discovery by other APML subsystems.
+
+      This framework enables the Alert_L driver to safely discover and access
+      registered APML devices for alert processing across multiple sockets.
+
 config APML_SBRMI
     tristate "Emulated SB-RMI interface driver over i3c bus"
     depends on I3C && !SENSORS_SBRMI
