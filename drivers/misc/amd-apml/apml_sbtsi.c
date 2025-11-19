@@ -23,9 +23,10 @@
 #include <linux/of.h>
 #include <linux/regmap.h>
 #include <linux/version.h>
-#include <linux/amd-apml.h>
 
-#include "sbtsi-common.h"
+#include  <linux/amd-apml.h>
+#include "apml_common.h"
+
 /*
  * SB-TSI registers only support SMBus byte data access. "_INT" registers are
  * the integer part of a temperature value or limit, and "_DEC" registers are
@@ -481,6 +482,7 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 	};
 	struct regmap *regmap;
 	const char *hwmon_dev_name;
+	int ret;
 
 	dev_info(dev, "SBTSI: PID: %llx\n", i3cdev->desc->info.pid);
 	if (!(I3C_PID_INSTANCE_ID(i3cdev->desc->info.pid) == 0 ||
@@ -530,7 +532,16 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 		return PTR_ERR_OR_ZERO(hwmon_dev);
 	}
 
-	return create_misc_tsi_device(tsi_dev, dev);
+	ret = create_misc_tsi_device(tsi_dev, dev);
+	if (ret)
+		return ret;
+
+	/* Register with ALERT_L common system */
+	ret = apml_register_sbtsi_device(tsi_dev);
+	if (ret)
+		dev_warn(dev, "Failed to register with ALERT_L common system: %d\n", ret);
+
+	return 0;
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
@@ -548,6 +559,7 @@ static int sbtsi_i2c_probe(struct i2c_client *client)
 		.val_bits = 8,
 	};
 	const char *hwmon_dev_name;
+	int ret;
 
 	tsi_dev = devm_kzalloc(dev, sizeof(struct apml_sbtsi_device), GFP_KERNEL);
 	if (!tsi_dev)
@@ -574,7 +586,16 @@ static int sbtsi_i2c_probe(struct i2c_client *client)
 	if (!hwmon_dev)
 		return PTR_ERR_OR_ZERO(hwmon_dev);
 
-	return create_misc_tsi_device(tsi_dev, dev);
+	ret = create_misc_tsi_device(tsi_dev, dev);
+	if (ret)
+		return ret;
+
+	/* Register with ALERT_L common system */
+	ret = apml_register_sbtsi_device(tsi_dev);
+	if (ret)
+		dev_warn(dev, "Failed to register with ALERT_L common system: %d\n", ret);
+
+	return 0;
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
@@ -585,8 +606,10 @@ static void sbtsi_i3c_remove(struct i3c_device *i3cdev)
 {
 	struct apml_sbtsi_device *tsi_dev = dev_get_drvdata(&i3cdev->dev);
 
-	if (tsi_dev)
+	if (tsi_dev) {
+		apml_unregister_sbtsi_device(tsi_dev);
 		misc_deregister(&tsi_dev->sbtsi_misc_dev);
+	}
 
 	dev_info(&i3cdev->dev, "Removed sbtsi-i3c driver\n");
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
@@ -602,8 +625,10 @@ static void sbtsi_i2c_remove(struct i2c_client *client)
 {
 	struct apml_sbtsi_device *tsi_dev = dev_get_drvdata(&client->dev);
 
-	if (tsi_dev)
+	if (tsi_dev) {
+		apml_unregister_sbtsi_device(tsi_dev);
 		misc_deregister(&tsi_dev->sbtsi_misc_dev);
+	}
 
 	dev_info(&client->dev, "Removed sbtsi driver\n");
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0)
@@ -670,26 +695,6 @@ static struct i2c_driver sbtsi_driver = {
 };
 
 module_i3c_i2c_driver(sbtsi_i3c_driver, &sbtsi_driver)
-
-int sbtsi_match_i3c(struct device *dev, const void *data)
-{
-	const struct device_node *node = (const struct device_node *)data;
-
-	if (dev->of_node == node && dev->driver == &sbtsi_i3c_driver.driver)
-		return 1;
-	return 0;
-}
-EXPORT_SYMBOL_GPL(sbtsi_match_i3c);
-
-int sbtsi_match_i2c(struct device *dev, const void *data)
-{
-	const struct device_node *node = (const struct device_node *)data;
-
-	if (dev->of_node == node && dev->driver == &sbtsi_driver.driver)
-		return 1;
-	return 0;
-}
-EXPORT_SYMBOL_GPL(sbtsi_match_i2c);
 
 MODULE_AUTHOR("Kun Yi <kunyi@google.com>");
 MODULE_DESCRIPTION("Hwmon driver for AMD SB-TSI emulated sensor");
