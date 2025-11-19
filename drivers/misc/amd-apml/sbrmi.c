@@ -22,6 +22,7 @@
 #include <linux/version.h>
 
 #include "sbrmi-common.h"
+#include "apml_common.h"
 
 /* Do not allow setting negative power limit */
 #define SBRMI_PWR_MIN	0
@@ -491,6 +492,7 @@ static int sbrmi_i2c_probe(struct i2c_client *client)
 	struct device *hwmon_dev;
 	struct apml_sbrmi_device *rmi_dev;
 	const char *hwmon_dev_name;
+	int ret;
 
 	rmi_dev = devm_kzalloc(dev, sizeof(struct apml_sbrmi_device), GFP_KERNEL);
 	if (!rmi_dev)
@@ -517,7 +519,15 @@ static int sbrmi_i2c_probe(struct i2c_client *client)
 		return PTR_ERR_OR_ZERO(hwmon_dev);
 
 	init_completion(&rmi_dev->misc_fops_done);
-	return create_misc_rmi_device(rmi_dev, dev);
+	ret = create_misc_rmi_device(rmi_dev, dev);
+	if (ret)
+		return ret;
+	/* Register with ALERT_L common system */
+	ret = apml_register_sbrmi_device(rmi_dev);
+	if (ret)
+		dev_warn(dev, "Failed to register with ALERT_L common system: %d\n", ret);
+
+	return ret;
 }
 
 static int sbrmi_i3c_reg_read(struct i3c_device *i3cdev, int reg_size, u32 *val)
@@ -713,7 +723,15 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 	}
 
 	init_completion(&rmi_dev->misc_fops_done);
-	return create_misc_rmi_device(rmi_dev, dev);
+	ret = create_misc_rmi_device(rmi_dev, dev);
+	if (ret)
+		return ret;
+	/* Register with ALERT_L common system */
+	ret = apml_register_sbrmi_device(rmi_dev);
+	if (ret)
+		dev_warn(dev, "Failed to register with ALERT_L common system: %d\n", ret);
+
+	return ret;
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0)
@@ -730,7 +748,8 @@ static void sbrmi_i2c_remove(struct i2c_client *client)
 #else
 		return;
 #endif
-
+	/* Unregister from APML common system */
+	apml_unregister_sbrmi_device(rmi_dev);
 	/*
 	 * Set the no_new_trans so no new transaction can
 	 * occur in sbrmi_ioctl
@@ -770,7 +789,8 @@ static void sbrmi_i3c_remove(struct i3c_device *i3cdev)
 #else
 		return;
 #endif
-
+	/* Unregister from APML common system */
+	apml_unregister_sbrmi_device(rmi_dev);
 	/*
 	 * Set the no_new_trans so no new transaction can
 	 * occur in sbrmi_ioctl
@@ -844,26 +864,6 @@ static struct i3c_driver sbrmi_i3c_driver = {
 };
 
 module_i3c_i2c_driver(sbrmi_i3c_driver, &sbrmi_driver)
-
-int sbrmi_match_i3c(struct device *dev, const void *data)
-{
-	const struct device_node *node = (const struct device_node *)data;
-
-	if (dev->of_node == node && dev->driver == &sbrmi_i3c_driver.driver)
-		return 1;
-	return 0;
-}
-EXPORT_SYMBOL_GPL(sbrmi_match_i3c);
-
-int sbrmi_match_i2c(struct device *dev, const void *data)
-{
-	const struct device_node *node = (const struct device_node *)data;
-
-	if (dev->of_node == node && dev->driver == &sbrmi_driver.driver)
-		return 1;
-	return 0;
-}
-EXPORT_SYMBOL_GPL(sbrmi_match_i2c);
 
 MODULE_AUTHOR("Akshay Gupta <akshay.gupta@amd.com>");
 MODULE_AUTHOR("Naveenkrishna Chatradhi <naveenkrishna.chatradhi@amd.com>");
