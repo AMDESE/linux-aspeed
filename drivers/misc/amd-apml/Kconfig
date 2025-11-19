@@ -41,7 +41,7 @@ config APML_SBTSI
 
 config APML_ALERTL
     tristate "Emulated apml alertl interface driver over i3c bus"
-    depends on APML_SBRMI && APML_SBTSI
+    depends on (APML_SBRMI || APML_SBTSI) && APML_COMMON
     default n
     help
       This driver provides support for AMD APML Alert_L interface,
