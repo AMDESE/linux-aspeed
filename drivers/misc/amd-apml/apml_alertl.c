@@ -10,11 +10,12 @@
 #include <linux/platform_device.h>
 #include <linux/interrupt.h>
 #include <linux/regmap.h>
-#include <linux/debugfs.h>
 #include <linux/i3c/device.h>
+#include <linux/i3c/master.h>
 #include <linux/gpio/consumer.h>
-#include <linux/of_gpio.h>
 #include <linux/of.h>
+#include <linux/list.h>
+#include <linux/mutex.h>
 
 #include "apml_alertl.h"
 
@@ -25,335 +26,269 @@
 #define TSI_STATUS_REG		0x2
 #define RAS_ALERT_STATUS	BIT(1)
 #define RAS_ALERT_ASYNC		BIT(3)
+#define TSI_STATUS_SHIFT	24
 
-#define MAX_SOC_LEN		11
-#define MAX_ERR_LEN		18
-
-/* SBRMI and SBTSI static address for socket 0 and 1 */
-#define RMI_SOCK_0_DIE_0	0x3c
-#define TSI_SOCK_0_DIE_0	0x4c
-#define RMI_SOCK_1_DIE_0	0x38
-#define TSI_SOCK_1_DIE_0	0x48
+#define ENVP_SRC_INDX		0
+#define ENVP_BUS_NUM_INDX	1
+#define ENVP_PID_INDX		2
+#define ENVP_ADDR_INDX		3
+#define NUM_ENVP		5
 
 MODULE_ALIAS("apml_alertl:" DRIVER_NAME);
 
-/* Map static address to socket and die index */
-static u8 static_addr_to_socket(u8 static_addr)
+/*
+ * The driver generates uevents for Temperature and RAS alerts (both fatal and non-fatal).
+ * Event data contains address, bus number, PID (for I3C devices; 0 otherwise), and alert
+ * source information. See amd-apml.h for alert source details.
+ */
+static int send_uevent(u8 address, u8 bus_num, u32 alert_src,
+		       u64 pid, struct device *dev)
 {
-	/*
-	 * [3:0] = Socket Index
-	 * [7:4] = die Index
-	 * Mapping:
-	 * 0x3c, 0x4c	-> Socket 0, die 0,
-	 * 0x38, 0x48	-> Socket 1, die 0,
-	 */
-	switch (static_addr) {
-	case RMI_SOCK_0_DIE_0:
-	case TSI_SOCK_0_DIE_0:
-		return 0;
-	case RMI_SOCK_1_DIE_0:
-	case TSI_SOCK_1_DIE_0:
-		return 1;
-	default:
-		return 0xFF;
-	}
-}
+	char *alert_source[NUM_ENVP];
 
-/* Send a uevent to userspace for an APML alert */
-static int send_uevent(u8 static_address, u32 alert_src, struct device *dev)
-{
-	u8 soc_die_num;
-	char sock[MAX_SOC_LEN];
-	char src[MAX_ERR_LEN];
-	char *alert_source[] = { sock, src, NULL };
+	alert_source[ENVP_SRC_INDX] = devm_kasprintf(dev, GFP_KERNEL, "SOURCE=0x%08x", alert_src);
+	alert_source[ENVP_BUS_NUM_INDX] = devm_kasprintf(dev, GFP_KERNEL, "BUS_NUM=%u", bus_num);
+	alert_source[ENVP_PID_INDX] = devm_kasprintf(dev, GFP_KERNEL, "PID=0x%016llx", pid);
+	alert_source[ENVP_ADDR_INDX] = devm_kasprintf(dev, GFP_KERNEL, "ADDRESS=0x%02x", address);
+	alert_source[NUM_ENVP - 1] = NULL;
 
-	soc_die_num = static_addr_to_socket(static_address);
-	if (soc_die_num == 0xFF)
-		return -ENODEV;
-
-	snprintf(sock, sizeof(sock), "Socket=0x%x", soc_die_num);
-	snprintf(src, sizeof(src), "Source=0x%x", alert_src);
-
-	dev_dbg(dev, "Sending uevent: Sock:0x%x Src:0x%x\n",
-		soc_die_num, alert_src);
+	dev_dbg(dev, "Sending uevent: Addr:0x%x Src:0x%08x\n bus:%d pid: 0x%llx\n",
+		 address, alert_src, bus_num, pid);
 	kobject_uevent_env(&dev->kobj, KOBJ_CHANGE, alert_source);
+
 	return 0;
 }
 
-/* Process and handle TSI alerts for all TSI devices */
-static void handle_tsi_alerts(struct apml_alertl_data *oob_adata)
+static int handle_rmi_device_alert(struct apml_device_node *device_node, struct device *dev)
 {
-	struct device *dev = oob_adata->dev;
-	struct apml_message msg = { 0 };
-	int temp_status, ret, i;
+	int status = 0, ret;
+	u8 addr, bus_num;
+	u64 pid;
 
-	for (i = 0; i < oob_adata->num_of_tsi_devs; i++) {
-		temp_status = 0;
-		if (!oob_adata->tsi_dev[i] || !oob_adata->tsi_dev[i]->regmap) {
-			dev_dbg(dev,
-				"TSI device at index %d is NULL or regmap missing\n",
-				i);
-			continue;
-		}
-
-		/* Read TSI Status register to identify the RAS error */
-		msg.data_in.reg_in[REG_OFF_INDEX] = TSI_STATUS_REG;
-
-		mutex_lock(&oob_adata->tsi_dev[i]->lock);
-		ret = regmap_read(oob_adata->tsi_dev[i]->regmap,
-				  msg.data_in.reg_in[REG_OFF_INDEX],
-				  &temp_status);
-		mutex_unlock(&oob_adata->tsi_dev[i]->lock);
-
-		if (ret < 0) {
-			dev_dbg(dev,
-				"Failed to read temperature status of TSI device index %d\n",
-				i);
-			continue;
-		}
-
-		if (!temp_status)
-			continue;
-
-		ret = send_uevent(oob_adata->tsi_dev[i]->dev_static_addr,
-				  temp_status << 24, dev);
-		if (ret)
-			dev_dbg(dev,
-				"Failed to send uevent for temperature alert TSI device index %d Err: %d\n",
-				i, ret);
-	}
-}
-
-/* Process and handle RMI alerts for all RMI devices */
-static void handle_rmi_alerts(struct apml_alertl_data *oob_adata)
-{
-	struct device *dev = oob_adata->dev;
-	struct apml_message msg = { 0 };
-	int ras_status, ret, i;
-
-	for (i = 0; i < oob_adata->num_of_rmi_devs; i++) {
-		ras_status = 0;
-		if (!oob_adata->rmi_dev[i] || !oob_adata->rmi_dev[i]->regmap) {
-			dev_dbg(dev,
-				"RMI device at index %d is NULL or regmap missing\n",
-				i);
-			continue;
+	if (!device_node->rmi_dev || !device_node->rmi_dev->regmap) {
+		dev_warn(dev, "Invalid RMI device found\n");
+		return -EINVAL;
 	}
 
-	/* Read RAS Status register to identify the RAS error */
-	msg.data_in.reg_in[REG_OFF_INDEX] = RAS_STATUS_REG;
-
-	mutex_lock(&oob_adata->rmi_dev[i]->lock);
-	ret = regmap_read(oob_adata->rmi_dev[i]->regmap,
-			  msg.data_in.reg_in[REG_OFF_INDEX],
-			  &ras_status);
-	mutex_unlock(&oob_adata->rmi_dev[i]->lock);
-
-	if (ret < 0) {
-		dev_dbg(dev, "Failed to read RAS status of RMI device index %d\n", i);
-		continue;
-	}
-
-	if (!ras_status)
-		continue;
-
-	ret = send_uevent(oob_adata->rmi_dev[i]->dev_static_addr, ras_status, dev);
+	/* Protects individual device state and regmap transactions */
+	mutex_lock(&device_node->rmi_dev->lock);
+	/* Read RAS Status register */
+	ret = regmap_read(device_node->rmi_dev->regmap, RAS_STATUS_REG, &status);
+	mutex_unlock(&device_node->rmi_dev->lock);
 	if (ret)
-		dev_dbg(dev,
-			"Failed to send uevent for RAS alert for device %d Err: %d\n",
-			i, ret);
+		return ret;
 
-	/* Clear the RMI Status and RAS Status register 0x4C */
-	mutex_lock(&oob_adata->rmi_dev[i]->lock);
-	msg.data_in.reg_in[REG_OFF_INDEX] = RAS_STATUS_REG;
-	ret = regmap_write(oob_adata->rmi_dev[i]->regmap,
-			   msg.data_in.reg_in[REG_OFF_INDEX],
-			   ras_status);
-	if (ret < 0)
-		dev_dbg(dev,
-			"Could not clear RAS status register for device %d\n",
-			i);
-
-	msg.data_in.reg_in[REG_OFF_INDEX] = RMI_STATUS_REG;
-	ret = regmap_write(oob_adata->rmi_dev[i]->regmap,
-			   msg.data_in.reg_in[REG_OFF_INDEX],
-			   RAS_ALERT_ASYNC);
-	mutex_unlock(&oob_adata->rmi_dev[i]->lock);
-	if (ret < 0)
-		dev_dbg(dev,
-			"Could not clear RMI status register at device %d\n",
-			i);
+	if (!status) {
+		/* No alert status - normal condition */
+		return ret;
 	}
+	/* Extract device information based on bus type (I3C or I2C) */
+	if (device_node->rmi_dev->i3cdev) {
+		/* I3C device path */
+		addr = device_node->rmi_dev->dev_static_addr;
+		bus_num = device_node->rmi_dev->i3cdev->desc->dev->bus->id;
+		pid = device_node->rmi_dev->i3cdev->desc->info.pid;
+	} else if (device_node->rmi_dev->client) {
+		/* I2C device path */
+		addr = device_node->rmi_dev->client->addr;
+		bus_num = device_node->rmi_dev->client->adapter->nr;
+		pid = 0; /* I2C devices do not have PID */
+	} else {
+		return -EINVAL;
+	}
+
+	if (!addr)
+		return -EINVAL;
+
+	/* Send uevent for RAS alert */
+	ret = send_uevent(addr, bus_num, status, pid, dev);
+	if (ret) {
+		dev_info(dev, "Failed to send uevent for RAS alert (device: 0x%x, err: %d)\n",
+			 addr, ret);
+	}
+
+	/* Clear RAS and RMI status registers */
+	mutex_lock(&device_node->rmi_dev->lock);
+	ret = regmap_write(device_node->rmi_dev->regmap, RAS_STATUS_REG, status);
+	if (ret)
+		dev_warn(dev, "Failed to clear RAS status register (device: 0x%x): %d\n",
+			 addr, ret);
+
+	ret = regmap_write(device_node->rmi_dev->regmap, RMI_STATUS_REG, RAS_ALERT_ASYNC);
+	if (ret)
+		dev_warn(dev, "Failed to clear RMI status register (device: 0x%x): %d\n",
+			 addr, ret);
+
+	mutex_unlock(&device_node->rmi_dev->lock);
+
+	return ret; /* Alert was processed */
 }
 
-/* Handles Alert_L interrupts by delegating to TSI and RMI alert handlers */
+/* Handle TSI device alerts */
+static int handle_tsi_device_alert(struct apml_device_node *device_node, struct device *dev)
+{
+	int status = 0, ret;
+	u8 addr, bus_num;
+	u64 pid;
+
+	if (!device_node->tsi_dev || !device_node->tsi_dev->regmap) {
+		dev_warn(dev, "Invalid TSI device found\n");
+		return -EINVAL;
+	}
+
+	/* Protects individual device state and regmap transactions */
+	mutex_lock(&device_node->tsi_dev->lock);
+	/* Read TSI Status register */
+	ret = regmap_read(device_node->tsi_dev->regmap, TSI_STATUS_REG, &status);
+	mutex_unlock(&device_node->tsi_dev->lock);
+
+	if (ret) {
+		dev_warn(dev, "Failed to read TSI status from device %d\n", ret);
+		return ret;
+	}
+
+	if (!status) {
+		/* No alert status - normal condition */
+		return ret;
+	}
+
+	if (device_node->tsi_dev->i3cdev) {
+		addr = device_node->tsi_dev->dev_static_addr;
+		bus_num = device_node->tsi_dev->i3cdev->desc->dev->bus->id;
+		pid = device_node->tsi_dev->i3cdev->desc->info.pid;
+	} else if (device_node->tsi_dev->client) {
+		addr = device_node->tsi_dev->client->addr;
+		bus_num = device_node->tsi_dev->client->adapter->nr;
+		pid = 0;
+	} else {
+		return -EINVAL;
+	}
+
+	if (!addr || !bus_num)
+		return -EINVAL;
+
+	/* Send uevent for temperature alert (shifted to avoid RAS bit overlap) */
+	ret = send_uevent(addr, bus_num, status << TSI_STATUS_SHIFT, pid, dev);
+	if (ret) {
+		dev_info(dev, "Failed to send uevent for temp alert (device: 0x%x, err: %d)\n",
+			 addr, ret);
+	}
+	return ret; /* Alert was processed */
+}
+
+static void handle_apml_alerts(struct device *dev)
+{
+	struct apml_device_node *device_node;
+	int ret;
+
+	mutex_lock(&apml_devices_lock);
+	list_for_each_entry(device_node, &apml_devices, list) {
+		/* Get a safe reference to the device node */
+		if (!kref_get_unless_zero(&device_node->ref))
+			continue;
+
+		/* Device-specific alert processing */
+		switch (device_node->dev_type) {
+		case APML_RMI_DEVICE:
+			ret = handle_rmi_device_alert(device_node, dev);
+			break;
+		case APML_TSI_DEVICE:
+			ret = handle_tsi_device_alert(device_node, dev);
+			break;
+		default:
+			dev_warn(dev, "Unknown device type: %d\n", device_node->dev_type);
+			ret = -EINVAL;
+			break;
+		}
+
+		if (ret) {
+			dev_dbg(dev, "Alert processing failed for device type %d: %d\n",
+				device_node->dev_type, ret);
+		}
+		/* Always release the reference */
+		apml_put_device_node(device_node);
+	}
+	mutex_unlock(&apml_devices_lock);
+}
+
+/* Handles Alert_L interrupts by delegating to unified alert handler */
 static irqreturn_t alert_l_irq_thread_handler(int irq, void *dev_id)
 {
-	struct apml_alertl_data *oob_adata = (struct apml_alertl_data *)dev_id;
-	struct device *dev;
+	struct device *dev = (struct device *)dev_id;
 
-	dev = oob_adata->dev;
-
-	handle_tsi_alerts(oob_adata);
-	handle_rmi_alerts(oob_adata);
+	handle_apml_alerts(dev);
 
 	return IRQ_HANDLED;
-}
-
-/* Retrieve APML device from device tree */
-static void *get_apml_dev_byphandle(struct device_node *dnode,
-				    const char *phandle_name,
-				    int index)
-{
-	struct device_node *d_node;
-	struct device *dev;
-	void *apml_dev;
-
-	if (!phandle_name || !dnode)
-		return NULL;
-
-	d_node = of_parse_phandle(dnode, phandle_name, index);
-	if (IS_ERR_OR_NULL(d_node)) {
-		pr_err("Failed to parse phandle '%s' at index %d\n",
-		       phandle_name, index);
-		return NULL;
-	}
-
-	if (strcmp(phandle_name, "sbrmi") == 0) {
-		dev = bus_find_device(&i3c_bus_type, NULL, d_node, sbrmi_match_i3c);
-		if (!dev) {
-			dev = bus_find_device(&i2c_bus_type, NULL, d_node, sbrmi_match_i2c);
-			if (IS_ERR_OR_NULL(dev)) {
-				of_node_put(d_node);
-				return NULL;
-			}
-		}
-	}  else if (strcmp(phandle_name, "sbtsi") == 0) {
-		dev = bus_find_device(&i3c_bus_type, NULL, d_node, sbtsi_match_i3c);
-		if (!dev) {
-			dev = bus_find_device(&i2c_bus_type, NULL, d_node, sbtsi_match_i2c);
-			if (IS_ERR_OR_NULL(dev)) {
-				of_node_put(d_node);
-				return NULL;
-			}
-		}
-	}
-
-	of_node_put(d_node);
-	apml_dev = dev_get_drvdata(dev);
-	if (IS_ERR_OR_NULL(apml_dev))
-		return NULL;
-
-	return apml_dev;
 }
 
 static int apml_alertl_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct device_node *dnode = dev->of_node;
-	struct apml_sbrmi_device **rmi_dev;
-	struct apml_sbtsi_device **tsi_dev;
+	struct device_node *np = dev->of_node;
 	struct apml_alertl_data *oob_alert;
 	struct gpio_desc *alertl_gpiod;
+	int ret;
+	u8 socket_num = 0;
 	char *irq_name;
-	u32 irq_num;
-	u8 socket_num;
-	int ret, i;
 
-	/* Allocate memory to oob_alert_data structure */
-	oob_alert = devm_kzalloc(dev, sizeof(struct apml_alertl_data),
-				 GFP_KERNEL);
+	oob_alert = devm_kzalloc(dev, sizeof(*oob_alert), GFP_KERNEL);
 	if (!oob_alert)
 		return -ENOMEM;
 
-	/* identify the number of devices associated with each RMI alert */
-	oob_alert->num_of_rmi_devs = of_property_count_elems_of_size(dnode, "sbrmi",
-								     sizeof(phandle));
-
-	/* identify the number of devices associated with each TSI alert */
-	oob_alert->num_of_tsi_devs = of_property_count_elems_of_size(dnode, "sbtsi",
-								     sizeof(phandle));
-
-	/* Allocate memory as per the number of RMI devices */
-	rmi_dev = devm_kzalloc(dev, oob_alert->num_of_rmi_devs * sizeof(struct apml_sbrmi_device),
-			       GFP_KERNEL);
-	if (!rmi_dev)
-		return -ENOMEM;
-	oob_alert->rmi_dev = rmi_dev;
-
-	/* Allocate memory as per the number of TSI devices */
-	tsi_dev = devm_kzalloc(dev, oob_alert->num_of_tsi_devs * sizeof(struct apml_sbtsi_device),
-			       GFP_KERNEL);
-	if (!tsi_dev)
-		return -ENOMEM;
-
-	oob_alert->tsi_dev = tsi_dev;
 	oob_alert->dev = dev;
 
-	/*
-	 * For each of the Alerts get the device associated
-	 * Currently the ALert_L driver identification is only supported
-	 * over I3C. We can add property in dts to identify the bus type
-	 */
-	for (i = 0; i < oob_alert->num_of_rmi_devs; i++) {
-		rmi_dev[i] = get_apml_dev_byphandle(pdev->dev.of_node, "sbrmi", i);
-		if (!rmi_dev[i]) {
-			dev_err(dev, "RMI device %d not found\n", i);
-			return -ENODEV;
-		}
-	}
-
-	for (i = 0; i < oob_alert->num_of_tsi_devs; i++) {
-		tsi_dev[i] = get_apml_dev_byphandle(pdev->dev.of_node, "sbtsi", i);
-		if (!tsi_dev[i]) {
-			dev_err(dev, "TSI device %d not found\n", i);
-			return -ENODEV;
-		}
-	}
-
-	/* Get the alert_l gpios, irq_number for the GPIO and register ISR*/
+	/* Get the alert_l gpio */
 	alertl_gpiod = devm_gpiod_get(dev, NULL, GPIOD_IN);
-	if (IS_ERR(alertl_gpiod)) {
-		dev_err(&pdev->dev, "Unable to retrieve gpio\n");
+	if (IS_ERR(alertl_gpiod))
 		return PTR_ERR(alertl_gpiod);
-	}
 
-	irq_num = gpiod_to_irq(alertl_gpiod);
-	if (irq_num < 0) {
-		dev_err(dev, "No corresponding IRQ for GPIO, error: %d\n", irq_num);
-		return irq_num;
-	}
-
-	if (oob_alert->num_of_rmi_devs > 0 && oob_alert->rmi_dev[0])
-		socket_num = static_addr_to_socket(oob_alert->rmi_dev[0]->dev_static_addr);
-	else if (oob_alert->num_of_tsi_devs > 0 && oob_alert->tsi_dev[0])
-		socket_num = static_addr_to_socket(oob_alert->tsi_dev[0]->dev_static_addr);
-
-	irq_name = devm_kasprintf(dev, GFP_KERNEL, "apml_irq%u", socket_num);
-	if (!irq_name) {
-		dev_dbg(dev, "Failed to allocate IRQ name\n");
-		return -ENOMEM;
-	}
-
-	dev_dbg(dev, "Register IRQ:%u\n", irq_num);
-	ret = devm_request_threaded_irq(dev, irq_num,
-					NULL,
-					(void *)alert_l_irq_thread_handler,
-					IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-					irq_name, oob_alert);
-	if (ret) {
-		dev_dbg(dev, "Cannot register IRQ:%u\n", irq_num);
+	/* Get IRQ number from GPIO */
+	ret = gpiod_to_irq(alertl_gpiod);
+	if (ret < 0) {
+		dev_err(dev,
+			"APML AlertL: No corresponding irq for gpio error: %d\n",
+			ret);
 		return ret;
 	}
 
-	/* Set the platform data to pdev */
-	platform_set_drvdata(pdev, oob_alert);
+	oob_alert->irq_num = ret;
 
+	/* Try to read socket-id property from DTS */
+	ret = of_property_read_u8(np, "socket-num", &socket_num);
+	if (!ret) {
+		irq_name = devm_kasprintf(dev, GFP_KERNEL, "apml_irq%u", socket_num);
+		if (!irq_name)
+			return -ENOMEM;
+	} else {
+		irq_name = devm_kstrdup(dev, "apml_irq", GFP_KERNEL);
+		if (!irq_name)
+			return -ENOMEM;
+	}
+	dev_info(dev, "APML Alert_L for socket %u, IRQ %u\n", socket_num, oob_alert->irq_num);
+	/* Register threaded IRQ handler */
+	ret = devm_request_threaded_irq(dev, oob_alert->irq_num,
+					NULL,
+					alert_l_irq_thread_handler,
+					IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+					irq_name,
+					dev);
+	if (ret) {
+		dev_err(dev, "Cannot register IRQ:%u\n", oob_alert->irq_num);
+		return ret;
+	}
+
+	platform_set_drvdata(pdev, oob_alert);
 	return 0;
 }
 
 static int apml_alertl_remove(struct platform_device *pdev)
 {
+	struct apml_alertl_data *alertl_data = platform_get_drvdata(pdev);
+
+	if (alertl_data)
+		/* Ensure any running interrupt handlers complete */
+		synchronize_irq(alertl_data->irq_num);
+
 	return 0;
 }
 
