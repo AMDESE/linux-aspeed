@@ -689,10 +689,6 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 		/*216-223*/ "","","","","","","","";
 };
 
-&ltpi1 {
-	status = "okay";
-};
-
 &video0 {
 	status = "okay";
 	memory-region = <&video_engine_memory0>;
