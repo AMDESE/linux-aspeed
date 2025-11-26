@@ -5,8 +5,8 @@ $id: http://devicetree.org/schemas/hwmon/amd,apml-alertl.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
 title: >
-  Sideband Remote Management Interface (SB-RMI) compliant
-  AMD APML Alert_L GPIO.
+  Sideband Remote Management Interface (SB-RMI) and Temperature Sensor Interface
+  (SB-TSI) compliant AMD APML Alert_L GPIO.
 
 maintainers:
   - Akshay Gupta <Akshay.Gupta@amd.com>
@@ -34,19 +34,18 @@ properties:
      GPIO specifier for APML Alert_L line. Specify GPIO controller, GPIO pin
      and polarity.
 
-  sbrmi:
-    $ref: /schemas/types.yaml#/definitions/phandle
-    description: ref amd,sbrmi.yaml
-
-  sbtsi:
-    $ref: /schemas/types.yaml#/definitions/phandle
-    description: ref amd,sbtsi.yaml
+  socket-num:
+   $ref: /schemas/types.yaml#/definitions/uint32
+   minimum: 0
+   maximum: 255
+   description: |
+    Socket identifier for multi-socket AMD systems. This property identifies
+    which CPU socket this Alert_L GPIO is associated with.
 
 required:
   - compatible
   - gpio
-  - sbrmi
-  - sbtsi
+  - socket-num
 
 additionalProperties: false
 
@@ -57,7 +56,6 @@ examples:
         compatible = "apml-alertl";
         status = "okay";
         gpios = <&ltpi0_gpio 20 GPIO_ACTIVE_LOW>;
-        sbrmi = <&sbrmi_p0_iod0>;
-        sbtsi = <&sbtsi_p0_iod0>;
+        socket-num =  /bits/ 8 <1>;
     };
 ...
