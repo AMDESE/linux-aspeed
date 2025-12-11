@@ -1299,7 +1299,7 @@
 		};
 
 		chassis: chassis@14c04010 {
-			compatible = "aspeed,ast2600-chassis";
+			compatible = "aspeed,ast2700-chassis";
 			reg = <0 0x14c04010 0 0x4>;
 			interrupts-extended = <&intc0_5 5>;
 			status = "disabled";

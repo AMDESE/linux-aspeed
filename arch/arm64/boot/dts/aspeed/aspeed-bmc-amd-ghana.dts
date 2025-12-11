@@ -826,6 +826,10 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	kcs-channel = <4>;
 };
 
+&chassis {
+    status = "okay";
+};
+
 &jtag1 {
 	status = "okay";
 };
