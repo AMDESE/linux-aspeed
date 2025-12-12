@@ -17,7 +17,7 @@
  #include <linux/sysfs.h>
  #include <linux/interrupt.h>
  
- /* #define USE_INTERRUPTS */
+ //#define USE_INTERRUPTS
  /******************************************************************************/
  union chassis_ctrl_register {
 	 u32 value;
@@ -45,6 +45,8 @@
 	 int irq;
 	 /* for hwmon */
 	 const struct attribute_group *groups[2];
+	 /* for workqueue */
+	 struct work_struct chassis_work;
  };
  
  static ssize_t
@@ -108,21 +110,53 @@
  };
  
  #ifdef USE_INTERRUPTS
- static void aspeed_chassis_status_check(struct aspeed_chassis *chassis)
- {
-	 union chassis_ctrl_register chassis_ctrl;
+
+ /*
+
+ The reason that I have kept some printing in aspeed_chassis_status_check, (even though there should not be printing in the ISR) is because when you enable interrupts, you get the interrupt storm, and so the workqueue will not execute until after the 
+ interrupt storm has stopped (which occurs when the chassis is closed), and at that point printing out the 'DEBUG' statement would be invalid because the intrusion status might already be cleared.
+ */
  
+ static void aspeed_chassis_status_print(struct aspeed_chassis *chassis) {
+ 
+	 union chassis_ctrl_register chassis_ctrl;
 	 chassis_ctrl.value = readl(chassis->base);
+ 
+	 dev_info(chassis->dev, "DEBUG: chassis_ctrl.value=0x%x, intrusion_status_clear=%d, intrusion_int_enable=%d, intrusion_status=%d", chassis_ctrl.value, chassis_ctrl.fields.intrusion_status_clear, chassis_ctrl.fields.intrusion_int_enable, chassis_ctrl.fields.intrusion_status);
+	 
 	 if (chassis_ctrl.fields.intrusion_status) {
-		 dev_info(chassis->dev, "CHASI# pin has been pulled low");
-		 chassis_ctrl.fields.intrusion_status_clear = 1;
-		 writel(chassis_ctrl.value, chassis->base);
-		 chassis_ctrl.fields.intrusion_status_clear = 0;
-		 writel(chassis_ctrl.value, chassis->base);
+		 dev_info(chassis->dev, "CHASSIS pin has been pulled low");
 	 }
  
 	 if (chassis_ctrl.fields.core_power_status) {
 		 dev_info(chassis->dev, "Core power has been pulled low");
+	 }
+ 
+	 if (chassis_ctrl.fields.io_power_status) {
+		 dev_info(chassis->dev, "IO power has been pulled low");
+	 }
+ }
+ 
+ static void aspeed_chassis_status_check(struct aspeed_chassis *chassis)
+ {
+ 
+	 union chassis_ctrl_register chassis_ctrl;
+	 chassis_ctrl.value = readl(chassis->base);
+ 
+	 dev_info(chassis->dev, "DEBUG: chassis_ctrl.value=0x%x, intrusion_status_clear=%d, intrusion_int_enable=%d, intrusion_status=%d", chassis_ctrl.value, chassis_ctrl.fields.intrusion_status_clear, chassis_ctrl.fields.intrusion_int_enable, chassis_ctrl.fields.intrusion_status);
+ 
+	 if (chassis_ctrl.fields.intrusion_status) {
+		 
+		 chassis_ctrl.fields.intrusion_status_clear = 1;
+		 writel(chassis_ctrl.value, chassis->base);
+		 dev_info(chassis->dev, "clear = 1: chassis_ctrl.value=0x%x, intrusion_status_clear=%d, intrusion_int_enable=%d, intrusion_status=%d", chassis_ctrl.value, chassis_ctrl.fields.intrusion_status_clear, chassis_ctrl.fields.intrusion_int_enable, chassis_ctrl.fields.intrusion_status);
+		 chassis_ctrl.fields.intrusion_status_clear = 0;
+		 writel(chassis_ctrl.value, chassis->base);
+		 dev_info(chassis->dev, "clear = 0: chassis_ctrl.value=0x%x, intrusion_status_clear=%d, intrusion_int_enable=%d, intrusion_status=%d", chassis_ctrl.value, chassis_ctrl.fields.intrusion_status_clear, chassis_ctrl.fields.intrusion_int_enable, chassis_ctrl.fields.intrusion_status);
+ 
+	 }
+ 
+	 if (chassis_ctrl.fields.core_power_status) {
 		 chassis_ctrl.fields.core_power_status_clear = 1;
 		 writel(chassis_ctrl.value, chassis->base);
 		 chassis_ctrl.fields.core_power_status_clear = 0;
@@ -130,12 +164,18 @@
 	 }
  
 	 if (chassis_ctrl.fields.io_power_status) {
-		 dev_info(chassis->dev, "IO power has been pulled low");
 		 chassis_ctrl.fields.io_power_status_clear = 1;
 		 writel(chassis_ctrl.value, chassis->base);
 		 chassis_ctrl.fields.io_power_status_clear = 0;
 		 writel(chassis_ctrl.value, chassis->base);
 	 }
+	 
+ }
+ 
+ static void chassis_work_handler(struct work_struct *chassis_work) {
+	 struct aspeed_chassis *chassis = container_of(chassis_work, struct aspeed_chassis, chassis_work);
+ 
+	 aspeed_chassis_status_print(chassis);
  }
  
  static irqreturn_t aspeed_chassis_isr(int this_irq, void *dev_id)
@@ -143,6 +183,9 @@
 	 struct aspeed_chassis *chassis = dev_id;
  
 	 aspeed_chassis_status_check(chassis);
+ 
+	 schedule_work(&chassis->chassis_work);
+ 
 	 return IRQ_HANDLED;
  }
  #endif
@@ -197,6 +240,8 @@
 	 aspeed_chassis_int_ctrl(priv, false);
  #endif
  
+	 INIT_WORK(&priv->chassis_work, chassis_work_handler);
+ 
 	 priv->groups[0] = &intrusion_dev_group;
 	 priv->groups[1] = NULL;
  
@@ -219,3 +264,4 @@
  MODULE_AUTHOR("Billy Tsai<billy_tsai@aspeedtech.com>");
  MODULE_DESCRIPTION("ASPEED CHASSIS Driver");
  MODULE_LICENSE("GPL");
+ 
