@@ -412,14 +412,21 @@ static void mctp_i3c_xmit(struct mctp_i3c_bus *mbus, struct sk_buff *skb)
 	data[data_len] = pec;
 
 	xfer.data.out = data;
+
+	/* add sleep of 1ms before and after the trasmit to give
+	 * time to the slow target devices to empty the previously
+	 * sent requests. Needed especially when the MCTP message
+	 * consists of multiple fragments.
+	 */
+	msleep (1);
 	rc = i3c_device_do_priv_xfers(mi->i3c, &xfer, 1);
+	msleep (1);
 	if (rc == 0) {
 		stats->tx_bytes += data_len;
 		stats->tx_packets++;
 	} else {
 		stats->tx_errors++;
 	}
-
 out:
 	if (mi)
 		mutex_unlock(&mi->lock);
