@@ -532,6 +532,7 @@
 &i2c10 {
 	// Net name i2c7 (SCM_I2C7)
 	status = "okay";
+    multi-master;
 	mctp-controller;
 	mctp@10 {
 		compatible = "mctp-i2c-controller";
