@@ -461,7 +461,7 @@ static int sbrmi_i2c_identify_reg_addr_size(struct i2c_client *i2c, u32 *size, u
 		}
 	}
 
-	if (*rev == 0x21)
+	if (*rev == 0x21 || *rev == 0x31)
 		*size = SBRMI_REG_ADDR_SIZE_TWO_BYTE;
 	else
 		*size = SBRMI_REG_ADDR_SIZE_DEF;
@@ -584,7 +584,7 @@ static int sbrmi_i3c_identify_reg_addr_size(struct i3c_device *i3cdev, u32 *size
 
 	pr_err("sbrmi_i3c_identify_reg_addr_size(): *rev = 0x%x, *size = 0x%x\n",
 		*rev, *size);
-	if ((*rev & 0xff) == 0x21)
+	if ((*rev & 0xff) == 0x21 || (*rev & 0xff) == 0x31)
 		*size = SBRMI_REG_ADDR_SIZE_TWO_BYTE;
 	else
 		*size = SBRMI_REG_ADDR_SIZE_DEF;
