@@ -5,6 +5,8 @@
 
 /dts-v1/;
 #include "ast2600-amd-bmc-common.dtsi"
+#include <dt-bindings/i2c/i2c.h>
+#include <dt-bindings/i3c/i3c.h>
 
 / {
 	model = "AMD Chalupa BMC";
@@ -48,11 +50,6 @@
 					<&adc4 0>, <&adc5 0>;
 	};
 };
-
-//&mctp0 {
-//	status	= "okay";
-//};
-
 
 
 &fmc {
@@ -1241,7 +1238,3 @@ rcd_ ## bus ## _ ## index: rcd@addr { \
 };
 
 
-//&bmc_dev {
-//        status = "okay";
-//        memory-region = <&bmc_dev_memory>;
-//};
