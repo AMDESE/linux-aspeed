@@ -15,6 +15,13 @@
 		stdout-path = &uart5;
 		bootargs = "console=ttyS4,115200 earlycon vmalloc=512MB";
 	};
+	aliases {
+	
+		i2c180 = &i2c_pcie_slot0;
+		i2c181 = &i2c_pcie_slot1;
+		i2c182 = &i2c_pcie_slot2;
+		i2c183 = &i2c_pcie_slot3;
+	};
 
 	reserved-memory {
 		#address-cells = <1>;
@@ -528,12 +535,16 @@
 &i2c10 {
 	// Net name i2c7 (SCM_I2C7)
 	status = "okay";
+	mctp-controller;
+	mctp@10 {
+		compatible = "mctp-i2c-controller";
+		reg = <(0x10 | I2C_OWN_SLAVE_ADDRESS)>;
+	};
 
 #ifdef EEPROM_PROG_ENABLE
 	i2cswitch@70 {
 		compatible = "nxp,pca9548";
 		reg = <0x70>;
-
 	};
 
 	i2cswitch@71 {
@@ -585,15 +596,27 @@
   i2cswitch@72 {
 		compatible = "nxp,pca9546";
 		reg = <0x72>; // addr of i2c-mux
-		#address-cells = <1>; // default
-		#size-cells = <0>;    // default
+		#address-cells = <1>; // default 
+		#size-cells = <0>;    // default 
+		
+    i2c_pcie_slot0: pcie_i2c@0 { 
+		reg = <0>; #address-cells = <1>; #size-cells = <0>; 
+		mctp-controller;
+		};
+    i2c_pcie_slot1: pcie_i2c@1 { 
+		reg = <1>; #address-cells = <1>; #size-cells = <0>; 
+		mctp-controller;
+		};
+    i2c_pcie_slot2: pcie_i2c@2 { 
+		reg = <2>; #address-cells = <1>; #size-cells = <0>;
+		mctp-controller;
+		};
+    i2c_pcie_slot3: pcie_i2c@3 { 
+		reg = <3>; #address-cells = <1>; #size-cells = <0>; 
+		mctp-controller;
+		};
 
-    pcie_i2c@0 { reg = <0>; #address-cells = <1>; #size-cells = <0>; };
-    pcie_i2c@1 { reg = <1>; #address-cells = <1>; #size-cells = <0>; };
-    pcie_i2c@2 { reg = <2>; #address-cells = <1>; #size-cells = <0>; };
-    pcie_i2c@3 { reg = <3>; #address-cells = <1>; #size-cells = <0>; };
-
-  }; //i2cswitch@72
+  }; //i2cswitch@72 
 
 };
 
