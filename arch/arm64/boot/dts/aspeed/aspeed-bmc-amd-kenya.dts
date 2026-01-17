@@ -570,6 +570,11 @@
 		mrl = <69>;
 		mwl = <69>;
 	};
+	scoob_p0_AB: scoob@0,22400002119 {
+		reg = <0x0 0x224 0x00002119>;
+		mrl = <69>;
+		mwl = <69>;
+	};
 };
 
 #ifdef I3C_HUB
