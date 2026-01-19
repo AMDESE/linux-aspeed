@@ -374,13 +374,17 @@ static const struct file_operations sbrmi_fops = {
 static void map_sbrmi_pid_to_static_addr(struct i3c_device *i3cdev,
 					struct apml_sbrmi_device *rmi_dev)
 {
-	if ((i3cdev->bus->id == 4) && (i3cdev->desc->info.pid == 0x1118))
+	if ((i3cdev->bus->id == 4) &&
+	   ((i3cdev->desc->info.pid == 0x1118) ||
+	    (i3cdev->desc->info.pid == 0x22400001119)))
 	{
 		rmi_dev->dev_static_addr = 0x3C;
 	}
 	else if ((i3cdev->bus->id == 5) &&
 		((i3cdev->desc->info.pid == 0x1118) ||
-		(i3cdev->desc->info.pid == 0x01001118)))
+		 (i3cdev->desc->info.pid == 0x01001118) ||
+		 (i3cdev->desc->info.pid == 0x22400001119) ||
+		 (i3cdev->desc->info.pid == 0x22401001119)))
 	{
 		rmi_dev->dev_static_addr = 0x38;
 	}
@@ -818,6 +822,8 @@ static const struct i3c_device_id sbrmi_i3c_id[] = {
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x2, NULL),
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x118, NULL), /* Socket:0, IOD:0 */
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x118, NULL), /* Socket:1 IOD:0 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x119, NULL), /* Socket:0, IOD:0 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x119, NULL), /* Socket:1 IOD:0 */
 	I3C_DEVICE_EXTRA_INFO(0, 0x0, 0x0, NULL),
 	{}
 };
