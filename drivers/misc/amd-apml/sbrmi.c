@@ -664,7 +664,7 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 	dev_set_drvdata(dev, (void *)rmi_dev);
 
 	/* Need to verify for the static address for i3cdev */
-	rmi_dev->dev_static_addr = i3cdev->desc->info.static_addr;
+	rmi_dev->dev_static_addr = i3cdev->desc->info.dyn_addr;
 
 	hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbrmi_%s",
 					sbrmi_addr_to_label(rmi_dev->dev_static_addr));
