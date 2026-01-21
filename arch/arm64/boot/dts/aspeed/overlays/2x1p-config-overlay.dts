@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: GPL-2.0
+/dts-v1/;
+/plugin/;
+
+/ {
+	fragment@0 {
+		target-path = "/soc@14000000/i3c5@14c25000";
+		__overlay__ {
+			sbtsi_p1_iod0: sbtsi@48,22401000118 {
+			status = "disabled";
+			reg = <0x48 0x224 0x01000118>;
+			assigned-address = <0x48>;
+			};
+
+			sbtsi_2x1p_iod0: sbtsi@4c,22400000118 {
+			status = "okay";
+			reg = <0x4c 0x224 0x00000118>;
+			assigned-address = <0x48>;
+			};
+
+			sbrmi_p1_iod0: sbrmi@38,22401001118 {
+			status = "disabled";
+			reg = <0x38 0x224 0x01001118>;
+			assigned-address = <0x38>;
+			};
+
+			sbrmi_2x1p_iod0: sbrmi@3c,22400001118 {
+			status = "okay";
+			reg = <0x3c 0x224 0x00001118>;
+			assigned-address = <0x38>;
+			};
+		};
+	};
+};
