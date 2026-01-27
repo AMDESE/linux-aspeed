@@ -374,17 +374,13 @@ static const struct file_operations sbrmi_fops = {
 static void map_sbrmi_pid_to_static_addr(struct i3c_device *i3cdev,
 					struct apml_sbrmi_device *rmi_dev)
 {
-	if ((i3cdev->bus->id == 4) &&
-	   ((i3cdev->desc->info.pid == 0x1118) ||
-	    (i3cdev->desc->info.pid == 0x22400001119)))
+	if ((i3cdev->bus->id == 4) && (i3cdev->desc->info.pid == 0x1118))
 	{
 		rmi_dev->dev_static_addr = 0x3C;
 	}
 	else if ((i3cdev->bus->id == 5) &&
 		((i3cdev->desc->info.pid == 0x1118) ||
-		 (i3cdev->desc->info.pid == 0x01001118) ||
-		 (i3cdev->desc->info.pid == 0x22400001119) ||
-		 (i3cdev->desc->info.pid == 0x22401001119)))
+		(i3cdev->desc->info.pid == 0x01001118)))
 	{
 		rmi_dev->dev_static_addr = 0x38;
 	}
