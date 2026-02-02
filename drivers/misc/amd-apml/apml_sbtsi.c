@@ -488,10 +488,10 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 	struct regmap *regmap;
 	const char *hwmon_dev_name;
 
-	dev_err(dev, "SBTSI: PID: %llx\n", i3cdev->desc->info.pid);
+	dev_info(dev, "SBTSI: PID: %llx\n", i3cdev->desc->info.pid);
 	if (!(I3C_PID_INSTANCE_ID(i3cdev->desc->info.pid) == 0 ||
 	      i3cdev->desc->info.pid == 0x22400000001)) {
-		dev_err(dev, "SBTSI: Error PID: %llx\n", i3cdev->desc->info.pid);
+		dev_info(dev, "SBTSI: Error PID: %llx\n", i3cdev->desc->info.pid);
 		return -ENXIO;
 	}
 
@@ -518,7 +518,7 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 	map_sbtsi_pid_to_static_addr(i3cdev, tsi_dev);
 	if (tsi_dev->dev_static_addr == 0)
 	{
-		dev_err(dev, "SBTSI: PID = 0x%llx, static address zero, skip the device\n",
+		dev_info(dev, "SBTSI: PID = 0x%llx, static address zero, skip the device\n",
 				i3cdev->desc->info.pid);
 		return -ENXIO;
 	}
