@@ -692,7 +692,7 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 	map_sbrmi_pid_to_static_addr(i3cdev, rmi_dev);
 	if (rmi_dev->dev_static_addr == 0)
 	{
-		dev_err(dev, "SBRMI: PID = 0x%llx, static address zero, skip the device\n",
+		dev_info(dev, "SBRMI: PID = 0x%llx, static address zero, skip the device\n",
 				i3cdev->desc->info.pid);
 	}
 
