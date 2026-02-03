@@ -104,6 +104,8 @@
 		i2c120 = &sys_vr;
 		i2c121 = &temp;
 		i2c127 = &rio;
+		i2c200 = &picpwr;
+		i2c203 = &fan_board0;
 	};
 };
 
@@ -238,6 +240,37 @@
 	/delete-property/ pinctrl-names;
 	/delete-property/ pinctrl-0;
 	status = "okay";
+
+	i2cswitch@70 {
+		compatible = "nxp,pca9546";
+		reg = <0x70>;
+		pinctrl-names = "default";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		picpwr: i2c@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			i2cswitch@72 {
+				compatible = "nxp,pca9546";
+				reg = <0x72>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				fan_board0: i2c@2 {
+					reg = <2>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+					nct7363@20 {
+						compatible = "nct,nct7363";
+						reg = <0x20>;
+						fan_sel_gpio = <3>;
+					};
+				};
+			};
+		};
+	};
 };
 
 &i2c7 {
@@ -252,29 +285,17 @@
 	// Net name SCM_I2C<0>
 	status = "okay";
 
-	multi-master;
-	mctp-controller;
-	mctp@10 {
-		compatible = "mctp-i2c-controller";
-		reg = <(0x10 | I2C_OWN_SLAVE_ADDRESS)>;
-	};
-
 	hpmeeprom@50 {
 		compatible = "microchip,24lc256","atmel,24c256";
 		reg = <0x50>;
 	};
-};
-
-&i2c12 {
-	// Net name i2c2 (SCM_I2C_SDA<2>) - FAN/LM75/ADC
-	status = "okay";
-	clock-frequency = <400000>;
 
 	i2cswitch@70 {
 		compatible = "nxp,pca9546";
 		reg = <0x70>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
 
 		P0_id: i2c@0 {
 			reg = <0>;
@@ -332,6 +353,7 @@
 		reg = <0x71>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
 
 		sys_vr: i2c@0 {
 			reg = <0>;
@@ -369,7 +391,12 @@
 			#size-cells = <0>;
 		};
 	};
+};
 
+&i2c12 {
+	// Net name i2c2 (SCM_I2C_SDA<2>) - FAN/LM75/ADC
+	status = "okay";
+	clock-frequency = <400000>;
 };
 
 /* P0-SEC */

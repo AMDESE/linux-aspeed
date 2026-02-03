@@ -126,6 +126,7 @@
 		i2c133 = &P1_clk;
 		i2c134 = &P1_vr;
 		i2c135 = &NC_3;
+		i2c203 = &fan_board0;
 	};
 };
 
@@ -254,23 +255,35 @@
 	/delete-property/ pinctrl-names;
 	/delete-property/ pinctrl-0;
 	status = "okay";
+
+	i2cswitch@71 {
+		compatible = "nxp,pca9546";
+		reg = <0x71>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		fan_board0: i2c@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			nct7363@20 {
+				compatible = "nct,nct7363";
+				reg = <0x20>;
+				fan_sel_gpio = <3>;
+			};
+		};
+	};
 };
 
 &i2c1 {
-	/delete-property/ pinctrl-names;
-	/delete-property/ pinctrl-0;
-	status = "okay";
-};
-
-&i2c2 {
-	/delete-property/ pinctrl-names;
-	/delete-property/ pinctrl-0;
+        /delete-property/ pinctrl-names;
+        /delete-property/ pinctrl-0;
         status = "okay";
 };
 
-&i2c3 {
-	/delete-property/ pinctrl-names;
-	/delete-property/ pinctrl-0;
+&i2c2 {
+        /delete-property/ pinctrl-names;
+        /delete-property/ pinctrl-0;
         status = "okay";
 };
 
@@ -287,30 +300,19 @@
 &i2c8 {
 	// Net name SCM_I2C<0>
 	status = "okay";
-        clock-frequency = <400000>;
+	clock-frequency = <400000>;
 
 	hpmeeprom@50 {
 		compatible = "microchip,24lc256","atmel,24c256";
 		reg = <0x50>;
 	};
-};
-
-&i2c9 {
-	// Net name SCM_I2C<1>
-	status = "okay";
-        clock-frequency = <400000>;
-};
-
-&i2c12 {
-	// Net name i2c2 (SCM_I2C2) - P0 /FAN/LM75/ADC
-	status = "okay";
-        clock-frequency = <400000>;
 
 	i2cswitch@70 {
 		compatible = "nxp,pca9546";
 		reg = <0x70>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
 
 		P0_id: i2c@0 {
 			reg = <0>;
@@ -368,6 +370,7 @@
 		reg = <0x71>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
 
 		sys_vr: i2c@0 {
 			reg = <0>;
@@ -440,8 +443,8 @@
 	};
 };
 
-&i2c13 {
-	// Net name i2c13 (SCM_I2C_SDA<3>) - P1
+&i2c9 {
+	// Net name SCM_I2C<1>
 	status = "okay";
 	clock-frequency = <400000>;
 
@@ -501,6 +504,19 @@
 			#size-cells = <0>;
 		};
 	};
+};
+
+&i2c12 {
+	// Net name i2c2 (SCM_I2C2) - P0 /FAN/LM75/ADC
+	status = "okay";
+	clock-frequency = <400000>;
+};
+
+&i2c13 {
+	// Net name i2c13 (SCM_I2C_SDA<3>) - P1
+	status = "okay";
+	clock-frequency = <400000>;
+
 };
 
 /* P1-SEC */
