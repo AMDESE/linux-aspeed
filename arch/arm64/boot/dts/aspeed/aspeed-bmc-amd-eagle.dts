@@ -294,6 +294,7 @@
 		reg = <0x70>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
 
 		P0_id: i2c@0 {
 			reg = <0>;
@@ -351,6 +352,7 @@
 		reg = <0x71>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
 
 		brd_vr: i2c@0 {
 			reg = <0>;
@@ -476,6 +478,7 @@
 		reg = <0x72>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
 
 		adc_pdb: i2c@0 {
 			reg = <0>;
@@ -513,6 +516,7 @@
 		reg = <0x70>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
 
 		P0_conn_012_cpu: i2c@0 {
 			reg = <0>;

@@ -128,12 +128,10 @@
 		i2c114 = &NC_9;
 		i2c115 = &NC_10;
 */
-#ifdef HORNBILL_P0_VR
 		i2c116 = &P0_id;
 		i2c117 = &P0_clk;
 		i2c118 = &P0_vr;
 		i2c119 = &NC_11;
-#endif
 		i2c120 = &sys_regs;
 		i2c121 = &temp;
 		i2c122 = &fan_0;
@@ -315,12 +313,13 @@
 		compatible = "microchip,24lc256","atmel,24c256";
 		reg = <0x50>;
 	};
-#ifdef HORNBILL_P0_VR
+
 	i2cswitch@70 {
 		compatible = "nxp,pca9546";
 		reg = <0x70>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
 
 		P0_id: i2c@0 {
 			reg = <0>;
@@ -372,12 +371,13 @@
 			#size-cells = <0>;
 		};
 	};
-#endif
+
 	i2cswitch@71 {
 		compatible = "nxp,pca9548";
 		reg = <0x71>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
 
 		sys_regs: i2c@0 {
 			reg = <0>;
@@ -629,6 +629,7 @@
 		reg = <0x70>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
 
 		NC_1: i2c@2 {
 			reg = <2>;
