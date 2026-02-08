@@ -315,27 +315,29 @@
 			#size-cells = <0>;
 
 			core0run@40 {
-				//P0_VDD_CORE_0_RUN
-				compatible = "mps,mp2856";
+				// P0_VDD_CORE_0_RUN
+				compatible = "mps,mp2869";
 				reg = <0x40>;
 			};
 			core1run@41 {
-				//P0_VDD_CORE_1_RUN
-				compatible = "mps,mp2856";
+				// P0_VDD_CORE_1_RUN
+				compatible = "mps,mp2869";
 				reg = <0x41>;
 			};
 			vddvddiorun@42 {
-				//P0_VDD_VDDIO_RUN
-				compatible = "mps,mp2856";
+				// P0_VDD_IO_RUN
+				compatible = "mps,mp29608";
 				reg = <0x42>;
 			};
 			vdd33s5run@47 {
-				//P0_VDD_33_S5_RUN
+				// P0_VDD_18_S5_RUN
+				// Infineon: TDA38740A
 				compatible = "pmbus";
 				reg = <0x47>;
 			};
 			vdd18s5run@08 {
-				//P0_VDD_18_S5_RUN
+				// P0_VDD_33_S5_RUN
+				// TDK:FS1604
 				compatible = "pmbus";
 				reg = <0x47>;
 			};
@@ -361,20 +363,29 @@
 			#size-cells = <0>;
 
 			vdd33dual@43 {
-				//VDD_33_DUAL VRM
+				// 47 in EVT2
+				// P3V3_AUX
+				// Infineon: TDA38725A
 				compatible = "pmbus";
 				reg = <0x43>;
 			};
 			p2v5_aux@8{
-				compatible = "ism,ism6636c";
+				// 0B in EVT2
+				// P5V_S5
+				// TDK:FS1006
+				compatible = "pmbus";
 				reg = <0x8>;
 			};
 			p1v8_aux@9{
-				compatible = "ism,ism6636c";
+				// P1V8_AUX
+				// TDK:FS1606
+				compatible = "pmbus";
 				reg = <0x9>;
 			};
 			p1v0_aux@a{
-				compatible = "ism,ism6636c";
+				// P0V85_AUX
+				// TDK:FS1606
+				compatible = "pmbus";
 				reg = <0xa>;
 			};
 		};

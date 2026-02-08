@@ -315,26 +315,28 @@
 
 			core0run@40 {
 				//P0_VDD_CORE_0_RUN
-				compatible = "mps,mp2856";
+				compatible = "mps,mp2869";
 				reg = <0x40>;
 			};
 			core1run@41 {
 				//P0_VDD_CORE_1_RUN
-				compatible = "mps,mp2856";
+				compatible = "mps,mp2869";
 				reg = <0x41>;
 			};
 			vddvddiorun@42 {
 				//P0_VDD_VDDIO_RUN
-				compatible = "mps,mp2856";
+				compatible = "mps,mp29608";
 				reg = <0x42>;
 			};
 			vdd33s5run@46 {
 				//P0_VDD_33_S5_RUN
+				// Infineon TDA38725
 				compatible = "pmbus";
 				reg = <0x46>;
 			};
 			vdd18s5run@47 {
 				//P0_VDD_18_S5_RUN
+				// Infineon TDA38740
 				compatible = "pmbus";
 				reg = <0x47>;
 			};
@@ -361,16 +363,19 @@
 
 			vdd33dual@43 {
 				//VDD_33_DUAL VRM
+				// Infineon TDA38725
 				compatible = "pmbus";
 				reg = <0x43>;
 			};
 			vdd33run@45 {
 				//VDD_33_RUN VRM
+				// Infineon TDA38725
 				compatible = "pmbus";
 				reg = <0x45>;
 			};
 			vdd5dual@48 {
 				//VDD_5_DUAL VRM
+				// Infineon TDA38725
 				compatible = "pmbus";
 				reg = <0x48>;
 			};
