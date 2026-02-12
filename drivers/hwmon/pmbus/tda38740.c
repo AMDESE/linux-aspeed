@@ -249,24 +249,32 @@ static int tda38740_get_device_id(struct i2c_client *client)
 		dev_err(dev, "Failed to read Device Id\n");
 		return status;
 	}
-
-	pr_info("PMBUS IC DEVICE_ID:%s\n", device_id);
-
-	if (!strncasecmp(TDA38725_IC_DEVICE_ID, device_id, strlen(device_id))) {
-		id = tda38725;
-	} else if (!strncasecmp(TDA38725A_IC_DEVICE_ID, device_id, strlen(device_id))) {
-		id = tda38725a;
-	} else if (!strncasecmp(TDA38740_IC_DEVICE_ID, device_id, strlen(device_id))) {
-		id = tda38740;
-	} else if (!strncasecmp(TDA38740A_IC_DEVICE_ID, device_id, strlen(device_id))) {
-		id = tda38740a;
-	} else if (!strncasecmp(XDPE1A2G5B_IC_DEVICE_ID, device_id, strlen(device_id))) {
-		id = xdpe1a2g5b;
-	} else if (!strncasecmp(XDPE19284C_IC_DEVICE_ID, device_id, strlen(device_id))) {
-		id = xdpe19284c;
-	} else if (!strncasecmp(XDPE192C4B_IC_DEVICE_ID, device_id, strlen(device_id))) {
-		id = xdpe192c4b;
+	if(status==1){
+		pr_info("PMBUS IC DEVICE_ID: 0x%x\n", device_id[0]);
+	} else if (status==2){
+		pr_info("PMBUS IC DEVICE_ID: 0x%x, 0x%x\n", device_id[0], device_id[1]);
 	} else {
+		dev_err(&client->dev, "Unsupported device\n");
+		return -ENODEV;
+	}
+	
+
+
+	if (status == 1 && !memcmp(device_id, TDA38725_IC_DEVICE_ID, 1))
+		id = tda38725;
+	else if (status == 1 && !memcmp(device_id, TDA38725A_IC_DEVICE_ID, 1))
+		id = tda38725a;
+	else if (status == 1 && !memcmp(device_id, TDA38740_IC_DEVICE_ID, 1))
+		id = tda38740;
+	else if (status == 1 && !memcmp(device_id, TDA38740A_IC_DEVICE_ID, 1))
+		id = tda38740a;
+	else if (status == 2 && !memcmp(device_id, XDPE1A2G5B_IC_DEVICE_ID, 2))
+		id = xdpe1a2g5b;
+	else if (status == 2 && !memcmp(device_id, XDPE19284C_IC_DEVICE_ID, 2))
+		id = xdpe19284c;
+	else if (status == 2 && !memcmp(device_id, XDPE192C4B_IC_DEVICE_ID, 2))
+		id = xdpe192c4b;
+	else {
 		dev_err(&client->dev, "Unsupported device\n");
 		return -ENODEV;
 	}
