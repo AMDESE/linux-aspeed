@@ -331,14 +331,16 @@
 			vdd33s5run@46 {
 				//P0_VDD_33_S5_RUN
 				// Infineon TDA38725
-				compatible = "pmbus";
+				compatible = "infineon,tda38725a";
 				reg = <0x46>;
+				vout_multiplier = <70 75>; 
 			};
 			vdd18s5run@47 {
 				//P0_VDD_18_S5_RUN
 				// Infineon TDA38740
-				compatible = "pmbus";
+				compatible = "infineon,tda38740a";
 				reg = <0x47>;
+				vout_multiplier = <70 75>; 
 			};
 		};
 
@@ -364,20 +366,23 @@
 			vdd33dual@43 {
 				//VDD_33_DUAL VRM
 				// Infineon TDA38725
-				compatible = "pmbus";
+				compatible = "infineon,tda38725a";
 				reg = <0x43>;
+				vout_multiplier = <70 75>; 
 			};
 			vdd33run@45 {
 				//VDD_33_RUN VRM
 				// Infineon TDA38725
-				compatible = "pmbus";
+				compatible = "infineon,tda38725a";
 				reg = <0x45>;
+				vout_multiplier = <70 75>; 
 			};
 			vdd5dual@48 {
 				//VDD_5_DUAL VRM
 				// Infineon TDA38725
-				compatible = "pmbus";
+				compatible = "infineon,tda38725a";
 				reg = <0x48>;
+				vout_multiplier = <70 75>; 
 			};
 		};
 

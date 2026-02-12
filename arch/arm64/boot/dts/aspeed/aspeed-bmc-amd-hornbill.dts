@@ -355,13 +355,17 @@
 			};
 			p0vdd33s5run@46 {
 				//P0_VDD_33_S5_RUN
-				compatible = "pmbus";
+				//TDA38725A
+				compatible = "infineon,tda38725a";
 				reg = <0x46>;
+				vout_multiplier = <70 75>; 
 			};
 			p0vdd18s5run@47 {
 				//P0_VDD_18_S5_RUN
-				compatible = "pmbus";
+				//TDA38740A
+				compatible = "infineon,tda38740a";
 				reg = <0x47>;
+				vout_multiplier = <70 75>; 
 			};
 		};
 
@@ -386,23 +390,31 @@
 
 			vdd33dual@43 {
 				//VDD_33_DUAL VRM
-				compatible = "pmbus";
+				//TDA38725A
+				compatible = "infineon,tda38725a";
 				reg = <0x43>;
+				vout_multiplier = <70 75>; 
 			};
 			vdd33runb@44 {
 				//VDD_33_RUN_B VRM
-				compatible = "pmbus";
+				//TDA38740A
+				compatible = "infineon,tda38740a";
 				reg = <0x44>;
+				vout_multiplier = <70 75>; 
 			};
 			vdd33run@45 {
 				//VDD_33_RUN VRM
-				compatible = "pmbus";
+				//TDA38725A
+				compatible = "infineon,tda38725a";
 				reg = <0x45>;
+				vout_multiplier = <70 75>; 
 			};
 			vdd33run@48 {
 				//VDD_5_DUAL VRM
-				compatible = "pmbus";
+				//TDA38725A
+				compatible = "infineon,tda38725a";
 				reg = <0x48>;
+				vout_multiplier = <70 75>; 
 			};
 		};
 
@@ -600,14 +612,18 @@
 				reg = <0x42>;
 			};
 			p1vdd33s5run@46 {
-				//P0_VDD_33_S5_RUN
-				compatible = "pmbus";
+				//P1_VDD_33_S5_RUN
+				//TDA38725A
+				compatible = "infineon,tda38725a";
 				reg = <0x46>;
+				vout_multiplier = <70 75>; 
 			};
 			p1vdd18s5run@47 {
 				//P0_VDD_18_S5_RUN
-				compatible = "pmbus";
+				//TDA38740A
+				compatible = "infineon,tda38740a";
 				reg = <0x47>;
+				vout_multiplier = <70 75>; 
 			};
 		};
 

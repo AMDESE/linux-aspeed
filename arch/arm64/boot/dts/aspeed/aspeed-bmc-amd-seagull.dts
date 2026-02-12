@@ -353,8 +353,10 @@
 			};
 			p0vdd18s5run@47 {
 				//P0_VDD_18_S5_RUN
-				compatible = "pmbus";
+				//TDA38740A
+				compatible = "infineon,tda38740a";
 				reg = <0x47>;
+				vout_multiplier = <70 75>; 
 			};
 		};
 
@@ -379,8 +381,10 @@
 
 			p3v3aux@43 {
 				//P3V3_AUX VRM
-				compatible = "pmbus";
+				//TDA38725A
+				compatible = "infineon,tda38725a";
 				reg = <0x43>;
+				vout_multiplier = <70 75>; 
 			};
 			p5vs5@08 {
 				//P5V_S5 VRM
@@ -493,8 +497,10 @@
 			};
 			p1vdd18s5run@47 {
 				//P0_VDD_18_S5_RUN
-				compatible = "pmbus";
+				//TDA38740A
+				compatible = "infineon,tda38740a";
 				reg = <0x47>;
+				vout_multiplier = <70 75>; 
 			};
 		};
 

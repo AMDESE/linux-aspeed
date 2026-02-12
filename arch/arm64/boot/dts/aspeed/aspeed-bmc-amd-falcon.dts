@@ -332,8 +332,9 @@
 			vdd33s5run@47 {
 				// P0_VDD_18_S5_RUN
 				// Infineon: TDA38740A
-				compatible = "pmbus";
+				compatible = "infineon,tda38740a";
 				reg = <0x47>;
+				vout_multiplier = <70 75>; 
 			};
 			vdd18s5run@08 {
 				// P0_VDD_33_S5_RUN
@@ -366,8 +367,9 @@
 				// 47 in EVT2
 				// P3V3_AUX
 				// Infineon: TDA38725A
-				compatible = "pmbus";
+				compatible = "infineon,tda38725a";
 				reg = <0x43>;
+				vout_multiplier = <70 75>; 
 			};
 			p2v5_aux@8{
 				// 0B in EVT2
