@@ -18,11 +18,21 @@
 		bootargs = "console=ttyS4,115200 earlycon vmalloc=512MB";
 	};
 	aliases {
-	
+		i2c20 = &fan_0;
+		i2c21 = &fan_1;
+		i2c22 = &fan_2;
+		i2c23 = &fan_3;
+		i2c24 = &fan_4;
+		i2c25 = &temp;
+		i2c26 = &adc;
 		i2c180 = &i2c_pcie_slot0;
 		i2c181 = &i2c_pcie_slot1;
 		i2c182 = &i2c_pcie_slot2;
 		i2c183 = &i2c_pcie_slot3;
+		i2c190 = &pcie_slot0_rm4;
+		i2c191 = &pcie_slot1_rm4;
+		i2c192 = &pcie_slot2_rm4;
+		i2c193 = &pcie_slot3_rm4;
 	};
 
 	reserved-memory {
@@ -258,7 +268,7 @@
 		#size-cells = <0>;
 
 		//  port 0 to 4 connected to 5 fan controllers which controls 5 fans each
-		i2c@0 {
+		fan_0: i2c@0 {
 			reg = <0>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -294,7 +304,7 @@
 			};
 		};
 
-		i2c@1 {
+		fan_1: i2c@1 {
 			reg = <1>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -330,7 +340,7 @@
 			};
 		};
 
-		i2c@2 {
+		fan_2: i2c@2 {
 			reg = <2>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -366,7 +376,7 @@
 			};
 		};
 
-		i2c@3 {
+		fan_3: i2c@3 {
 			reg = <3>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -402,7 +412,7 @@
 			};
 		};
 
-		i2c@4 {
+		fan_4: i2c@4 {
 			reg = <4>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -438,7 +448,7 @@
 			};
 		};
 
-		i2c@5 {
+		temp: i2c@5 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <5>;
@@ -484,7 +494,7 @@
 			};
 		};
 
-		i2c@6 {
+		adc: i2c@6 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <6>;
@@ -594,30 +604,84 @@
   i2cswitch@72 {
 		compatible = "nxp,pca9546";
 		reg = <0x72>; // addr of i2c-mux
-		#address-cells = <1>; // default 
-		#size-cells = <0>;    // default 
-		
-    i2c_pcie_slot0: pcie_i2c@0 { 
-		reg = <0>; #address-cells = <1>; #size-cells = <0>; 
+		#address-cells = <1>; // default
+		#size-cells = <0>;    // default
+
+		i2c_pcie_slot0: pcie_i2c@0 {
+		reg = <0>; #address-cells = <1>; #size-cells = <0>;
 		mctp-controller;
+		i2cswitch@77 {
+				compatible = "nxp,pca9546";
+				reg = <0x77>; // addr of i2c-mux
+				#address-cells = <1>; // default
+				#size-cells = <0>;    // default
+
+				pcie_slot0_rm4: pcie_i2c_rm4@0 {
+				reg = <0>; #address-cells = <1>; #size-cells = <0>;
+					fru_eprom@56 {
+							compatible = "microchip,24lc512","atmel,24c512";
+							reg = <0x56>;
+					};
+				};
+			};
 		};
-    i2c_pcie_slot1: pcie_i2c@1 { 
-		reg = <1>; #address-cells = <1>; #size-cells = <0>; 
+		i2c_pcie_slot1: pcie_i2c@1 {
+		reg = <1>; #address-cells = <1>; #size-cells = <0>;
 		mctp-controller;
+		i2cswitch@77 {
+				compatible = "nxp,pca9546";
+				reg = <0x77>; // addr of i2c-mux
+				#address-cells = <1>; // default
+				#size-cells = <0>;    // default
+
+				pcie_slot1_rm4: pcie_i2c_rm4@1 {
+					reg = <0>; #address-cells = <1>; #size-cells = <0>;
+					fru_eprom@56 {
+						compatible = "microchip,24lc512","atmel,24c512";
+						reg = <0x56>;
+						};
+				};
+			};
 		};
-    i2c_pcie_slot2: pcie_i2c@2 { 
+		i2c_pcie_slot2: pcie_i2c@2 {
 		reg = <2>; #address-cells = <1>; #size-cells = <0>;
 		mctp-controller;
-		};
-    i2c_pcie_slot3: pcie_i2c@3 { 
-		reg = <3>; #address-cells = <1>; #size-cells = <0>; 
-		mctp-controller;
-		};
+		i2cswitch@77 {
+				compatible = "nxp,pca9546";
+				reg = <0x77>; // addr of i2c-mux
+				#address-cells = <1>; // default
+				#size-cells = <0>;    // default
 
-  }; //i2cswitch@72 
+				pcie_slot2_rm4: pcie_i2c_rm4@2 {
+					reg = <0>; #address-cells = <1>; #size-cells = <0>;
+					fru_eprom@56 {
+						compatible = "microchip,24lc512","atmel,24c512";
+						reg = <0x56>;
+						};
+				};
+			};
+		};
+		i2c_pcie_slot3: pcie_i2c@3 {
+		reg = <3>; #address-cells = <1>; #size-cells = <0>;
+		mctp-controller;
+		i2cswitch@77 {
+				compatible = "nxp,pca9546";
+				reg = <0x77>; // addr of i2c-mux
+				#address-cells = <1>; // default
+				#size-cells = <0>;    // default
+
+				pcie_slot3_rm4: pcie_i2c_rm4@3 {
+					reg = <0>; #address-cells = <1>; #size-cells = <0>;
+					fru_eprom@56 {
+						compatible = "microchip,24lc512","atmel,24c512";
+						reg = <0x56>;
+						};
+				};
+			};
+		};
+}; //i2cswitch@72
 
 };
-
 
 &i2c11 {
 	// Net name i2c8 (SCM_I2C8) - MB LOM
@@ -1237,5 +1301,3 @@ rcd_ ## bus ## _ ## index: rcd@addr { \
 	/*Y0-Y7*/	"","","","","","","","",
 	/*Z0-Z7*/	"","","","","","","","";
 };
-
-
