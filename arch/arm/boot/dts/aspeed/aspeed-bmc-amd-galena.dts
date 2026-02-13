@@ -68,19 +68,6 @@
 			reg = <0xE0000000 0x00001000>; /* 4K */
 		};
 	};
-
-	// Present in base dts
-  //iio-hwmon-adc121c {
-	//	compatible = "iio-hwmon";
-	//	oemname0 = "FPGA_VDD_CORE";
-	//	oemname1 = "FPGA_VDD_18";
-	//	oemname2 = "FPGA_VDD_33";
-	//	oemname3 = "LOM_VDD_33";
-	//	oemname4 = "LOM_VDD_12";
-	//	oemname5 = "VDD_12_DUAL";
-	//	io-channels = <&adc0 0>, <&adc1 0>, <&adc2 0>, <&adc3 0>,
-	//				<&adc4 0>, <&adc5 0>;
-	//};
 };
 
 
@@ -572,44 +559,6 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <6>;
-
-      // present in base dts
-			//adc0: fpga_vdd_core@50 {
-			//	compatible = "ti,adc121c";
-			//	reg = <0x50>;
-			//	#io-channel-cells = <1>;
-			//	label = "fpga_vdd_core";
-			//};
-			//adc1: fpga_vdd_18@51 {
-			//	compatible = "ti,adc121c";
-			//	reg = <0x51>;
-			//	#io-channel-cells = <1>;
-			//	label = "fpga_vdd_18";
-			//};
-			//adc2: fpga_vdd_33@52 {
-			//	compatible = "ti,adc121c";
-			//	reg = <0x52>;
-			//	#io-channel-cells = <1>;
-			//	label = "fpga_vdd_33";
-			//};
-			//adc3: lom_vdd_33@53 {
-			//	compatible = "ti,adc121c";
-			//	reg = <0x53>;
-			//	#io-channel-cells = <1>;
-			//	label = "lom_vdd_33";
-			//};
-			//adc4: lom_vdd_12@54 {
-			//	compatible = "ti,adc121c";
-			//	reg = <0x54>;
-			//	#io-channel-cells = <1>;
-			//	label = "lom_vdd_12";
-			//};
-			//adc5: vdd_12_dual@55 {
-			//	compatible = "ti,adc121c";
-			//	reg = <0x55>;
-			//	#io-channel-cells = <1>;
-			//	label = "vdd_12_dual";
-			//};
 		};
 
 		i2c@7 {
@@ -625,7 +574,6 @@
 	};
 };
 
-// i3c
 
 
 &i2c2 {
@@ -643,25 +591,6 @@
 		reg = <0x4c>;
 	};
 };
-
-//&espi_ctrl {
-//	status = "okay";
-//
-//	pinctrl-names = "default";
-//	pinctrl-0 = <&pinctrl_espi_default &pinctrl_espialt_default>;
-//
-//	perif,dma-mode;
-//	perif,memcyc-src-addr = <0x30000000>;
-//	perif,memcyc-size = <0x4000000>;
-//
-//	/* SAFS - Hw mode */
-//	flash,dma-mode;
-//	flash,safs-mode = <0x00>;
-//};
-//
-//&espi_mmbi {
-//	status = "okay";
-//};
 
 &gpio0 {
 	gpio-line-names =
@@ -693,9 +622,6 @@
 	/*Z0-Z7*/	"","","","","","","","";
 };
 
-//&jtag1 {
-//	status = "okay";
-//};
 
 &video {
 	status = "okay";
