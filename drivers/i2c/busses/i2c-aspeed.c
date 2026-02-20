@@ -1075,8 +1075,8 @@ static int aspeed_i2c_probe_bus(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, bus);
 
-	dev_info(bus->dev, "i2c bus %d registered, irq %d\n",
-		 bus->adap.nr, irq);
+	dev_info(bus->dev, "i2c bus %d registered, irq %d, bus speed set to %d kHz\n",
+		 bus->adap.nr, irq, bus->bus_frequency/1000);
 
 	return 0;
 }
