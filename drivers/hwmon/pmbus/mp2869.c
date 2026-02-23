@@ -156,9 +156,6 @@ mp2869_read_vout(struct i2c_client *client, struct mp2869_data *data, int page,
 	{
 		ret *= data->vout_gain[page];
 	}
-
-	//zsj test
-	printk("mp2869_read_vout[page%d] data = %d\n",page,ret);
 	
 	return ret;
 }
@@ -170,11 +167,8 @@ mp2869_read_iout(struct i2c_client *client, struct mp2869_data *data, int page,
 	int ret;
 
 	ret = pmbus_read_word_data(client, page, phase, reg);
-	printk("mp2869_read_iout = %d\n",ret);
 
 	ret = corsairpsu_linear11_to_int(ret);
-
-	printk("mp2869_read_iout corsairpsu_linear11_to_int = %d\n",ret);
 
 	/* convert vout result to direct format */
 	ret = (ret*1000) / data->curr_iout_gain[page];
