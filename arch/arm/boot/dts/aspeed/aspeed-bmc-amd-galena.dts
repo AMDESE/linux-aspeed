@@ -260,7 +260,6 @@
 &i2c10 {
 	// Net name i2c7
 	status = "okay";
-	bus-frequency = <400000>;
 	multi-master;
 	mctp-controller;
 	mctp@10 {
