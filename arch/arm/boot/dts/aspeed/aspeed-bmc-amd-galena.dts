@@ -16,10 +16,13 @@
 		serial4 = &uart5;
 		ethernet0 = &mac3;
 		ethernet1 = &mac2;
-		i2c180 = &i2c_pcie_slot0;
-		i2c181 = &i2c_pcie_slot1;
-		i2c182 = &i2c_pcie_slot2;
-		i2c183 = &i2c_pcie_slot3;
+
+		// aliases to the OOB interface for
+		// MI350P RM Channels for each PCIe slot.
+		i2c180 = &mi350p_slot0_rm_chnl;
+		i2c181 = &mi350p_slot1_rm_chnl;
+		i2c182 = &mi350p_slot2_rm_chnl;
+		i2c183 = &mi350p_slot3_rm_chnl;
 	};
 
 	chosen {
@@ -296,43 +299,100 @@
 	};
 #endif
 
-// galena mapping for i2c to pcie-slot
-// i2c0x70 -- port 5 --- i2c0x73h(amber)/0x76h(caramel) --- port 0 to 3
-  i2cswitch@70 {
+	// galena mapping for i2c to pcie-slot
+	// i2c0x70 -- port 5 --- i2c0x73h(amber)/0x76h(caramel) --- port 0 to 3
+	i2cswitch@70 {
 		compatible = "nxp,pca9548";
-		reg = <0x70>; // addr of i2c-mux
-		#address-cells = <1>; // default
-		#size-cells = <0>;    // default
+		reg = <0x70>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 
-    i2c5_pcie: i2c@5 {
-        reg = <5>;
-        #address-cells = <1>;
-        #size-cells = <0>;
+		i2c5_pcie: i2c@5 {
+			reg = <5>;
+			#address-cells = <1>;
+			#size-cells = <0>;
 
-        i2cswitch@76 {
-		      compatible = "nxp,pca9546";
-  	    	reg = <0x76>; // addr of i2c-mux
-	      	#address-cells = <1>; // default
-		      #size-cells = <0>;    // default
-    
-          i2c_pcie_slot0: pcie_i2c@0 {
-	        	reg = <0>; #address-cells = <1>; #size-cells = <0>;
-		        mctp-controller;
-		      };
-          i2c_pcie_slot1: pcie_i2c@1 {
-		        reg = <1>; #address-cells = <1>; #size-cells = <0>;
-		        mctp-controller;
-		      };
-          i2c_pcie_slot2: pcie_i2c@2 {
-		        reg = <2>; #address-cells = <1>; #size-cells = <0>;
-		        mctp-controller;
-		      };
-          i2c_pcie_slot3: pcie_i2c@3 {
-		        reg = <3>; #address-cells = <1>; #size-cells = <0>;
-		        mctp-controller;
-		      };
-        }; // switch76
-    }; // i2c5_pcie
+			i2cswitch@76 {
+			compatible = "nxp,pca9546";
+				reg = <0x76>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				// PCIe slot0 on the Galena
+				pcie_i2c@0 {
+					reg = <0>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					// following switch is on the MI350P card not on the Galena
+					i2cswitch@77 {
+						compatible = "nxp,pca9546";
+						reg = <0x77>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						mi350p_slot0_rm_chnl: mi350p_rm@0 {
+							reg = <0>; #address-cells = <1>; #size-cells = <0>;
+							mctp-controller;
+						};
+					};
+				};
+
+				// PCIe slot0 on the Galena
+				pcie_i2c@1 {
+					reg = <1>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					// following switch is on the MI350P card not on the Galena
+					i2cswitch@77 {
+						compatible = "nxp,pca9546";
+						reg = <0x77>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						mi350p_slot1_rm_chnl: mi350p_rm@0 {
+							reg = <0>; #address-cells = <1>; #size-cells = <0>;
+							mctp-controller;
+						};
+					};
+				};
+
+				// PCIe slot2 on the Galena
+				pcie_i2c@2 {
+					reg = <2>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+					// following switch is on the MI350P card not on the Galena
+					i2cswitch@77 {
+						compatible = "nxp,pca9546";
+						reg = <0x77>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						mi350p_slot2_rm_chnl: mi350p_rm@0 {
+							reg = <0>; #address-cells = <1>; #size-cells = <0>;
+							mctp-controller;
+						};
+					};
+				};
+
+				// PCIe slot3 on the Galena
+				pcie_i2c@3 {
+					reg = <3>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+					// following switch is on the MI350P card not on the Galena
+					i2cswitch@77 {
+						compatible = "nxp,pca9546";
+						reg = <0x77>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						mi350p_slot3_rm_chnl: mi350p_rm@0 {
+							reg = <0>; #address-cells = <1>; #size-cells = <0>;
+							mctp-controller;
+						};
+					};
+				};
+			}; // switch76
+		}; // i2c5_pcie
 	}; // switch 70
 };
 
