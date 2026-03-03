@@ -24,6 +24,7 @@
 #include <linux/platform_device.h>
 #include <linux/reset.h>
 #include <linux/slab.h>
+#include <linux/delay.h>
 
 /* I2C Register */
 #define ASPEED_I2C_FUN_CTRL_REG				0x00
@@ -683,6 +684,9 @@ static int aspeed_i2c_master_xfer(struct i2c_adapter *adap,
 {
 	struct aspeed_i2c_bus *bus = i2c_get_adapdata(adap);
 	unsigned long time_left, flags;
+
+	if (bus->multi_master)
+		usleep_range(800, 1200);
 
 	spin_lock_irqsave(&bus->lock, flags);
 	bus->cmd_err = 0;
