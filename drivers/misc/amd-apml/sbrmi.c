@@ -682,7 +682,8 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 
 	if (!(I3C_PID_INSTANCE_ID(i3cdev->desc->info.pid) == 1 ||
 	      i3cdev->desc->info.pid == 0x22400000002)) {
-		dev_info(dev, "SBRMI: PID Error: %llx\n", i3cdev->desc->info.pid);
+		dev_info(dev, "SBRMI: PID mismatch: 0x%llx not a RMI controller\n",
+			 i3cdev->desc->info.pid);
 		return -ENXIO;
 	}
 
@@ -705,8 +706,8 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 	map_sbrmi_pid_to_static_addr(i3cdev, rmi_dev);
 	if (rmi_dev->dev_static_addr == 0)
 	{
-		dev_info(dev, "SBRMI: PID = 0x%llx, static address zero, skip the device\n",
-				i3cdev->desc->info.pid);
+		dev_err(dev, "SBRMI: PID = 0x%llx, static address zero, skip the device\n",
+			i3cdev->desc->info.pid);
 	}
 
 	hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbrmi_%s",
