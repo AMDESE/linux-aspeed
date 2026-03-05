@@ -377,15 +377,15 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			p3v3aux@43 {
+			p3v3aux@4F {
 				//P3V3_AUX VRM
 				compatible = "pmbus";
-				reg = <0x43>;
+				reg = <0x4F>;
 			};
-			p5vs5@08 {
+			p5vs5@0B {
 				//P5V_S5 VRM
 				compatible = "pmbus";
-				reg = <0x08>;
+				reg = <0x0B>;
 			};
 			p1v8aux@09 {
 				//P1V8_AUX VRM
