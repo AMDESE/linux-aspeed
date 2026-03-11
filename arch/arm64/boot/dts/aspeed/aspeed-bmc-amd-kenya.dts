@@ -788,3 +788,7 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	non-removable;
 	max-frequency = <200000000>;
 };
+
+&chassis {
+	status = "okay";
+};
