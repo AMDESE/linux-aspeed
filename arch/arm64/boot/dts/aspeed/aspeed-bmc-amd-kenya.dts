@@ -10,14 +10,16 @@
 #include <dt-bindings/i2c/i2c.h>
 #include <dt-bindings/i3c/i3c.h>
 
-//#define VERONA 1
+#define DUAL_NODE 0	// 1: DUAL_NODE, 0: SINGLE_NODE
+#define PCIE0_EP 1	// 1: EP, 0: RC
+#define PCIE1_EP 1	// 1: EP, 0: RC
 
 / {
 	model = "AMD Kenya PRB";
 	compatible = "amd,kenya-bmc", "aspeed,ast2700";
 
 	chosen {
-		stdout-path = &uart12;
+                stdout-path = &uart12;
 		bootargs = "console=ttyS12,115200n8";
 	};
 
@@ -38,65 +40,22 @@
 		#size-cells = <2>;
 		ranges;
 
-		mcu_fw: mcu-firmware@42fe00000 {
-			reg = <0x4 0x2fe00000 0x0 0x200000>;
-			no-map;
-		};
-
-		atf: trusted-firmware-a@430000000 {
-			reg = <0x4 0x30000000 0x0 0x80000>;
-			no-map;
-		};
-
-		optee_core: optee-core@430080000 {
-			reg = <0x4 0x30080000 0x0 0x1000000>;
-			no-map;
-		};
-
-		bmc_dev0_memory: bmc_dev0_memory@423800000 {
-			reg = <0x4 0x23800000 0x0 0x100000>;
-			no-map;
-		};
-
-		vbios_base0: vbios-base0@431bb0000 {
-			reg = <0x4 0x31bb0000 0x0 0x10000>;
-			no-map;
-		};
-
-		vbios_base1: vbios-base1@431bc0000 {
-			reg = <0x4 0x31bc0000 0x0 0x10000>;
-			no-map;
-		};
+		#include "ast2700-reserved-mem.dtsi"
 
 		video_engine_memory0: video0 {
-			size = <0x0 0x04000000>;  /* 64M */
+			size = <0x0 0x02000000>;
 			alignment = <0x0 0x00010000>;
 			compatible = "shared-dma-pool";
 			reusable;
 		};
-
-		pcc_memory: pccbuffer {
-			reg = <0x4 0xE0000000 0x00001000>; /* 4K */
-			no-map;
-		};
-
-		xdma_memory0: xdma0 {
+#if 0
+		gfx_memory: framebuffer {
 			size = <0x0 0x01000000>;
 			alignment = <0x0 0x01000000>;
 			compatible = "shared-dma-pool";
-			no-map;
+			reusable;
 		};
-
-		espi0_mmbi_memory: espi0-mmbi-memory@424000000 {
-			reg = <0x4 0x24000000 0x0 0x4000000>;
-			no-map;
-		};
-
-		mctp0_reserved: mctp0_reserved@431080000 {
-			reg = <0x4 0x31080000 0x0 0x10000>;
-			compatible = "shared-dma-pool";
-			no-map;
-		};
+#endif
 	};
 
 	aliases {
@@ -155,7 +114,7 @@
 
 &mac0 {
 	status = "okay";
-	phy-mode = "rgmii";
+	phy-mode = "rgmii-id";
 	phy-handle = <&ethphy0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_rgmii0_default &pinctrl_rgmii0_driving>;
@@ -167,6 +126,7 @@
         pinctrl-0 = <&pinctrl_rmii1_default>;
         clock-names = "MACCLK", "RCLK";
         use-ncsi;
+        phy-mode = "rmii";
 };
 
 &fmc {
@@ -181,7 +141,36 @@
 		spi-max-frequency = <50000000>;
 		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>;
-#include "amd-flash-layout-128.dtsi"
+partitions {
+        compatible = "fixed-partitions";
+        #address-cells = <1>;
+        #size-cells = <1>;
+
+        u-boot@0 {
+                reg = <0x0 0x400000>; // 4MB
+                label = "u-boot";
+        };
+
+        u-boot-env@400000 {
+                reg = <0x400000 0x20000>; // 128KB
+                label = "u-boot-env";
+        };
+        kernel@420000 {
+                reg = <0x420000 0x1000000>; // 16MB
+                label = "kernel";
+        };
+
+        rofs@1420000 {
+                reg = <0x1420000 0x4BE0000>; // 77.875MB
+                label = "rofs";
+        };
+
+        rwfs@6000000 {
+                reg = <0x6000000 0x2000000>; // 32MB
+                label = "rwfs";
+        };
+};
+
 	};
 
 	flash@1 {
@@ -191,6 +180,35 @@
 		spi-max-frequency = <50000000>;
 		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>;
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			image-stg@0000000 {
+				reg = <0x0000000 0x3de0000>; // 63360KB
+				label = "img-stg";
+			};
+			pfr-stg@3de0000 {
+				reg = <0x3de0000 0x100000>; // 1024KB
+				label = "pfr-stg";
+			};
+			cpld-stg@3ee0000 {
+				reg = <0x3ee0000 0x400000>; // 4096KB
+				label = "cpld-stg";
+			};
+			afm-stg@42e0000 {
+				reg = <0x42e0000 0x20000>; // 128KB
+				label = "afm-stg";
+			};
+			afm-rc@4300000 {
+				reg = <0x4300000 0x20000>; // 128KB
+				label = "afm-rc";
+			};
+			reserved-2@4320000 {
+				reg = <0x4320000 0x3ce0000>; // 62336KB
+				label = "reserved-2";
+			};
+		};
 	};
 };
 
@@ -281,6 +299,11 @@
 			};
 		};
 	};
+};
+
+/* ROT board PFR mailbox. */
+&i2c6 {
+	status = "okay";
 };
 
 &i2c7 {
@@ -388,6 +411,7 @@
 			reg = <4>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+
 		};
 
 		mcio_6: i2c@5 {
@@ -564,6 +588,27 @@
 	i3c-scl-hz = <12500000>;
 	i2c-scl-hz = <1000000>;
 	mctp-controller;
+
+	scoob_p0: scoob@0,22400002118 {
+		reg = <0x0 0x224 0x00002118>;
+		mrl = <69>;
+		mwl = <69>;
+	};
+	scoob_p0_AB: scoob@0,22400002119 {
+		reg = <0x0 0x224 0x00002119>;
+		mrl = <69>;
+		mwl = <69>;
+	};
+};
+
+/ {
+	/* Alert_L associated with socket 0 */
+	alertl_sock0 {
+		compatible = "apml-alertl";
+		status = "okay";
+		socket-num =  /bits/ 8 <0>;
+		gpios = <&ltpi0_gpio 20 GPIO_ACTIVE_LOW>;
+	};
 };
 
 #ifdef I3C_HUB
@@ -605,20 +650,20 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 };
 #endif
 
-&gpio0 {
+&gpio1 {
 	status = "okay";
 
 	/*
-         * by default the direction of the SEL_P0_SEC_I2C_ROT_BMC (GPIO B0)
-         * is "in". It should be set to "out" and value of "1" for the
-         * I2C bus to be owned by the BMC.
-         */
-        p0_sec_i2c {
-                gpio-hog;
-                gpios = <8 GPIO_ACTIVE_HIGH>;
-                output-high;
-                line-name = "SEL_P0_SEC_I2C_ROT_BMC";
-        };
+     * by default the direction of the SEL_P0_SEC_I2C_ROT_BMC (GPIO B0)
+     * is "in". It should be set to "out" and value of "1" for the
+     * I2C bus to be owned by the BMC.
+     */
+    p0_sec_i2c {
+        gpio-hog;
+        gpios = <8 GPIO_ACTIVE_HIGH>;
+        output-high;
+        line-name = "SEL_P0_SEC_I2C_ROT_BMC";
+    };
 };
 
 &ltpi0 {
@@ -632,14 +677,11 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 			"P0_MGMT_ASSERT_CLR_CMOS","P0_MGMT_MON_PROCHOT_L","P0_MGMT_ASSERT_PROCHOT_L",
 			"P0_MGMT_MON_RSMRST_L","P0_ASSERT_RSMRST",
 		/*08-15*/ "P0_MGMT_MON_THERMTRIP_L","P0_MGMT_ASSERT_THERMTRIP_L","P0_PRESENT_L",
-			"","P1_PRESENT_L","",
-			"P0_MGMT_MON_POST_COMPLETE","",
+			"","P1_PRESENT_L","","P0_MGMT_MON_POST_COMPLETE","",
 		/*16-23*/ "P0_MGMT_MON_PWR_GOOD","","P0_MGMT_MON_PSP_SOFT_FUSE_NTFY",
-			"","P0_I3C_APML_ALERT_L","",
-			"MGMT_SYS_MON_ATX_PWR_OK","",
-		/*24-31*/ "","","","","","","","P0_MGMT_ASSERT_NMI_BTN_L",
-		/*32-39*/ "","P0_MGMT_SOC_RESET_L","",
-			"MGMT_HDT_SEL","","SCM_JTAG_DBREQ","","JTAG_TRST_N",
+			"","P0_I3C_APML_ALERT_L","","MGMT_SYS_MON_ATX_PWR_OK","",
+		/*24-31*/ "","P0_MGMT_UPDATE_FLASH_0","","P0_MGMT_UPDATE_FLASH_1","","P0_MGMT_UPDATE_FLASH_2","","P0_MGMT_ASSERT_NMI_BTN_L",
+		/*32-39*/ "","P0_MGMT_SOC_RESET_L","","MGMT_HDT_SEL","","SCM_JTAG_DBREQ","","JTAG_TRST_N",
 		/*40-47*/ "","P0_MGMT_ASSERT_WARM_RST_BTN_L","P0_MGMT_MON_DIMM_AH_PCAMP","","P0_MGMT_MON_DIMM_IP_PCAMP","","","",
 		/*48-55*/ "","","","","","","","",
 		/*56-63*/ "","","","","","","","",
@@ -652,8 +694,7 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 		/*112-119*/ "","","","","","","","",
 		/*120-127*/ "","","","","","","","",
 		/*128-135*/ "P0_MGMT_MON_RST_BTN_L","P0_MGMT_ASSERT_RST_BTN_L","P0_MGMT_MON_PWR_BTN_L",
-			 "P0_MGMT_ASSERT_PWR_BTN_L","","",
-			 "","",
+			 "P0_MGMT_ASSERT_PWR_BTN_L","","","","",
 		/*136-143*/ "","","","","","","","",
 		/*144-151*/ "","","","","","","","",
 		/*152-159*/ "","","","","","","","",
@@ -696,8 +737,8 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	rec-mode = <0x1>;
 	port-addr-hbits-select = <0x1>;
 	port-addr-xbits = <0x3>;
-
 	status = "okay";
+	pcc-ports = <0x80>;
 };
 
 &uart13 {
@@ -706,6 +747,7 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	status = "okay";
 };
 
+#if 0 //Currently host uart from uart13 LTPI0 UART0.
 /* eSPI VUART */
 &vuart0 {
 	status = "okay";
@@ -714,20 +756,7 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	sirq = <4>;
 	sirq-polarity = <0>;
 };
-
-&uphy3a {
-	status = "okay";
-};
-
-&vhuba0 {
-	status = "okay";
-	pinctrl-0 = <&pinctrl_usb2ahpd0_default>;
-};
-
-&usb3ahp {
-	status = "okay";
-	pinctrl-0 = <&pinctrl_usb3axhp_default &pinctrl_usb2axhp_default>;
-};
+#endif
 
 &xdma0 {
 	status = "okay";
@@ -750,7 +779,48 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	mctp-controller;
 };
 
+&uphy3a {
+	status = "okay";
+};
+
+&vhuba0 {
+	status = "okay";
+	pinctrl-0 = <&pinctrl_usb2ahpd0_default>;
+};
+
+&usb3ahp {
+	status = "okay";
+	pinctrl-0 = <&pinctrl_usb3axhp_default &pinctrl_usb2axhp_default>;
+};
+
+
+
+&wdt0 {
+	status = "okay";
+};
+
+&wdt1 {
+	status = "okay";
+};
+
+&otp {
+	status = "okay";
+};
+
 &bmc_dev0 {
 	status = "okay";
 	memory-region = <&bmc_dev0_memory>;
+};
+
+&emmc_controller {
+	status = "okay";
+	mmc-hs200-1_8v;
+};
+
+&emmc {
+	status = "okay";
+	bus-width = <4>;
+	pinctrl-0 = <&pinctrl_emmc_default &pinctrl_emmcg8_default>;
+	non-removable;
+	max-frequency = <200000000>;
 };
