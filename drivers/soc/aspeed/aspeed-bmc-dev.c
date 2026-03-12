@@ -22,8 +22,6 @@
 #include <linux/dma-mapping.h>
 #include <linux/miscdevice.h>
 
-static DEFINE_IDA(bmc_device_ida);
-
 #define SCU_TRIGGER_MSI
 
 /* AST2600 SCU */
@@ -38,6 +36,7 @@ static DEFINE_IDA(bmc_device_ida);
 /* AST2700 SCU */
 #define SCU0_REVISION_ID		0x0
 #define REVISION_ID				GENMASK(23, 16)
+#define SCU0_PCIE_CONF_CTRL		0x970
 /* Host2BMC */
 #define ASPEED_BMC_MEM_BAR			0xF10
 #define  PCIE2PCI_MEM_BAR_ENABLE		BIT(1)
@@ -119,7 +118,6 @@ struct aspeed_bmc_device {
 	struct miscdevice miscdev;
 	int id;
 	void __iomem *reg_base;
-	void __iomem *bmc_mem_virt;
 	dma_addr_t bmc_mem_phy;
 	phys_addr_t bmc_mem_size;
 
@@ -131,10 +129,9 @@ struct aspeed_bmc_device {
 	const struct aspeed_platform *platform;
 
 	/* AST2700 */
-	struct regmap *config;
 	struct regmap *device;
 	struct regmap *e2m;
-	/*AST2600*/
+
 	struct regmap *scu;
 	int pcie_irq;
 };
@@ -180,9 +177,8 @@ static ssize_t aspeed_ast2600_queue_rx(struct file *filp, struct kobject *kobj,
 	int ret;
 
 	ret = wait_event_interruptible(queue->rx_wait,
-				       ((readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS) & HOST2BMC_ENABLE_INTB) &&
 				       !(readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS) &
-				       ((index == QUEUE1) ? HOST2BMC_Q1_EMPTY : HOST2BMC_Q2_EMPTY))));
+				       ((index == QUEUE1) ? HOST2BMC_Q1_EMPTY : HOST2BMC_Q2_EMPTY)));
 	if (ret)
 		return -EINTR;
 
@@ -191,7 +187,7 @@ static ssize_t aspeed_ast2600_queue_rx(struct file *filp, struct kobject *kobj,
 
 	regmap_read(bmc_device->scu, ASPEED_SCU04, &scu_id);
 	if (scu_id == AST2600A3_SCU04) {
-		writel(BMC2HOST_INT_STS_DOORBELL,
+		writel(BMC2HOST_INT_STS_DOORBELL | BMC2HOST_ENABLE_INTB,
 		       bmc_device->reg_base + ASPEED_BMC_BMC2HOST_STS);
 	} else {
 		//A0 : BIT(12) A1 : BIT(15)
@@ -251,22 +247,17 @@ static ssize_t aspeed_ast2700_queue_rx(struct file *filp, struct kobject *kobj,
 	int index = queue->index;
 	u32 *data = (u32 *)buf;
 	int ret;
-	u32 status;
 
 	ret = wait_event_interruptible(queue->rx_wait,
-				       ((readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS) & HOST2BMC_ENABLE_INTB) &&
 				       !(readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS) &
-				       ((index == QUEUE1) ? HOST2BMC_Q1_EMPTY : HOST2BMC_Q2_EMPTY))));
-	status = readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS);
-	dev_info(bmc_device->dev, "aspeed_ast2700_queue_rx(): status=0x%x\n", status);
-
+				       ((index == QUEUE1) ? HOST2BMC_Q1_EMPTY : HOST2BMC_Q2_EMPTY)));
 	if (ret)
 		return -EINTR;
 
 	data[0] = readl(bmc_device->reg_base +
 			((index == QUEUE1) ? ASPEED_BMC_HOST2BMC_Q1 : ASPEED_BMC_HOST2BMC_Q2));
 
-	writel(BMC2HOST_INT_STS_DOORBELL,
+	writel(BMC2HOST_INT_STS_DOORBELL | BMC2HOST_ENABLE_INTB,
 	       bmc_device->reg_base + ASPEED_BMC_BMC2HOST_STS);
 
 	return sizeof(u32);
@@ -320,19 +311,11 @@ static irqreturn_t aspeed_bmc_dev_isr(int irq, void *dev_id)
 	struct aspeed_bmc_device *bmc_device = dev_id;
 	u32 host2bmc_q_sts = readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS);
 
-	dev_info(bmc_device->dev, "aspeed_bmc_dev_isr(): host2bmc_q_sts=0x%x\n", host2bmc_q_sts);
-
 	if (host2bmc_q_sts & HOST2BMC_INT_STS_DOORBELL)
 		writel(HOST2BMC_INT_STS_DOORBELL, bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS);
 
 	if (host2bmc_q_sts & HOST2BMC_ENABLE_INTB)
-	{
 		writel(HOST2BMC_ENABLE_INTB, bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS);
-		if (!(host2bmc_q_sts & HOST2BMC_Q1_EMPTY))
-			wake_up_interruptible(&bmc_device->queue[QUEUE1].rx_wait);
-		if (!(host2bmc_q_sts & HOST2BMC_Q2_EMPTY))
-			wake_up_interruptible(&bmc_device->queue[QUEUE2].rx_wait);
-	}
 
 	if (host2bmc_q_sts & HOST2BMC_Q1_FULL)
 		dev_info(bmc_device->dev, "Q1 Full\n");
@@ -343,8 +326,14 @@ static irqreturn_t aspeed_bmc_dev_isr(int irq, void *dev_id)
 	if (!(readl(bmc_device->reg_base + ASPEED_BMC_BMC2HOST_STS) & BMC2HOST_Q1_FULL))
 		wake_up_interruptible(&bmc_device->queue[QUEUE1].tx_wait);
 
+	if (!(readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS) & HOST2BMC_Q1_EMPTY))
+		wake_up_interruptible(&bmc_device->queue[QUEUE1].rx_wait);
+
 	if (!(readl(bmc_device->reg_base + ASPEED_BMC_BMC2HOST_STS) & BMC2HOST_Q2_FULL))
 		wake_up_interruptible(&bmc_device->queue[QUEUE2].tx_wait);
+
+	if (!(readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS) & HOST2BMC_Q2_EMPTY))
+		wake_up_interruptible(&bmc_device->queue[QUEUE2].rx_wait);
 
 	return IRQ_HANDLED;
 }
@@ -395,7 +384,7 @@ static int aspeed_ast2600_init(struct platform_device *pdev)
 	writel(bmc_device->bmc_mem_phy, bmc_device->reg_base + ASPEED_BMC_MEM_BAR_REMAP);
 
 	//Setting BMC to Host Q register
-	writel(BMC2HOST_Q2_FULL_UNMASK | BMC2HOST_Q1_FULL_UNMASK,
+	writel(BMC2HOST_Q2_FULL_UNMASK | BMC2HOST_Q1_FULL_UNMASK | BMC2HOST_ENABLE_INTB,
 	       bmc_device->reg_base + ASPEED_BMC_BMC2HOST_STS);
 	writel(HOST2BMC_Q2_FULL_UNMASK |  HOST2BMC_Q1_FULL_UNMASK | HOST2BMC_ENABLE_INTB,
 	       bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS);
@@ -407,16 +396,9 @@ static int aspeed_ast2700_init(struct platform_device *pdev)
 {
 	struct aspeed_bmc_device *bmc_device = platform_get_drvdata(pdev);
 	struct device *dev = &pdev->dev;
-	u32 pcie_config_ctl = SCU_PCIE_CONF_BMC_DEV_EN_IRQ |
-			      SCU_PCIE_CONF_BMC_DEV_EN_MMIO | SCU_PCIE_CONF_BMC_DEV_EN;
+	u32 pcie_config_ctl;
 	u32 scu_id;
 	int i;
-
-	bmc_device->config = syscon_regmap_lookup_by_phandle(dev->of_node, "aspeed,config");
-	if (IS_ERR(bmc_device->config)) {
-		dev_err(&pdev->dev, "failed to find config regmap\n");
-		return PTR_ERR(bmc_device->config);
-	}
 
 	bmc_device->device = syscon_regmap_lookup_by_phandle(dev->of_node, "aspeed,device");
 	if (IS_ERR(bmc_device->device)) {
@@ -436,31 +418,31 @@ static int aspeed_ast2700_init(struct platform_device *pdev)
 		return PTR_ERR(bmc_device->scu);
 	}
 
-	if (bmc_device->pcie2lpc)
-		pcie_config_ctl |= SCU_PCIE_CONF_BMC_DEV_EN_E2L |
-				   SCU_PCIE_CONF_BMC_DEV_EN_LPC_DECODE;
-
-	regmap_update_bits(bmc_device->config, 0x10, pcie_config_ctl, pcie_config_ctl);
+	if (bmc_device->pcie2lpc) {
+		pcie_config_ctl = SCU_PCIE_CONF_BMC_DEV_EN_E2L |
+				  SCU_PCIE_CONF_BMC_DEV_EN_LPC_DECODE;
+		regmap_update_bits(bmc_device->scu, SCU0_PCIE_CONF_CTRL,
+				   pcie_config_ctl, pcie_config_ctl);
+	}
 
 	/* update class code to others as it is a MFD device */
 	regmap_write(bmc_device->device, 0x18, 0xff000027);
 
-	//MSI
+	/* MSI */
 	regmap_update_bits(bmc_device->device, 0x74, GENMASK(7, 4), BIT(7) | (5 << 4));
-
-	//EnPCIaMSI_EnPCIaIntA_EnPCIaMst_EnPCIaDev
-	//Disable MSI[bit25] in ast2700A0 int only
+	/* EnPCIaMSI:BIT(25), EnPCIaIntA:BIT(17), EnPCIaMst:BIT(9), EnPCIaDev:BIT(1) */
 	regmap_read(bmc_device->scu, SCU0_REVISION_ID, &scu_id);
 	if (scu_id & REVISION_ID)
 		regmap_update_bits(bmc_device->device, 0x70,
 				   BIT(25) | BIT(17) | BIT(9) | BIT(1),
 				   BIT(25) | BIT(17) | BIT(9) | BIT(1));
 	else
+		/* Disable MSI[bit25] in ast2700A0 int only */
 		regmap_update_bits(bmc_device->device, 0x70,
 				   BIT(17) | BIT(9) | BIT(1),
 				   BIT(25) | BIT(17) | BIT(9) | BIT(1));
 
-	//bar size check for 4k align
+	/* bar size check for 4k align */
 	for (i = 1; i < 16; i++) {
 		if ((bmc_device->bmc_mem_size / 4096) == (1 << (i - 1)))
 			break;
@@ -477,22 +459,15 @@ static int aspeed_ast2700_init(struct platform_device *pdev)
 	 */
 	regmap_write(bmc_device->device, 0x1c, ((bmc_device->bmc_mem_phy) >> 4) | i);
 
-	/*
-	 * BAR assign in e2m
-	 * e2m0:12c21000
-	 * 108:host2bmc-0 for pcie0
-	 * 128:host2bmc-1 for pcie0
-	 * e2m1:12c22000
-	 * 108:host2bmc-0 for pcie1
-	 * 128:host2bmc-1 for pcie1
-	 */
-	if (bmc_device->id)
-		regmap_write(bmc_device->e2m, 0x128, ((bmc_device->bmc_mem_phy) >> 4) | i);
-	else
+	if (bmc_device->id == 0)
+		/* Node 0 Bar 0 */
 		regmap_write(bmc_device->e2m, 0x108, ((bmc_device->bmc_mem_phy) >> 4) | i);
+	else
+		/* Node 1 Bar 0 */
+		regmap_write(bmc_device->e2m, 0x128, ((bmc_device->bmc_mem_phy) >> 4) | i);
 
-	//Setting BMC to Host Q register
-	writel(BMC2HOST_Q2_FULL_UNMASK | BMC2HOST_Q1_FULL_UNMASK,
+	/* Setting BMC to Host Q register */
+	writel(BMC2HOST_Q2_FULL_UNMASK | BMC2HOST_Q1_FULL_UNMASK | BMC2HOST_ENABLE_INTB,
 	       bmc_device->reg_base + ASPEED_BMC_BMC2HOST_STS);
 	writel(HOST2BMC_Q2_FULL_UNMASK | HOST2BMC_Q1_FULL_UNMASK | HOST2BMC_ENABLE_INTB,
 	       bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS);
@@ -589,27 +564,19 @@ static int aspeed_bmc_device_probe(struct platform_device *pdev)
 	struct device_node *np;
 	int ret = 0, i;
 
-	dev_info(dev, "aspeed_bmc_device_probe: start\n");
-
 	if (!md)
-	{
-		dev_err(dev, "aspeed_bmc_device_probe: Error no md\n");
 		return -ENODEV;
-	}
 
 	bmc_device = devm_kzalloc(&pdev->dev, sizeof(struct aspeed_bmc_device), GFP_KERNEL);
 	if (!bmc_device)
-	{
-		dev_err(dev, "aspeed_bmc_device_probe: Error no Mem\n");
 		return -ENOMEM;
-	}
 	dev_set_drvdata(dev, bmc_device);
 
 	bmc_device->platform = md;
 
-	bmc_device->id = ida_simple_get(&bmc_device_ida, 0, 0, GFP_KERNEL);
+	bmc_device->id = of_alias_get_id(dev->of_node, "bmcdev");
 	if (bmc_device->id < 0)
-		goto out_region;
+		bmc_device->id = 0;
 
 	bmc_device->dev = dev;
 	bmc_device->reg_base = devm_platform_ioremap_resource(pdev, 0);
@@ -633,12 +600,6 @@ static int aspeed_bmc_device_probe(struct platform_device *pdev)
 
 	bmc_device->bmc_mem_phy = res.start;
 	bmc_device->bmc_mem_size = resource_size(&res);
-	bmc_device->bmc_mem_virt = devm_ioremap_resource(dev, &res);
-	if (!bmc_device->bmc_mem_virt) {
-		dev_err(dev, "cannot map bmc dev memory region\n");
-		ret = -ENOMEM;
-		goto out_region;
-	}
 
 	bmc_device->irq = platform_get_irq(pdev, 0);
 	if (bmc_device->irq < 0) {
@@ -692,20 +653,17 @@ static int aspeed_bmc_device_probe(struct platform_device *pdev)
 	return 0;
 
 out_free_misc:
-	dev_err(dev, "aspeed_bmc_device_probe: err out_free_misc\n");
 	misc_deregister(&bmc_device->miscdev);
 out_free_queue:
-	dev_err(dev, "aspeed_bmc_device_probe: err out_free_queue\n");
 	for (i = 0; i < ASPEED_QUEUE_NUM; i++)
 		sysfs_remove_bin_file(&pdev->dev.kobj, &bmc_device->queue[i].bin);
 out_irq:
 	devm_free_irq(&pdev->dev, bmc_device->irq, bmc_device);
 out_unmap:
 	iounmap(bmc_device->reg_base);
-	devm_iounmap(&pdev->dev, bmc_device->bmc_mem_virt);
 out_region:
 	devm_kfree(&pdev->dev, bmc_device);
-	dev_err(dev, "aspeed bmc device: driver init failed (ret=%d)!\n", ret);
+	dev_warn(dev, "aspeed bmc device: driver init failed (ret=%d)!\n", ret);
 	return ret;
 }
 
@@ -721,8 +679,6 @@ static int  aspeed_bmc_device_remove(struct platform_device *pdev)
 	devm_free_irq(&pdev->dev, bmc_device->pcie_irq, bmc_device);
 
 	iounmap(bmc_device->reg_base);
-
-	devm_iounmap(&pdev->dev, bmc_device->bmc_mem_virt);
 
 	devm_kfree(&pdev->dev, bmc_device);
 

@@ -2,6 +2,13 @@
 /*
  * Copyright 2023 Aspeed Technology Inc.
  */
+#include "linux/err.h"
+#include "linux/fs.h"
+#include "linux/printk.h"
+#include "linux/spinlock.h"
+#include "linux/stddef.h"
+#include "linux/wait.h"
+#include "linux/kernel.h"
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/clk.h>
@@ -10,25 +17,27 @@
 #include <linux/bitfield.h>
 #include <linux/count_zeros.h>
 #include <linux/of_device.h>
+#include <linux/of_reserved_mem.h>
 #include <linux/of_address.h>
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
+#include <linux/mfd/syscon.h>
 #include <linux/miscdevice.h>
 #include <linux/dma-mapping.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
 #include <linux/poll.h>
 #include <linux/delay.h>
+#include <linux/regmap.h>
 
 #include "ast2700-espi.h"
-
-#define DEVICE_NAME		"aspeed-espi"
+#include "aspeed-espi-comm.h"
+#include "aspeed-espi.h"
 
 static DEFINE_IDA(ast2700_espi_ida);
 
 #define PERIF_MCYC_ALIGN	SZ_64K
 #define PERIF_MMBI_ALIGN	SZ_64M
-#define PERIF_MMBI_MAX_INST	8
 
 #define OOB_DMA_RPTR_KEY	0x4f4f4253
 #define OOB_DMA_DESC_NUM	8
@@ -36,180 +45,20 @@ static DEFINE_IDA(ast2700_espi_ida);
 
 #define FLASH_EDAF_ALIGN	SZ_16M
 
-struct ast2700_espi_perif_mmbi {
-	void *b2h_virt;
-	void *h2b_virt;
-	dma_addr_t b2h_addr;
-	dma_addr_t h2b_addr;
-	struct miscdevice b2h_mdev;
-	struct miscdevice h2b_mdev;
-	bool host_rwp_update;
-	wait_queue_head_t wq;
-	struct ast2700_espi_perif *perif;
-};
-
-struct ast2700_espi_perif {
-	struct {
-		bool enable;
-		int irq;
-		void *virt;
-		dma_addr_t taddr;
-		uint64_t saddr;
-		uint64_t size;
-		uint32_t inst_num;
-		uint32_t inst_size;
-		struct ast2700_espi_perif_mmbi inst[PERIF_MMBI_MAX_INST];
-	} mmbi;
-
-	struct {
-		bool enable;
-		void *virt;
-		dma_addr_t taddr;
-		uint64_t saddr;
-		uint64_t size;
-	} mcyc;
-
-	struct {
-		bool enable;
-		void *np_tx_virt;
-		dma_addr_t np_tx_addr;
-		void *pc_tx_virt;
-		dma_addr_t pc_tx_addr;
-		void *pc_rx_virt;
-		dma_addr_t pc_rx_addr;
-	} dma;
-
-	bool rx_ready;
-	wait_queue_head_t wq;
-
-	spinlock_t lock;
-	struct mutex np_tx_mtx;
-	struct mutex pc_tx_mtx;
-	struct mutex pc_rx_mtx;
-
-	struct miscdevice mdev;
-};
-
-struct ast2700_espi_vw {
-	struct {
-		bool hw_mode;
-		uint32_t grp;
-		uint32_t dir0;
-		uint32_t dir1;
-		uint32_t val0;
-		uint32_t val1;
-	} gpio;
-	struct {
-		uint8_t pch_generic;
-	} platform;
-
-	struct miscdevice mdev;
-};
-
-struct ast2700_espi_oob_dma_tx_desc {
-	uint32_t data_addrl;
-	uint32_t data_addrh;
-	uint8_t cyc;
-	uint16_t tag : 4;
-	uint16_t len : 12;
-	uint8_t msg_type : 3;
-	uint8_t raz0 : 1;
-	uint8_t pec : 1;
-	uint8_t int_en : 1;
-	uint8_t pause : 1;
-	uint8_t raz1 : 1;
-	uint32_t raz2;
-	uint32_t raz3;
-	uint32_t pad[3];
-} __packed;
-
-struct ast2700_espi_oob_dma_rx_desc {
-	uint32_t data_addrl;
-	uint32_t data_addrh;
-	uint8_t cyc;
-	uint16_t tag : 4;
-	uint16_t len : 12;
-	uint8_t raz : 7;
-	uint8_t dirty : 1;
-	uint32_t pad[1];
-} __packed;
-
-struct ast2700_espi_oob {
-	struct {
-		bool enable;
-		struct ast2700_espi_oob_dma_tx_desc *txd_virt;
-		dma_addr_t txd_addr;
-		struct ast2700_espi_oob_dma_rx_desc *rxd_virt;
-		dma_addr_t rxd_addr;
-		void *tx_virt;
-		dma_addr_t tx_addr;
-		void *rx_virt;
-		dma_addr_t rx_addr;
-	} dma;
-
-	bool rx_ready;
-	wait_queue_head_t wq;
-
-	spinlock_t lock;
-	struct mutex tx_mtx;
-	struct mutex rx_mtx;
-
-	struct miscdevice mdev;
-};
-
-struct ast2700_espi_flash {
-	struct {
-		uint32_t mode;
-		phys_addr_t taddr;
-		uint64_t size;
-	} edaf;
-
-	struct {
-		bool enable;
-		void *tx_virt;
-		dma_addr_t tx_addr;
-		void *rx_virt;
-		dma_addr_t rx_addr;
-	} dma;
-
-	bool rx_ready;
-	wait_queue_head_t wq;
-
-	spinlock_t lock;
-	struct mutex rx_mtx;
-	struct mutex tx_mtx;
-
-	struct miscdevice mdev;
-};
-
-struct ast2700_espi {
-	struct device *dev;
-	void __iomem *regs;
-	struct clk *clk;
-	int dev_id;
-	int irq;
-
-	struct ast2700_espi_perif perif;
-	struct ast2700_espi_vw vw;
-	struct ast2700_espi_oob oob;
-	struct ast2700_espi_flash flash;
-};
-
 /* peripheral channel (CH0) */
 static int ast2700_espi_mmbi_b2h_mmap(struct file *fp, struct vm_area_struct *vma)
 {
-	struct ast2700_espi_perif_mmbi *mmbi;
-	struct ast2700_espi_perif *perif;
-	struct ast2700_espi *espi;
+	struct aspeed_espi_perif_mmbi *mmbi;
+	struct aspeed_espi_perif *perif;
+	struct aspeed_espi *espi;
 	unsigned long vm_size;
 	pgprot_t prot;
 
-	mmbi = container_of(fp->private_data, struct ast2700_espi_perif_mmbi, b2h_mdev);
+	mmbi = container_of(fp->private_data, struct aspeed_espi_perif_mmbi, b2h_mdev);
 
 	perif = mmbi->perif;
 
-	espi = container_of(perif, struct ast2700_espi, perif);
-
+	espi = container_of(perif, struct aspeed_espi, perif);
 	vm_size = vma->vm_end - vma->vm_start;
 	prot = vma->vm_page_prot;
 
@@ -228,17 +77,17 @@ static int ast2700_espi_mmbi_b2h_mmap(struct file *fp, struct vm_area_struct *vm
 
 static int ast2700_espi_mmbi_h2b_mmap(struct file *fp, struct vm_area_struct *vma)
 {
-	struct ast2700_espi_perif_mmbi *mmbi;
-	struct ast2700_espi_perif *perif;
-	struct ast2700_espi *espi;
+	struct aspeed_espi_perif_mmbi *mmbi;
+	struct aspeed_espi_perif *perif;
+	struct aspeed_espi *espi;
 	unsigned long vm_size;
 	pgprot_t prot;
 
-	mmbi = container_of(fp->private_data, struct ast2700_espi_perif_mmbi, h2b_mdev);
+	mmbi = container_of(fp->private_data, struct aspeed_espi_perif_mmbi, h2b_mdev);
 
 	perif = mmbi->perif;
 
-	espi = container_of(perif, struct ast2700_espi, perif);
+	espi = container_of(perif, struct aspeed_espi, perif);
 
 	vm_size = vma->vm_end - vma->vm_start;
 	prot = vma->vm_page_prot;
@@ -258,9 +107,9 @@ static int ast2700_espi_mmbi_h2b_mmap(struct file *fp, struct vm_area_struct *vm
 
 static __poll_t ast2700_espi_mmbi_h2b_poll(struct file *fp, struct poll_table_struct *pt)
 {
-	struct ast2700_espi_perif_mmbi *mmbi;
+	struct aspeed_espi_perif_mmbi *mmbi;
 
-	mmbi = container_of(fp->private_data, struct ast2700_espi_perif_mmbi, h2b_mdev);
+	mmbi = container_of(fp->private_data, struct aspeed_espi_perif_mmbi, h2b_mdev);
 
 	poll_wait(fp, &mmbi->wq, pt);
 
@@ -273,18 +122,18 @@ static __poll_t ast2700_espi_mmbi_h2b_poll(struct file *fp, struct poll_table_st
 }
 
 static long ast2700_espi_perif_pc_get_rx(struct file *fp,
-					 struct ast2700_espi_perif *perif,
+					 struct aspeed_espi_perif *perif,
 					 struct aspeed_espi_ioc *ioc)
 {
-	uint32_t reg, cyc, tag, len;
-	struct ast2700_espi *espi;
+	u32 reg, cyc, tag, len;
+	struct aspeed_espi *espi;
 	struct espi_comm_hdr *hdr;
 	unsigned long flags;
-	uint32_t pkt_len;
-	uint8_t *pkt;
+	u32 pkt_len;
+	u8 *pkt;
 	int i, rc;
 
-	espi = container_of(perif, struct ast2700_espi, perif);
+	espi = container_of(perif, struct aspeed_espi, perif);
 
 	if (fp->f_flags & O_NONBLOCK) {
 		if (!mutex_trylock(&perif->pc_rx_mtx))
@@ -392,16 +241,16 @@ unlock_mtx_n_out:
 }
 
 static long ast2700_espi_perif_pc_put_tx(struct file *fp,
-					 struct ast2700_espi_perif *perif,
+					 struct aspeed_espi_perif *perif,
 					 struct aspeed_espi_ioc *ioc)
 {
-	uint32_t reg, cyc, tag, len;
-	struct ast2700_espi *espi;
+	u32 reg, cyc, tag, len;
+	struct aspeed_espi *espi;
 	struct espi_comm_hdr *hdr;
-	uint8_t *pkt;
+	u8 *pkt;
 	int i, rc;
 
-	espi = container_of(perif, struct ast2700_espi, perif);
+	espi = container_of(perif, struct aspeed_espi, perif);
 
 	if (!mutex_trylock(&perif->pc_tx_mtx))
 		return -EAGAIN;
@@ -459,16 +308,16 @@ unlock_n_out:
 }
 
 static long ast2700_espi_perif_np_put_tx(struct file *fp,
-					 struct ast2700_espi_perif *perif,
+					 struct aspeed_espi_perif *perif,
 					 struct aspeed_espi_ioc *ioc)
 {
-	uint32_t reg, cyc, tag, len;
-	struct ast2700_espi *espi;
+	u32 reg, cyc, tag, len;
+	struct aspeed_espi *espi;
 	struct espi_comm_hdr *hdr;
-	uint8_t *pkt;
+	u8 *pkt;
 	int i, rc;
 
-	espi = container_of(perif, struct ast2700_espi, perif);
+	espi = container_of(perif, struct aspeed_espi, perif);
 
 	if (!mutex_trylock(&perif->np_tx_mtx))
 		return -EAGAIN;
@@ -527,10 +376,10 @@ unlock_n_out:
 
 static long ast2700_espi_perif_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 {
-	struct ast2700_espi_perif *perif;
+	struct aspeed_espi_perif *perif;
 	struct aspeed_espi_ioc ioc;
 
-	perif = container_of(fp->private_data, struct ast2700_espi_perif, mdev);
+	perif = container_of(fp->private_data, struct aspeed_espi_perif, mdev);
 
 	if (copy_from_user(&ioc, (void __user *)arg, sizeof(ioc)))
 		return -EFAULT;
@@ -554,11 +403,11 @@ static long ast2700_espi_perif_ioctl(struct file *fp, unsigned int cmd, unsigned
 
 static int ast2700_espi_perif_mmap(struct file *fp, struct vm_area_struct *vma)
 {
-	struct ast2700_espi_perif *perif;
+	struct aspeed_espi_perif *perif;
 	unsigned long vm_size;
 	pgprot_t vm_prot;
 
-	perif = container_of(fp->private_data, struct ast2700_espi_perif, mdev);
+	perif = container_of(fp->private_data, struct aspeed_espi_perif, mdev);
 	if (!perif->mcyc.enable)
 		return -EPERM;
 
@@ -597,14 +446,14 @@ static const struct file_operations ast2700_espi_perif_fops = {
 
 static irqreturn_t ast2700_espi_perif_mmbi_isr(int irq, void *arg)
 {
-	struct ast2700_espi_perif_mmbi *mmbi;
-	struct ast2700_espi_perif *perif;
-	struct ast2700_espi *espi;
-	uint32_t sts, tmp;
-	uint32_t *p;
+	struct aspeed_espi_perif_mmbi *mmbi;
+	struct aspeed_espi_perif *perif;
+	struct aspeed_espi *espi;
+	u32 sts, tmp;
+	u32 *p;
 	int i;
 
-	espi = (struct ast2700_espi *)arg;
+	espi = (struct aspeed_espi *)arg;
 
 	perif = &espi->perif;
 
@@ -618,7 +467,7 @@ static irqreturn_t ast2700_espi_perif_mmbi_isr(int irq, void *arg)
 
 		mmbi = &perif->mmbi.inst[i];
 
-		p = (uint32_t *)mmbi->h2b_virt;
+		p = (u32 *)mmbi->h2b_virt;
 		p[0] = readl(espi->regs + ESPI_MMBI_HOST_RWP(i));
 		p[1] = readl(espi->regs + ESPI_MMBI_HOST_RWP(i) + 4);
 
@@ -632,11 +481,11 @@ static irqreturn_t ast2700_espi_perif_mmbi_isr(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
-static void ast2700_espi_perif_isr(struct ast2700_espi *espi)
+static void ast2700_espi_perif_isr(struct aspeed_espi *espi)
 {
-	struct ast2700_espi_perif *perif;
+	struct aspeed_espi_perif *perif;
 	unsigned long flags;
-	uint32_t sts;
+	u32 sts;
 
 	perif = &espi->perif;
 
@@ -653,12 +502,39 @@ static void ast2700_espi_perif_isr(struct ast2700_espi *espi)
 	}
 }
 
-static void ast2700_espi_perif_reset(struct ast2700_espi *espi)
+static void ast2700_espi_perif_sw_reset(struct aspeed_espi *espi)
 {
-	struct ast2700_espi_perif *perif;
 	struct device *dev;
-	uint64_t mask;
-	uint32_t reg;
+	u32 reg;
+
+	dev = espi->dev;
+
+	reg = readl(espi->regs + ESPI_CH0_CTRL);
+	reg &= ~(ESPI_CH0_CTRL_NP_TX_RST
+		 | ESPI_CH0_CTRL_NP_RX_RST
+		 | ESPI_CH0_CTRL_PC_TX_RST
+		 | ESPI_CH0_CTRL_PC_RX_RST
+		 | ESPI_CH0_CTRL_NP_TX_DMA_EN
+		 | ESPI_CH0_CTRL_PC_TX_DMA_EN
+		 | ESPI_CH0_CTRL_PC_RX_DMA_EN
+		 | ESPI_CH0_CTRL_SW_RDY);
+	writel(reg, espi->regs + ESPI_CH0_CTRL);
+
+	udelay(1);
+
+	reg |= (ESPI_CH0_CTRL_NP_TX_RST
+		| ESPI_CH0_CTRL_NP_RX_RST
+		| ESPI_CH0_CTRL_PC_TX_RST
+		| ESPI_CH0_CTRL_PC_RX_RST);
+	writel(reg, espi->regs + ESPI_CH0_CTRL);
+}
+
+static void ast2700_espi_perif_reset(struct aspeed_espi *espi)
+{
+	struct aspeed_espi_perif *perif;
+	struct device *dev;
+	u64 mask;
+	u32 reg;
 
 	dev = espi->dev;
 
@@ -684,22 +560,10 @@ static void ast2700_espi_perif_reset(struct ast2700_espi *espi)
 
 	reg = readl(espi->regs + ESPI_CH0_CTRL);
 	reg |= (ESPI_CH0_CTRL_MCYC_RD_DIS | ESPI_CH0_CTRL_MCYC_WR_DIS);
-	reg &= ~(ESPI_CH0_CTRL_NP_TX_RST
-		 | ESPI_CH0_CTRL_NP_RX_RST
-		 | ESPI_CH0_CTRL_PC_TX_RST
-		 | ESPI_CH0_CTRL_PC_RX_RST
-		 | ESPI_CH0_CTRL_NP_TX_DMA_EN
+	reg &= ~(ESPI_CH0_CTRL_NP_TX_DMA_EN
 		 | ESPI_CH0_CTRL_PC_TX_DMA_EN
 		 | ESPI_CH0_CTRL_PC_RX_DMA_EN
 		 | ESPI_CH0_CTRL_SW_RDY);
-	writel(reg, espi->regs + ESPI_CH0_CTRL);
-
-	udelay(1);
-
-	reg |= (ESPI_CH0_CTRL_NP_TX_RST
-		| ESPI_CH0_CTRL_NP_RX_RST
-		| ESPI_CH0_CTRL_PC_TX_RST
-		| ESPI_CH0_CTRL_PC_RX_RST);
 	writel(reg, espi->regs + ESPI_CH0_CTRL);
 
 	if (perif->mmbi.enable) {
@@ -708,11 +572,11 @@ static void ast2700_espi_perif_reset(struct ast2700_espi *espi)
 		writel(reg, espi->regs + ESPI_MMBI_CTRL);
 
 		mask = ~(perif->mmbi.size - 1);
-		writel(mask >> 32, espi->regs + ESPI_CH0_MCYC0_MASKH);
+		writel(upper_32_bits(mask), espi->regs + ESPI_CH0_MCYC0_MASKH);
 		writel(mask & 0xffffffff, espi->regs + ESPI_CH0_MCYC0_MASKL);
-		writel((perif->mmbi.saddr >> 32), espi->regs + ESPI_CH0_MCYC0_SADDRH);
+		writel(upper_32_bits(perif->mmbi.saddr), espi->regs + ESPI_CH0_MCYC0_SADDRH);
 		writel((perif->mmbi.saddr & 0xffffffff), espi->regs + ESPI_CH0_MCYC0_SADDRL);
-		writel((perif->mmbi.taddr >> 32), espi->regs + ESPI_CH0_MCYC0_TADDRH);
+		writel(upper_32_bits(perif->mmbi.taddr), espi->regs + ESPI_CH0_MCYC0_TADDRH);
 		writel((perif->mmbi.taddr & 0xffffffff), espi->regs + ESPI_CH0_MCYC0_TADDRL);
 
 		writel((0x1 << (perif->mmbi.inst_num * 2)) - 1, espi->regs + ESPI_MMBI_INT_EN);
@@ -731,11 +595,11 @@ static void ast2700_espi_perif_reset(struct ast2700_espi *espi)
 
 	if (perif->mcyc.enable) {
 		mask = ~(perif->mcyc.size - 1);
-		writel(mask >> 32, espi->regs + ESPI_CH0_MCYC1_MASKH);
+		writel(upper_32_bits(mask), espi->regs + ESPI_CH0_MCYC1_MASKH);
 		writel(mask & 0xffffffff, espi->regs + ESPI_CH0_MCYC1_MASKL);
-		writel((perif->mcyc.saddr >> 32), espi->regs + ESPI_CH0_MCYC1_SADDRH);
+		writel(upper_32_bits(perif->mcyc.saddr), espi->regs + ESPI_CH0_MCYC1_SADDRH);
 		writel((perif->mcyc.saddr & 0xffffffff), espi->regs + ESPI_CH0_MCYC1_SADDRL);
-		writel((perif->mcyc.taddr >> 32), espi->regs + ESPI_CH0_MCYC1_TADDRH);
+		writel(upper_32_bits(perif->mcyc.taddr), espi->regs + ESPI_CH0_MCYC1_TADDRH);
 		writel((perif->mcyc.taddr & 0xffffffff), espi->regs + ESPI_CH0_MCYC1_TADDRL);
 
 		reg = readl(espi->regs + ESPI_CH0_MCYC1_MASKL) | ESPI_CH0_MCYC1_MASKL_EN;
@@ -747,11 +611,11 @@ static void ast2700_espi_perif_reset(struct ast2700_espi *espi)
 	}
 
 	if (perif->dma.enable) {
-		writel((perif->dma.np_tx_addr >> 32), espi->regs + ESPI_CH0_NP_TX_DMAH);
+		writel(upper_32_bits(perif->dma.np_tx_addr), espi->regs + ESPI_CH0_NP_TX_DMAH);
 		writel((perif->dma.np_tx_addr & 0xffffffff), espi->regs + ESPI_CH0_NP_TX_DMAL);
-		writel((perif->dma.pc_tx_addr >> 32), espi->regs + ESPI_CH0_PC_TX_DMAH);
+		writel(upper_32_bits(perif->dma.pc_tx_addr), espi->regs + ESPI_CH0_PC_TX_DMAH);
 		writel((perif->dma.pc_tx_addr & 0xffffffff), espi->regs + ESPI_CH0_PC_TX_DMAL);
-		writel((perif->dma.pc_rx_addr >> 32), espi->regs + ESPI_CH0_PC_RX_DMAH);
+		writel(upper_32_bits(perif->dma.pc_rx_addr), espi->regs + ESPI_CH0_PC_RX_DMAH);
 		writel((perif->dma.pc_rx_addr & 0xffffffff), espi->regs + ESPI_CH0_PC_RX_DMAL);
 
 		reg = readl(espi->regs + ESPI_CH0_CTRL)
@@ -760,6 +624,11 @@ static void ast2700_espi_perif_reset(struct ast2700_espi *espi)
 		      | ESPI_CH0_CTRL_PC_RX_DMA_EN;
 		writel(reg, espi->regs + ESPI_CH0_CTRL);
 	}
+	if (perif->rtc_enable) {
+		reg = readl(espi->regs + ESPI_CAP_GEN)
+		      | ESPI_CAP_GEN_RTC_SUP;
+		writel(reg, espi->regs + ESPI_CAP_GEN);
+	}
 
 	writel(ESPI_CH0_INT_EN_PC_RX_CMPLT, espi->regs + ESPI_CH0_INT_EN);
 
@@ -767,15 +636,16 @@ static void ast2700_espi_perif_reset(struct ast2700_espi *espi)
 	writel(reg, espi->regs + ESPI_CH0_CTRL);
 }
 
-static int ast2700_espi_perif_probe(struct ast2700_espi *espi)
+int ast2700_espi_perif_probe(struct aspeed_espi *espi)
 {
-	struct ast2700_espi_perif_mmbi *mmbi;
-	struct ast2700_espi_perif *perif;
+	struct aspeed_espi_perif_mmbi *mmbi;
+	struct aspeed_espi_perif *perif;
 	struct platform_device *pdev;
 	struct device_node *np;
 	struct resource res;
 	struct device *dev;
 	int i, rc;
+	u64 temp;
 
 	dev = espi->dev;
 
@@ -799,16 +669,16 @@ static int ast2700_espi_perif_probe(struct ast2700_espi *espi)
 			return -ENODEV;
 		}
 
-		rc = of_property_read_u64(dev->of_node, "perif-mmbi-src-addr", &perif->mmbi.saddr);
-		if (rc || !IS_ALIGNED(perif->mmbi.saddr, PERIF_MMBI_ALIGN)) {
+		rc = of_property_read_u64(dev->of_node, "perif-mmbi-src-addr", &temp);
+		if (rc || !IS_ALIGNED(temp, PERIF_MMBI_ALIGN)) {
 			dev_err(dev, "cannot get 64MB-aligned MMBI host address\n");
 			return -ENODEV;
 		}
-
+		perif->mmbi.saddr = temp;
 		rc = of_property_read_u32(dev->of_node, "perif-mmbi-instance-num", &perif->mmbi.inst_num);
 		if (rc ||
 		    perif->mmbi.inst_num == 0 ||
-		    perif->mmbi.inst_num > PERIF_MMBI_MAX_INST ||
+		    perif->mmbi.inst_num > PERIF_MMBI_INST_NUM ||
 		    (perif->mmbi.inst_num & (perif->mmbi.inst_num - 1))) {
 			dev_err(dev, "cannot get valid MMBI instance number, expect 1/2/4/8\n");
 			return -EINVAL;
@@ -838,6 +708,7 @@ static int ast2700_espi_perif_probe(struct ast2700_espi *espi)
 		}
 
 		memset_io(perif->mmbi.virt, 0, perif->mmbi.size);
+		perif->mmbi.mmbi_isr = ast2700_espi_perif_mmbi_isr;
 
 		for (i = 0; i < perif->mmbi.inst_num; ++i) {
 			mmbi = &perif->mmbi.inst[i];
@@ -877,16 +748,28 @@ static int ast2700_espi_perif_probe(struct ast2700_espi *espi)
 
 	perif->mcyc.enable = of_property_read_bool(dev->of_node, "perif-mcyc-enable");
 	if (perif->mcyc.enable) {
-		rc = of_property_read_u64(dev->of_node, "perif-mcyc-src-addr", &perif->mcyc.saddr);
-		if (rc || !IS_ALIGNED(perif->mcyc.saddr, PERIF_MCYC_ALIGN)) {
+		rc = of_property_read_u64(dev->of_node, "perif-mcyc-src-addr", &temp);
+		if (rc || !IS_ALIGNED(temp, PERIF_MCYC_ALIGN)) {
 			dev_err(dev, "cannot get 64KB-aligned memory cycle host address\n");
 			return -ENODEV;
 		}
+		perif->mcyc.saddr = temp;
 
-		rc = of_property_read_u64(dev->of_node, "perif-mcyc-size", &perif->mcyc.size);
-		if (rc || !IS_ALIGNED(perif->mcyc.size, PERIF_MCYC_ALIGN)) {
+		rc = of_property_read_u64(dev->of_node, "perif-mcyc-size", &temp);
+		if (rc || !IS_ALIGNED(temp, PERIF_MCYC_ALIGN)) {
 			dev_err(dev, "cannot get 64KB-aligned memory cycle size\n");
 			return -EINVAL;
+		}
+		perif->mcyc.size = temp;
+
+		np = of_parse_phandle(dev->of_node, "memory-region", 0);
+		if (np) {
+			of_reserved_mem_device_init(dev);
+			rc = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64));
+			if (rc) {
+				dev_err(dev, "Failed to mask DMA.\n");
+				return -ENODEV;
+			}
 		}
 
 		perif->mcyc.virt = dmam_alloc_coherent(dev, perif->mcyc.size,
@@ -920,6 +803,7 @@ static int ast2700_espi_perif_probe(struct ast2700_espi *espi)
 			return -ENOMEM;
 		}
 	}
+	perif->rtc_enable = of_property_read_bool(dev->of_node, "perif-rtc-enable");
 
 	perif->mdev.parent = dev;
 	perif->mdev.minor = MISC_DYNAMIC_MINOR;
@@ -933,24 +817,15 @@ static int ast2700_espi_perif_probe(struct ast2700_espi *espi)
 
 	ast2700_espi_perif_reset(espi);
 
-	if (perif->mmbi.enable) {
-		rc = devm_request_irq(dev, espi->perif.mmbi.irq,
-				      ast2700_espi_perif_mmbi_isr, 0, dev_name(dev), espi);
-		if (rc) {
-			dev_err(dev, "cannot request MMBI IRQ\n");
-			return rc;
-		}
-	}
-
 	return 0;
 }
 
-static int ast2700_espi_perif_remove(struct ast2700_espi *espi)
+int ast2700_espi_perif_remove(struct aspeed_espi *espi)
 {
-	struct ast2700_espi_perif_mmbi *mmbi;
-	struct ast2700_espi_perif *perif;
+	struct aspeed_espi_perif_mmbi *mmbi;
+	struct aspeed_espi_perif *perif;
 	struct device *dev;
-	uint32_t reg;
+	u32 reg;
 	int i;
 
 	dev = espi->dev;
@@ -1015,43 +890,84 @@ static int ast2700_espi_perif_remove(struct ast2700_espi *espi)
 /* virtual wire channel (CH1) */
 static long ast2700_espi_vw_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 {
-	struct ast2700_espi_vw *vw;
-	struct ast2700_espi *espi;
-	uint64_t gpio;
-	uint8_t pch_generic;
-	uint32_t reg;
+	struct aspeed_espi_vw *vw;
+	struct aspeed_espi *espi;
+	u32 gpio0, gpio1;
+	u8 pch_generic;
+	u32 reg;
+	u32 hw_mode;
 
-	vw = container_of(fp->private_data, struct ast2700_espi_vw, mdev);
-	espi = container_of(vw, struct ast2700_espi, vw);
-	gpio = ((uint64_t)vw->gpio.val1 << 32) | vw->gpio.val0;
+	vw = container_of(fp->private_data, struct aspeed_espi_vw, mdev);
+	espi = container_of(vw, struct aspeed_espi, vw);
+	gpio0 = vw->gpio.val0;
+	gpio1 = vw->gpio.val1;
+	hw_mode = vw->gpio.hw_mode;
 	pch_generic = vw->platform.pch_generic;
+
+	if (hw_mode) {
+		dev_err(espi->dev, "HW mode: vGPIO reflect on physical GPIO. Get state from GPIO driver.\n");
+		return -EFAULT;
+	}
 
 	switch (cmd) {
 	case ASPEED_ESPI_VW_GET_GPIO_VAL:
-		if (put_user(gpio, (uint64_t __user *)arg))
+		if (put_user(gpio0, (u32 __user *)arg)) {
+			dev_err(espi->dev, "failed to get vGPIO value0\n");
 			return -EFAULT;
+		}
+
+		dev_info(espi->dev, "Get vGPIO value0: 0x%x\n", gpio0);
 		break;
 
 	case ASPEED_ESPI_VW_PUT_GPIO_VAL:
-		if (get_user(gpio, (uint64_t __user *)arg))
+		if (get_user(gpio0, (u32 __user *)arg)) {
+			dev_err(espi->dev, "failed to put vGPIO value0\n");
 			return -EFAULT;
+		}
 
-		writel(gpio >> 32, espi->regs + ESPI_CH1_GPIO_VAL1);
-		writel(gpio & 0xffffffff, espi->regs + ESPI_CH1_GPIO_VAL0);
+		dev_info(espi->dev, "Put vGPIO value0: 0x%x\n", gpio0);
+		writel(gpio0, espi->regs + ESPI_CH1_GPIO_VAL0);
 		break;
-	case ASPEED_ESPI_VW_GET_PCH_GENERIC:
-		if (put_user(pch_generic, (uint8_t __user *)arg))
+#ifdef CONFIG_ARM64
+	case ASPEED_ESPI_VW_GET_GPIO_VAL1:
+		if (put_user(gpio1, (u32 __user *)arg)) {
+			dev_err(espi->dev, "failed to get vGPIO value1\n");
 			return -EFAULT;
+		}
+
+		dev_info(espi->dev, "Get vGPIO value1: 0x%x\n", gpio1);
+		break;
+
+	case ASPEED_ESPI_VW_PUT_GPIO_VAL1:
+		if (get_user(gpio1, (u32 __user *)arg)) {
+			dev_err(espi->dev, "failed to put vGPIO value1\n");
+			return -EFAULT;
+		}
+
+		dev_info(espi->dev, "Put vGPIO value1: 0x%x\n", gpio1);
+		writel(gpio1, espi->regs + ESPI_CH1_GPIO_VAL1);
+		break;
+#endif
+	case ASPEED_ESPI_VW_GET_PCH_GENERIC:
+		if (put_user(pch_generic, (u8 __user *)arg)) {
+			dev_err(espi->dev, "failed to get PCH generic event status\n");
+			return -EFAULT;
+		}
+
+		dev_info(espi->dev, "Get PCH generic event status: 0x%x\n", pch_generic);
 		break;
 	case ASPEED_ESPI_VW_PUT_PCH_GENERIC:
-		if (get_user(pch_generic, (uint8_t __user *)arg))
+		if (get_user(pch_generic, (u8 __user *)arg)) {
+			dev_err(espi->dev, "failed to put PCH generic event status\n");
 			return -EFAULT;
+		}
+
+		dev_info(espi->dev, "Put PCH generic event status: 0x%x\n", pch_generic);
 		reg = readl(espi->regs + ESPI_CH1_EVT1);
 		reg &= ~ESPI_CH1_EVT1_BMC_GENE;
 		reg |= FIELD_PREP(ESPI_CH1_EVT1_BMC_GENE, pch_generic);
 		writel(reg, espi->regs + ESPI_CH1_EVT1);
 		break;
-
 	default:
 		return -EINVAL;
 	};
@@ -1064,12 +980,103 @@ static const struct file_operations ast2700_espi_vw_fops = {
 	.unlocked_ioctl = ast2700_espi_vw_ioctl,
 };
 
-static void ast2700_espi_vw_isr(struct ast2700_espi *espi)
+static inline struct aspeed_espi_vw *to_ast2700_espi_pltrst(struct file *filp)
 {
-	struct ast2700_espi_vw *vw;
-	uint32_t sts;
-	uint32_t evt1_sts;
-	uint32_t evt1;
+	return container_of(filp->private_data, struct aspeed_espi_vw,
+			    pltrst_mdev);
+}
+
+static int ast2700_espi_vw_pltrst_open(struct inode *inode, struct file *filp)
+{
+	struct aspeed_espi_vw *priv = to_ast2700_espi_pltrst(filp);
+
+	if ((filp->f_flags & O_ACCMODE) != O_RDONLY)
+		return -EACCES;
+	priv->pltrst.pltrst_avail = true ; /*Setting true returns first data after file open*/
+
+	return 0;
+}
+
+static ssize_t ast2700_espi_vw_pltrst_read(struct file *filp, char __user *buf,
+					   size_t count, loff_t *offset)
+{
+	struct aspeed_espi_vw *vw = to_ast2700_espi_pltrst(filp);
+	DECLARE_WAITQUEUE(wait, current);
+	char data, old_sample;
+	int ret = 0;
+
+	spin_lock_irq(&vw->pltrst.pltrst_lock);
+
+	if (filp->f_flags & O_NONBLOCK) {
+		if (!vw->pltrst.pltrst_avail) {
+			ret = -EAGAIN;
+			goto out_unlock;
+		}
+		data = vw->pltrst.pltrst_status;
+		vw->pltrst.pltrst_avail = false;
+	} else {
+		add_wait_queue(&vw->pltrst.pltrst_wq, &wait);
+		set_current_state(TASK_INTERRUPTIBLE);
+
+		old_sample = vw->pltrst.pltrst_status;
+
+		do {
+			if (old_sample != vw->pltrst.pltrst_status) {
+				data = vw->pltrst.pltrst_status;
+				vw->pltrst.pltrst_avail = false;
+				break;
+			}
+
+			if (signal_pending(current)) {
+				ret = -ERESTARTSYS;
+			} else {
+				spin_unlock_irq(&vw->pltrst.pltrst_lock);
+				schedule();
+				spin_lock_irq(&vw->pltrst.pltrst_lock);
+			}
+		} while (!ret);
+
+		remove_wait_queue(&vw->pltrst.pltrst_wq, &wait);
+		set_current_state(TASK_RUNNING);
+	}
+out_unlock:
+	spin_unlock_irq(&vw->pltrst.pltrst_lock);
+	if (ret)
+		return ret;
+
+	ret = put_user(data, buf);
+	if (!ret)
+		ret = sizeof(data);
+
+	return ret;
+}
+
+static unsigned int ast2700_espi_vw_pltrst_poll(struct file *file,
+						poll_table *wait)
+{
+	struct aspeed_espi_vw *vw = to_ast2700_espi_pltrst(file);
+	unsigned int mask = 0;
+
+	poll_wait(file, &vw->pltrst.pltrst_wq, wait);
+	if (vw->pltrst.pltrst_avail)
+		mask |= POLLIN;
+	return mask;
+}
+
+static const struct file_operations ast2700_espi_vw_pltrst_fops = {
+	.owner = THIS_MODULE,
+	.open = ast2700_espi_vw_pltrst_open,
+	.read = ast2700_espi_vw_pltrst_read,
+	.poll = ast2700_espi_vw_pltrst_poll,
+};
+
+static void ast2700_espi_vw_isr(struct aspeed_espi *espi)
+{
+	struct aspeed_espi_vw *vw;
+	u32 sts_evt;
+	u32 sts;
+	u32 evt;
+	unsigned long flags;
 
 	vw = &espi->vw;
 
@@ -1078,25 +1085,45 @@ static void ast2700_espi_vw_isr(struct ast2700_espi *espi)
 	if (sts & ESPI_CH1_INT_STS_GPIO) {
 		vw->gpio.val0 = readl(espi->regs + ESPI_CH1_GPIO_VAL0);
 		vw->gpio.val1 = readl(espi->regs + ESPI_CH1_GPIO_VAL1);
+		/* Workaround for AST2700 VW INT_STS */
 		writel(ESPI_CH1_INT_STS_GPIO_CLR, espi->regs + ESPI_CH1_INT_STS);
 	}
 
 	if (sts & ESPI_CH1_INT_STS_EVT1) {
-		evt1_sts = readl(espi->regs + ESPI_CH1_EVT1_INT_STS);
-		if (evt1_sts & ESPI_CH1_EVT1_INT_STS_PCH_GENE) {
-			evt1 = readl(espi->regs + ESPI_CH1_EVT1);
-			vw->platform.pch_generic = FIELD_GET(ESPI_CH1_EVT1_PCH_GENE, evt1);
+		sts_evt = readl(espi->regs + ESPI_CH1_EVT1_INT_STS);
+		if (sts_evt & ESPI_CH1_EVT1_INT_STS_PCH_GENE) {
+			vw->platform.pch_generic = FIELD_GET(ESPI_CH1_EVT1_PCH_GENE,
+							     readl(espi->regs + ESPI_CH1_EVT1));
+
 			writel(ESPI_CH1_EVT1_INT_STS_PCH_GENE,
 			       espi->regs + ESPI_CH1_EVT1_INT_STS);
 		}
+
 		writel(ESPI_CH1_INT_STS_EVT1_CLR, espi->regs + ESPI_CH1_INT_STS);
+	}
+
+	if (sts & ESPI_CH1_INT_STS_EVT0) {
+		sts_evt = readl(espi->regs + ESPI_CH1_EVT0_INT_STS);
+		evt = readl(espi->regs + ESPI_CH1_EVT0);
+		if (sts_evt & ESPI_CH1_EVT0_INT_STS_PLTRSTN || vw->pltrst.pltrst_status == 'U') {
+			spin_lock_irqsave(&vw->pltrst.pltrst_lock, flags);
+			vw->pltrst.pltrst_status = (evt & ESPI_CH1_EVT0_PLTRSTN) ? '1' : '0';
+			vw->pltrst.pltrst_avail = true;
+			spin_unlock_irqrestore(&vw->pltrst.pltrst_lock, flags);
+
+			writel(ESPI_CH1_EVT0_INT_STS_PLTRSTN,
+			       espi->regs + ESPI_CH1_EVT0_INT_STS);
+
+			wake_up_interruptible(&vw->pltrst.pltrst_wq);
+		}
+		writel(ESPI_CH1_INT_STS_EVT0, espi->regs + ESPI_CH1_INT_STS);
 	}
 }
 
-static void ast2700_espi_vw_reset(struct ast2700_espi *espi)
+static void ast2700_espi_vw_reset(struct aspeed_espi *espi)
 {
-	uint32_t reg;
-	struct ast2700_espi_vw *vw = &espi->vw;
+	u32 reg;
+	struct aspeed_espi_vw *vw = &espi->vw;
 
 	writel(0x0, espi->regs + ESPI_CH1_INT_EN);
 	writel(0xffffffff, espi->regs + ESPI_CH1_INT_STS);
@@ -1110,11 +1137,24 @@ static void ast2700_espi_vw_reset(struct ast2700_espi *espi)
 	vw->platform.pch_generic = FIELD_GET(ESPI_CH1_EVT1_PCH_GENE,
 					     readl(espi->regs + ESPI_CH1_EVT1));
 
-	writel(ESPI_CH1_EVT1_INT_T2_PCH_GENE, espi->regs + ESPI_CH1_EVT1_INT_T2);
+	writel(ESPI_CH1_EVT1_INT_T2_PCH_GENE,
+	       espi->regs + ESPI_CH1_EVT1_INT_T2);
 	writel(ESPI_CH1_EVT1_INT_EN_PCH_GENE, espi->regs + ESPI_CH1_EVT1_INT_EN);
 
-	writel(ESPI_CH1_INT_EN_GPIO | ESPI_CH1_INT_EN_SYS_EVT1,
-	       espi->regs + ESPI_CH1_INT_EN);
+	if (vw->pltrst.enabled) {
+		spin_lock(&vw->pltrst.pltrst_lock);
+		vw->pltrst.pltrst_status = 'U'; /* Unknown */
+		vw->pltrst.pltrst_avail = true;
+		spin_unlock(&vw->pltrst.pltrst_lock);
+
+		writel(ESPI_CH1_EVT0_INT_T2_PLTRSTN,
+		       espi->regs + ESPI_CH1_EVT0_INT_T2);
+		writel(ESPI_CH1_EVT0_INT_EN_PLTRSTN, espi->regs + ESPI_CH1_EVT0_INT_EN);
+		writel(ESPI_CH1_INT_EN_GPIO | ESPI_CH1_INT_EN_SYS_EVT1 | ESPI_CH1_INT_EN_SYS_EVT0,
+		       espi->regs + ESPI_CH1_INT_EN);
+	} else {
+		writel(ESPI_CH1_INT_EN_GPIO | ESPI_CH1_INT_EN_SYS_EVT1, espi->regs + ESPI_CH1_INT_EN);
+	}
 
 	reg = readl(espi->regs + ESPI_CH1_CTRL)
 	      | ((vw->gpio.hw_mode) ? ESPI_CH1_CTRL_GPIO_HW : 0)
@@ -1122,16 +1162,35 @@ static void ast2700_espi_vw_reset(struct ast2700_espi *espi)
 	writel(reg, espi->regs + ESPI_CH1_CTRL);
 }
 
-static int ast2700_espi_vw_probe(struct ast2700_espi *espi)
+int ast2700_espi_vw_probe(struct aspeed_espi *espi)
 {
 	int rc;
 	struct device *dev = espi->dev;
-	struct ast2700_espi_vw *vw = &espi->vw;
+	struct aspeed_espi_vw *vw = &espi->vw;
 
 	vw->gpio.hw_mode = of_property_read_bool(dev->of_node, "vw-gpio-hw-mode");
 	of_property_read_u32(dev->of_node, "vw-gpio-group", &vw->gpio.grp);
 	of_property_read_u32_index(dev->of_node, "vw-gpio-direction", 0, &vw->gpio.dir0);
 	of_property_read_u32_index(dev->of_node, "vw-gpio-direction", 1, &vw->gpio.dir1);
+
+	vw->pltrst.enabled = of_property_read_bool(dev->of_node, "vw-pltrst-monitor");
+	if (vw->pltrst.enabled) {
+		spin_lock_init(&vw->pltrst.pltrst_lock);
+		init_waitqueue_head(&vw->pltrst.pltrst_wq);
+		vw->pltrst.pltrst_status = 'U'; /* Unknown */
+		vw->pltrst.pltrst_avail = false;
+		vw->pltrst_mdev.parent = dev;
+		vw->pltrst_mdev.minor = MISC_DYNAMIC_MINOR;
+		vw->pltrst_mdev.name =
+			devm_kasprintf(dev, GFP_KERNEL, "%s-pltrstn%d",
+				       DEVICE_NAME, espi->dev_id);
+		vw->pltrst_mdev.fops = &ast2700_espi_vw_pltrst_fops;
+		rc = misc_register(&vw->pltrst_mdev);
+		if (rc) {
+			dev_err(dev, "cannot register device %s\n", vw->pltrst_mdev.name);
+			return rc;
+		}
+	}
 
 	vw->mdev.parent = dev;
 	vw->mdev.minor = MISC_DYNAMIC_MINOR;
@@ -1148,9 +1207,9 @@ static int ast2700_espi_vw_probe(struct ast2700_espi *espi)
 	return 0;
 }
 
-static int ast2700_espi_vw_remove(struct ast2700_espi *espi)
+int ast2700_espi_vw_remove(struct aspeed_espi *espi)
 {
-	struct ast2700_espi_vw *vw;
+	struct aspeed_espi_vw *vw;
 
 	vw = &espi->vw;
 
@@ -1163,22 +1222,24 @@ static int ast2700_espi_vw_remove(struct ast2700_espi *espi)
 
 /* out-of-band channel (CH2) */
 static long ast2700_espi_oob_dma_get_rx(struct file *fp,
-					struct ast2700_espi_oob *oob,
+					struct aspeed_espi_oob *oob,
 					struct aspeed_espi_ioc *ioc)
 {
 	struct ast2700_espi_oob_dma_rx_desc *d;
-	struct ast2700_espi *espi;
+	struct ast2700_espi_oob_dma_rx_desc *rx_descs;
+	struct aspeed_espi *espi;
 	struct espi_comm_hdr *hdr;
-	uint32_t wptr, pkt_len;
+	u32 wptr, pkt_len;
 	unsigned long flags;
-	uint8_t *pkt;
+	u8 *pkt;
 	int rc;
 
-	espi = container_of(oob, struct ast2700_espi, oob);
+	espi = container_of(oob, struct aspeed_espi, oob);
 
 	wptr = FIELD_PREP(ESPI_CH2_RX_DESC_WPTR_WP, readl(espi->regs + ESPI_CH2_RX_DESC_WPTR));
 
-	d = &oob->dma.rxd_virt[wptr];
+	rx_descs = (struct ast2700_espi_oob_dma_rx_desc *)oob->dma.rxd_virt;
+	d = &rx_descs[wptr];
 
 	if (!d->dirty)
 		return -EFAULT;
@@ -1213,7 +1274,7 @@ static long ast2700_espi_oob_dma_get_rx(struct file *fp,
 	writel(wptr | ESPI_CH2_RX_DESC_WPTR_VALID, espi->regs + ESPI_CH2_RX_DESC_WPTR);
 
 	/* set ready flag base on the next RX descriptor */
-	oob->rx_ready = oob->dma.rxd_virt[wptr].dirty;
+	oob->rx_ready = rx_descs[wptr].dirty;
 
 	spin_unlock_irqrestore(&oob->lock, flags);
 
@@ -1226,18 +1287,18 @@ free_n_out:
 }
 
 static long ast2700_espi_oob_get_rx(struct file *fp,
-				    struct ast2700_espi_oob *oob,
+				    struct aspeed_espi_oob *oob,
 				    struct aspeed_espi_ioc *ioc)
 {
-	uint32_t reg, cyc, tag, len;
-	struct ast2700_espi *espi;
+	u32 reg, cyc, tag, len;
+	struct aspeed_espi *espi;
 	struct espi_comm_hdr *hdr;
 	unsigned long flags;
-	uint32_t pkt_len;
-	uint8_t *pkt;
+	u32 pkt_len;
+	u8 *pkt;
 	int i, rc;
 
-	espi = container_of(oob, struct ast2700_espi, oob);
+	espi = container_of(oob, struct aspeed_espi, oob);
 
 	if (fp->f_flags & O_NONBLOCK) {
 		if (!mutex_trylock(&oob->rx_mtx))
@@ -1326,17 +1387,18 @@ unlock_mtx_n_out:
 }
 
 static long ast2700_espi_oob_dma_put_tx(struct file *fp,
-					struct ast2700_espi_oob *oob,
+					struct aspeed_espi_oob *oob,
 					struct aspeed_espi_ioc *ioc)
 {
 	struct ast2700_espi_oob_dma_tx_desc *d;
-	struct ast2700_espi *espi;
+	struct ast2700_espi_oob_dma_tx_desc *tx_descs;
+	struct aspeed_espi *espi;
 	struct espi_comm_hdr *hdr;
-	uint32_t rptr, wptr;
-	uint8_t *pkt;
+	u32 rptr, wptr;
+	u8 *pkt;
 	int rc;
 
-	espi = container_of(oob, struct ast2700_espi, oob);
+	espi = container_of(oob, struct aspeed_espi, oob);
 
 	pkt = vzalloc(ioc->pkt_len);
 	if (!pkt)
@@ -1360,7 +1422,8 @@ static long ast2700_espi_oob_dma_put_tx(struct file *fp,
 		goto free_n_out;
 	}
 
-	d = &oob->dma.txd_virt[wptr];
+	tx_descs = (struct ast2700_espi_oob_dma_tx_desc *)oob->dma.txd_virt;
+	d = &tx_descs[wptr];
 	d->cyc = hdr->cyc;
 	d->tag = hdr->tag;
 	d->len = (hdr->len_h << 8) | (hdr->len_l & 0xff);
@@ -1382,16 +1445,16 @@ free_n_out:
 }
 
 static long ast2700_espi_oob_put_tx(struct file *fp,
-				    struct ast2700_espi_oob *oob,
+				    struct aspeed_espi_oob *oob,
 				    struct aspeed_espi_ioc *ioc)
 {
-	uint32_t reg, cyc, tag, len;
-	struct ast2700_espi *espi;
+	u32 reg, cyc, tag, len;
+	struct aspeed_espi *espi;
 	struct espi_comm_hdr *hdr;
-	uint8_t *pkt;
+	u8 *pkt;
 	int i, rc;
 
-	espi = container_of(oob, struct ast2700_espi, oob);
+	espi = container_of(oob, struct aspeed_espi, oob);
 
 	if (!mutex_trylock(&oob->tx_mtx))
 		return -EAGAIN;
@@ -1455,10 +1518,10 @@ unlock_mtx_n_out:
 
 static long ast2700_espi_oob_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 {
-	struct ast2700_espi_oob *oob;
+	struct aspeed_espi_oob *oob;
 	struct aspeed_espi_ioc ioc;
 
-	oob = container_of(fp->private_data, struct ast2700_espi_oob, mdev);
+	oob = container_of(fp->private_data, struct aspeed_espi_oob, mdev);
 
 	if (copy_from_user(&ioc, (void __user *)arg, sizeof(ioc)))
 		return -EFAULT;
@@ -1481,11 +1544,11 @@ static const struct file_operations ast2700_espi_oob_fops = {
 	.unlocked_ioctl = ast2700_espi_oob_ioctl,
 };
 
-static void ast2700_espi_oob_isr(struct ast2700_espi *espi)
+static void ast2700_espi_oob_isr(struct aspeed_espi *espi)
 {
-	struct ast2700_espi_oob *oob;
+	struct aspeed_espi_oob *oob;
 	unsigned long flags;
-	uint32_t sts;
+	u32 sts;
 
 	oob = &espi->oob;
 
@@ -1502,11 +1565,13 @@ static void ast2700_espi_oob_isr(struct ast2700_espi *espi)
 	}
 }
 
-static void ast2700_espi_oob_reset(struct ast2700_espi *espi)
+static void ast2700_espi_oob_reset(struct aspeed_espi *espi)
 {
-	struct ast2700_espi_oob *oob;
+	struct aspeed_espi_oob *oob;
+	struct ast2700_espi_oob_dma_tx_desc *tx_desc;
+	struct ast2700_espi_oob_dma_rx_desc *rx_desc;
 	dma_addr_t tx_addr, rx_addr;
-	uint32_t reg;
+	u32 reg;
 	int i;
 
 	oob = &espi->oob;
@@ -1531,24 +1596,27 @@ static void ast2700_espi_oob_reset(struct ast2700_espi *espi)
 		tx_addr = oob->dma.tx_addr;
 		rx_addr = oob->dma.rx_addr;
 
+		tx_desc = (struct ast2700_espi_oob_dma_tx_desc *)oob->dma.txd_virt;
+		rx_desc = (struct ast2700_espi_oob_dma_rx_desc *)oob->dma.rxd_virt;
+
 		for (i = 0; i < OOB_DMA_DESC_NUM; ++i) {
-			oob->dma.txd_virt[i].data_addrh = tx_addr >> 32;
-			oob->dma.txd_virt[i].data_addrl = tx_addr & 0xffffffff;
+			tx_desc[i].data_addrh = upper_32_bits(tx_addr);
+			tx_desc[i].data_addrl = tx_addr & 0xffffffff;
 			tx_addr += PAGE_SIZE;
 
-			oob->dma.rxd_virt[i].data_addrh = rx_addr >> 32;
-			oob->dma.rxd_virt[i].data_addrl = rx_addr & 0xffffffff;
-			oob->dma.rxd_virt[i].dirty = 0;
+			rx_desc[i].data_addrh = upper_32_bits(rx_addr);
+			rx_desc[i].data_addrl = rx_addr & 0xffffffff;
+			rx_desc[i].dirty = 0;
 			rx_addr += PAGE_SIZE;
 		}
 
-		writel(oob->dma.txd_addr >> 32, espi->regs + ESPI_CH2_TX_DMAH);
+		writel(upper_32_bits(oob->dma.txd_addr), espi->regs + ESPI_CH2_TX_DMAH);
 		writel(oob->dma.txd_addr & 0xffffffff, espi->regs + ESPI_CH2_TX_DMAL);
 		writel(OOB_DMA_RPTR_KEY, espi->regs + ESPI_CH2_TX_DESC_RPTR);
 		writel(0x0, espi->regs + ESPI_CH2_TX_DESC_WPTR);
 		writel(OOB_DMA_DESC_NUM, espi->regs + ESPI_CH2_TX_DESC_EPTR);
 
-		writel(oob->dma.rxd_addr >> 32, espi->regs + ESPI_CH2_RX_DMAH);
+		writel(upper_32_bits(oob->dma.rxd_addr), espi->regs + ESPI_CH2_RX_DMAH);
 		writel(oob->dma.rxd_addr & 0xffffffff, espi->regs + ESPI_CH2_RX_DMAL);
 		writel(OOB_DMA_RPTR_KEY, espi->regs + ESPI_CH2_RX_DESC_RPTR);
 		writel(0x0, espi->regs + ESPI_CH2_RX_DESC_WPTR);
@@ -1570,9 +1638,9 @@ static void ast2700_espi_oob_reset(struct ast2700_espi *espi)
 	writel(reg, espi->regs + ESPI_CH2_CTRL);
 }
 
-static int ast2700_espi_oob_probe(struct ast2700_espi *espi)
+int ast2700_espi_oob_probe(struct aspeed_espi *espi)
 {
-	struct ast2700_espi_oob *oob;
+	struct aspeed_espi_oob *oob;
 	struct device *dev;
 	int rc;
 
@@ -1589,7 +1657,10 @@ static int ast2700_espi_oob_probe(struct ast2700_espi *espi)
 
 	oob->dma.enable = of_property_read_bool(dev->of_node, "oob-dma-mode");
 	if (oob->dma.enable) {
-		oob->dma.txd_virt = dmam_alloc_coherent(dev, sizeof(*oob->dma.txd_virt) * OOB_DMA_DESC_NUM, &oob->dma.txd_addr, GFP_KERNEL);
+		oob->dma.txd_virt = dmam_alloc_coherent(dev,
+							sizeof(struct ast2700_espi_oob_dma_tx_desc) *
+							OOB_DMA_DESC_NUM,
+					    &oob->dma.txd_addr, GFP_KERNEL);
 		if (!oob->dma.txd_virt) {
 			dev_err(dev, "cannot allocate DMA TX descriptor\n");
 			return -ENOMEM;
@@ -1600,7 +1671,10 @@ static int ast2700_espi_oob_probe(struct ast2700_espi *espi)
 			return -ENOMEM;
 		}
 
-		oob->dma.rxd_virt = dmam_alloc_coherent(dev, sizeof(*oob->dma.rxd_virt) * OOB_DMA_DESC_NUM, &oob->dma.rxd_addr, GFP_KERNEL);
+		oob->dma.rxd_virt = dmam_alloc_coherent(dev,
+							sizeof(struct ast2700_espi_oob_dma_rx_desc) *
+							OOB_DMA_DESC_NUM,
+						&oob->dma.rxd_addr, GFP_KERNEL);
 		if (!oob->dma.rxd_virt) {
 			dev_err(dev, "cannot allocate DMA RX descriptor\n");
 			return -ENOMEM;
@@ -1628,11 +1702,11 @@ static int ast2700_espi_oob_probe(struct ast2700_espi *espi)
 	return 0;
 }
 
-static int ast2700_espi_oob_remove(struct ast2700_espi *espi)
+int ast2700_espi_oob_remove(struct aspeed_espi *espi)
 {
-	struct ast2700_espi_oob *oob;
+	struct aspeed_espi_oob *oob;
 	struct device *dev;
-	uint32_t reg;
+	u32 reg;
 
 	dev = espi->dev;
 
@@ -1647,11 +1721,11 @@ static int ast2700_espi_oob_remove(struct ast2700_espi *espi)
 	writel(reg, espi->regs + ESPI_CH2_CTRL);
 
 	if (oob->dma.enable) {
-		dmam_free_coherent(dev, sizeof(*oob->dma.txd_virt) * OOB_DMA_DESC_NUM,
+		dmam_free_coherent(dev, sizeof(struct ast2700_espi_oob_dma_tx_desc) * OOB_DMA_DESC_NUM,
 				   oob->dma.txd_virt, oob->dma.txd_addr);
 		dmam_free_coherent(dev, PAGE_SIZE * OOB_DMA_DESC_NUM,
 				   oob->dma.tx_virt, oob->dma.tx_addr);
-		dmam_free_coherent(dev, sizeof(*oob->dma.rxd_virt) * OOB_DMA_DESC_NUM,
+		dmam_free_coherent(dev, sizeof(struct ast2700_espi_oob_dma_rx_desc) * OOB_DMA_DESC_NUM,
 				   oob->dma.rxd_virt, oob->dma.rxd_addr);
 		dmam_free_coherent(dev, PAGE_SIZE * OOB_DMA_DESC_NUM,
 				   oob->dma.rx_virt, oob->dma.rx_addr);
@@ -1667,20 +1741,20 @@ static int ast2700_espi_oob_remove(struct ast2700_espi *espi)
 
 /* flash channel (CH3) */
 static long ast2700_espi_flash_get_rx(struct file *fp,
-				      struct ast2700_espi_flash *flash,
+				      struct aspeed_espi_flash *flash,
 				      struct aspeed_espi_ioc *ioc)
 {
-	uint32_t reg, cyc, tag, len;
-	struct ast2700_espi *espi;
+	u32 reg, cyc, tag, len;
+	struct aspeed_espi *espi;
 	struct espi_comm_hdr *hdr;
 	unsigned long flags;
-	uint32_t pkt_len;
-	uint8_t *pkt;
+	u32 pkt_len;
+	u8 *pkt;
 	int i, rc;
 
 	rc = 0;
 
-	espi = container_of(flash, struct ast2700_espi, flash);
+	espi = container_of(flash, struct aspeed_espi, flash);
 
 	if (fp->f_flags & O_NONBLOCK) {
 		if (!mutex_trylock(&flash->rx_mtx))
@@ -1789,16 +1863,16 @@ unlock_mtx_n_out:
 }
 
 static long ast2700_espi_flash_put_tx(struct file *fp,
-				      struct ast2700_espi_flash *flash,
+				      struct aspeed_espi_flash *flash,
 				      struct aspeed_espi_ioc *ioc)
 {
-	uint32_t reg, cyc, tag, len;
-	struct ast2700_espi *espi;
+	u32 reg, cyc, tag, len;
+	struct aspeed_espi *espi;
 	struct espi_comm_hdr *hdr;
-	uint8_t *pkt;
+	u8 *pkt;
 	int i, rc;
 
-	espi = container_of(flash, struct ast2700_espi, flash);
+	espi = container_of(flash, struct aspeed_espi, flash);
 
 	if (!mutex_trylock(&flash->tx_mtx))
 		return -EAGAIN;
@@ -1857,10 +1931,10 @@ unlock_mtx_n_out:
 
 static long ast2700_espi_flash_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 {
-	struct ast2700_espi_flash *flash;
+	struct aspeed_espi_flash *flash;
 	struct aspeed_espi_ioc ioc;
 
-	flash = container_of(fp->private_data, struct ast2700_espi_flash, mdev);
+	flash = container_of(fp->private_data, struct aspeed_espi_flash, mdev);
 
 	if (copy_from_user(&ioc, (void __user *)arg, sizeof(ioc)))
 		return -EFAULT;
@@ -1883,11 +1957,11 @@ static const struct file_operations ast2700_espi_flash_fops = {
 	.unlocked_ioctl = ast2700_espi_flash_ioctl,
 };
 
-static void ast2700_espi_flash_isr(struct ast2700_espi *espi)
+static void ast2700_espi_flash_isr(struct aspeed_espi *espi)
 {
-	struct ast2700_espi_flash *flash;
+	struct aspeed_espi_flash *flash;
 	unsigned long flags;
-	uint32_t sts;
+	u32 sts;
 
 	flash = &espi->flash;
 
@@ -1904,11 +1978,11 @@ static void ast2700_espi_flash_isr(struct ast2700_espi *espi)
 	}
 }
 
-static void ast2700_espi_flash_reset(struct ast2700_espi *espi)
+static void ast2700_espi_flash_reset(struct aspeed_espi *espi)
 {
-	uint32_t reg;
-	uint64_t mask;
-	struct ast2700_espi_flash *flash = &espi->flash;
+	u32 reg;
+	u64 mask;
+	struct aspeed_espi_flash *flash = &espi->flash;
 
 	writel(0x0, espi->regs + ESPI_CH3_INT_EN);
 	writel(0xffffffff, espi->regs + ESPI_CH3_INT_STS);
@@ -1928,9 +2002,9 @@ static void ast2700_espi_flash_reset(struct ast2700_espi *espi)
 
 	if (flash->edaf.mode == EDAF_MODE_MIX) {
 		mask = ~(flash->edaf.size - 1);
-		writel(mask >> 32, espi->regs + ESPI_CH3_EDAF_MASKH);
+		writel(upper_32_bits(mask), espi->regs + ESPI_CH3_EDAF_MASKH);
 		writel(mask & 0xffffffff, espi->regs + ESPI_CH3_EDAF_MASKL);
-		writel(flash->edaf.taddr >> 32, espi->regs + ESPI_CH3_EDAF_TADDRH);
+		writel(upper_32_bits(flash->edaf.taddr), espi->regs + ESPI_CH3_EDAF_TADDRH);
 		writel(flash->edaf.taddr & 0xffffffff, espi->regs + ESPI_CH3_EDAF_TADDRL);
 	}
 
@@ -1939,9 +2013,9 @@ static void ast2700_espi_flash_reset(struct ast2700_espi *espi)
 	writel(reg, espi->regs + ESPI_CH3_CTRL);
 
 	if (flash->dma.enable) {
-		writel(flash->dma.tx_addr >> 32, espi->regs + ESPI_CH3_TX_DMAH);
+		writel(upper_32_bits(flash->dma.tx_addr), espi->regs + ESPI_CH3_TX_DMAH);
 		writel(flash->dma.tx_addr & 0xffffffff, espi->regs + ESPI_CH3_TX_DMAL);
-		writel(flash->dma.rx_addr >> 32, espi->regs + ESPI_CH3_RX_DMAH);
+		writel(upper_32_bits(flash->dma.rx_addr), espi->regs + ESPI_CH3_RX_DMAH);
 		writel(flash->dma.rx_addr & 0xffffffff, espi->regs + ESPI_CH3_RX_DMAL);
 
 		reg = readl(espi->regs + ESPI_CH3_CTRL)
@@ -1956,10 +2030,13 @@ static void ast2700_espi_flash_reset(struct ast2700_espi *espi)
 	writel(reg, espi->regs + ESPI_CH3_CTRL);
 }
 
-static int ast2700_espi_flash_probe(struct ast2700_espi *espi)
+int ast2700_espi_flash_probe(struct aspeed_espi *espi)
 {
-	struct ast2700_espi_flash *flash;
+	struct aspeed_espi_flash *flash;
+	struct device_node *np;
+	struct resource res;
 	struct device *dev;
+	void *virt;
 	int rc;
 
 	dev = espi->dev;
@@ -1976,17 +2053,23 @@ static int ast2700_espi_flash_probe(struct ast2700_espi *espi)
 	flash->edaf.mode = EDAF_MODE_HW;
 
 	of_property_read_u32(dev->of_node, "flash-edaf-mode", &flash->edaf.mode);
+	dev_info(dev, "eDAF mode: 0x%x\n", flash->edaf.mode);
 	if (flash->edaf.mode == EDAF_MODE_MIX) {
-		rc = of_property_read_u64(dev->of_node, "flash-edaf-tgt-addr", &flash->edaf.taddr);
-		if (rc || !IS_ALIGNED(flash->edaf.taddr, FLASH_EDAF_ALIGN)) {
-			dev_err(dev, "cannot get 16MB-aligned eDAF address\n");
+		np = of_parse_phandle(dev->of_node, "flash-edaf-tgt-addr", 0);
+		if (!np || of_address_to_resource(np, 0, &res)) {
+			dev_err(dev, "cannot get eDAF memory region\n");
 			return -ENODEV;
 		}
 
-		rc = of_property_read_u64(dev->of_node, "flash-edaf-size", &flash->edaf.size);
-		if (rc || !IS_ALIGNED(flash->edaf.size, FLASH_EDAF_ALIGN)) {
-			dev_err(dev, "cannot get 16MB-aligned eDAF size\n");
-			return -ENODEV;
+		of_node_put(np);
+
+		flash->edaf.taddr = res.start;
+		flash->edaf.size = resource_size(&res);
+
+		virt = devm_ioremap_resource(dev, &res);
+		if (!virt) {
+			dev_err(dev, "cannot map eDAF memory region\n");
+			return -ENOMEM;
 		}
 	}
 
@@ -2020,11 +2103,11 @@ static int ast2700_espi_flash_probe(struct ast2700_espi *espi)
 	return 0;
 }
 
-static int ast2700_espi_flash_remove(struct ast2700_espi *espi)
+int ast2700_espi_flash_remove(struct aspeed_espi *espi)
 {
-	struct ast2700_espi_flash *flash;
+	struct aspeed_espi_flash *flash;
 	struct device *dev;
-	uint32_t reg;
+	u32 reg;
 
 	dev = espi->dev;
 
@@ -2052,10 +2135,10 @@ static int ast2700_espi_flash_remove(struct ast2700_espi *espi)
 }
 
 /* global control */
-static irqreturn_t ast2700_espi_isr(int irq, void *arg)
+irqreturn_t ast2700_espi_isr(int irq, void *arg)
 {
-	uint32_t sts;
-	struct ast2700_espi *espi = (struct ast2700_espi *)arg;
+	u32 sts;
+	struct aspeed_espi *espi = (struct aspeed_espi *)arg;
 
 	sts = readl(espi->regs + ESPI_INT_STS);
 	if (!sts)
@@ -2074,6 +2157,7 @@ static irqreturn_t ast2700_espi_isr(int irq, void *arg)
 		ast2700_espi_flash_isr(espi);
 
 	if (sts & ESPI_INT_STS_RST_DEASSERT) {
+		ast2700_espi_perif_sw_reset(espi);
 		ast2700_espi_perif_reset(espi);
 		ast2700_espi_vw_reset(espi);
 		ast2700_espi_oob_reset(espi);
@@ -2084,170 +2168,56 @@ static irqreturn_t ast2700_espi_isr(int irq, void *arg)
 	return IRQ_HANDLED;
 }
 
-static int ast2700_espi_probe(struct platform_device *pdev)
+void ast2700_espi_pre_init(struct aspeed_espi *espi)
 {
-	struct ast2700_espi *espi;
-	struct resource *res;
 	struct device *dev;
-	uint32_t reg;
+	struct regmap *scu1;
+	u32 reg;
 	int rc;
 
-	dev = &pdev->dev;
+	dev = espi->dev;
 
-	espi = devm_kzalloc(dev, sizeof(*espi), GFP_KERNEL);
-	if (!espi)
-		return -ENOMEM;
-
-	espi->dev = dev;
-
-	rc = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64));
+	scu1 = syscon_regmap_lookup_by_phandle(dev->of_node, "aspeed,syscon");
+	if (IS_ERR(scu1)) {
+		dev_err(dev, "failed to find SCU1 regmap, error %ld\n", PTR_ERR(scu1));
+		return;
+	}
+	rc = regmap_update_bits(scu1, SCU1_DDR,
+				SCU1_DDR_DIS_ESPI0_AHB | SCU1_DDR_DIS_ESPI1_AHB,
+				0);
 	if (rc) {
-		dev_err(dev, "cannot set 64-bits DMA mask\n");
-		return rc;
-	}
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(dev, "cannot get resource\n");
-		return -ENODEV;
-	}
-
-	espi->regs = devm_ioremap_resource(dev, res);
-	if (IS_ERR(espi->regs)) {
-		dev_err(dev, "cannot map registers\n");
-		return PTR_ERR(espi->regs);
-	}
-
-	espi->irq = platform_get_irq(pdev, 0);
-	if (espi->irq < 0) {
-		dev_err(dev, "cannot get IRQ number\n");
-		return -ENODEV;
-	}
-
-	espi->clk = devm_clk_get(dev, NULL);
-	if (IS_ERR(espi->clk)) {
-		dev_err(dev, "cannot get clock control\n");
-		return PTR_ERR(espi->clk);
-	}
-
-	rc = clk_prepare_enable(espi->clk);
-	if (rc) {
-		dev_err(dev, "cannot enable clocks\n");
-		return rc;
+		dev_err(dev, "failed to update SCU1 regmap, error %d\n", rc);
+		return;
 	}
 
 	espi->dev_id = ida_alloc(&ast2700_espi_ida, GFP_KERNEL);
 	if (espi->dev_id < 0) {
-		dev_err(dev, "cannote allocate device ID\n");
-		return espi->dev_id;
+		dev_err(dev, "cannote allocate device ID, error %d\n", espi->dev_id);
+		return;
 	}
 
 	reg = readl(espi->regs + ESPI_INT_EN);
 	reg &= ~ESPI_INT_EN_RST_DEASSERT;
 	writel(reg, espi->regs + ESPI_INT_EN);
+}
 
-	rc = ast2700_espi_perif_probe(espi);
-	if (rc) {
-		dev_err(dev, "cannot init CH0, rc=%d\n", rc);
-		return rc;
-	}
-
-	rc = ast2700_espi_vw_probe(espi);
-	if (rc) {
-		dev_err(dev, "cannot init CH1, rc=%d\n", rc);
-		goto err_remove_perif;
-	}
-
-	rc = ast2700_espi_oob_probe(espi);
-	if (rc) {
-		dev_err(dev, "cannot init CH2, rc=%d\n", rc);
-		goto err_remove_vw;
-	}
-
-	rc = ast2700_espi_flash_probe(espi);
-	if (rc) {
-		dev_err(dev, "cannot init CH3, rc=%d\n", rc);
-		goto err_remove_oob;
-	}
-
-	rc = devm_request_irq(dev, espi->irq, ast2700_espi_isr, 0, dev_name(dev), espi);
-	if (rc) {
-		dev_err(dev, "cannot request IRQ\n");
-		goto err_remove_flash;
-	}
+void ast2700_espi_post_init(struct aspeed_espi *espi)
+{
+	u32 reg;
 
 	reg = readl(espi->regs + ESPI_INT_EN);
 	reg |= ESPI_INT_EN_RST_DEASSERT;
 	writel(reg, espi->regs + ESPI_INT_EN);
-
-	dev_set_drvdata(dev, espi);
-
-	dev_info(dev, "module loaded\n");
-
-	return 0;
-
-err_remove_flash:
-	ast2700_espi_flash_remove(espi);
-err_remove_oob:
-	ast2700_espi_oob_remove(espi);
-err_remove_vw:
-	ast2700_espi_vw_remove(espi);
-err_remove_perif:
-	ast2700_espi_perif_remove(espi);
-
-	return rc;
 }
 
-static int ast2700_espi_remove(struct platform_device *pdev)
+void ast2700_espi_deinit(struct aspeed_espi *espi)
 {
-	struct ast2700_espi *espi;
 	struct device *dev;
-	uint32_t reg;
-	int rc;
+	u32 reg;
 
-	dev = &pdev->dev;
-
-	espi = (struct ast2700_espi *)dev_get_drvdata(dev);
+	dev = espi->dev;
 
 	reg = readl(espi->regs + ESPI_INT_EN);
 	reg &= ~ESPI_INT_EN_RST_DEASSERT;
 	writel(reg, espi->regs + ESPI_INT_EN);
-
-	rc = ast2700_espi_perif_remove(espi);
-	if (rc)
-		dev_warn(dev, "cannot remove peripheral channel, rc=%d\n", rc);
-
-	rc = ast2700_espi_vw_remove(espi);
-	if (rc)
-		dev_warn(dev, "cannot remove peripheral channel, rc=%d\n", rc);
-
-	rc = ast2700_espi_oob_remove(espi);
-	if (rc)
-		dev_warn(dev, "cannot remove peripheral channel, rc=%d\n", rc);
-
-	rc = ast2700_espi_flash_remove(espi);
-	if (rc)
-		dev_warn(dev, "cannot remove peripheral channel, rc=%d\n", rc);
-
-	return 0;
 }
-
-static const struct of_device_id ast2700_espi_of_matches[] = {
-	{ .compatible = "aspeed,ast2700-espi" },
-	{ },
-};
-
-static struct platform_driver ast2700_espi_driver = {
-	.driver = {
-		.name = "ast2700-espi",
-		.of_match_table = ast2700_espi_of_matches,
-	},
-	.probe = ast2700_espi_probe,
-	.remove = ast2700_espi_remove,
-};
-
-module_platform_driver(ast2700_espi_driver);
-
-MODULE_AUTHOR("Chia-Wei Wang <chiawei_wang@aspeedtech.com>");
-MODULE_DESCRIPTION("Control of AST2700 eSPI Device");
-MODULE_LICENSE("GPL");

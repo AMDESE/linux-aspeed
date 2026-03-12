@@ -10,6 +10,8 @@
 #include <dt-bindings/i2c/i2c.h>
 #include <dt-bindings/i3c/i3c.h>
 
+#define PCIE0_EP 1      // 1: EP, 0: RC
+#define PCIE1_EP 1      // 1: EP, 0: RC
 / {
 	model = "AMD NigeriaS3 PRB";
 	compatible = "amd,nigerias3-bmc", "aspeed,ast2700";
@@ -36,58 +38,14 @@
 		#size-cells = <2>;
 		ranges;
 
-		mcu_fw: mcu-firmware@42fe00000 {
-			reg = <0x4 0x2fe00000 0x0 0x200000>;
-			no-map;
-		};
 
-		atf: trusted-firmware-a@430000000 {
-			reg = <0x4 0x30000000 0x0 0x80000>;
-			no-map;
-		};
-
-		optee_core: optee-core@430080000 {
-			reg = <0x4 0x30080000 0x0 0x1000000>;
-			no-map;
-		};
-
-		bmc_dev0_memory: bmc_dev0_memory@423800000 {
-			reg = <0x4 0x23800000 0x0 0x100000>;
-			no-map;
-		};
-
-		vbios_base0: vbios-base0@431bb0000 {
-			reg = <0x4 0x31bb0000 0x0 0x10000>;
-			no-map;
-		};
-
-		vbios_base1: vbios-base1@431bc0000 {
-			reg = <0x4 0x31bc0000 0x0 0x10000>;
-			no-map;
-		};
+                #include "ast2700-reserved-mem.dtsi"
 
 		video_engine_memory0: video0 {
 			size = <0x0 0x04000000>;  /* 64M */
 			alignment = <0x0 0x00010000>;
 			compatible = "shared-dma-pool";
 			reusable;
-		};
-
-		pcc_memory: pccbuffer {
-			reg = <0x4 0xE0000000 0x00001000>; /* 4K */
-			no-map;
-		};
-
-		xdma_memory0: xdma0 {
-			size = <0x0 0x01000000>;
-			alignment = <0x0 0x01000000>;
-			compatible = "shared-dma-pool";
-			no-map;
-		};
-
-		espi0_mmbi_memory: espi0-mmbi-memory@424000000 {
-			reg = <0x4 0x24000000 0x0 0x4000000>;
-			no-map;
 		};
 	};
 
@@ -118,7 +76,7 @@
 
 &mac0 {
 	status = "okay";
-	phy-mode = "rgmii";
+	phy-mode = "rgmii-id";
 	phy-handle = <&ethphy0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_rgmii0_default &pinctrl_rgmii0_driving>;
@@ -130,6 +88,7 @@
         pinctrl-0 = <&pinctrl_rmii1_default>;
         clock-names = "MACCLK", "RCLK";
         use-ncsi;
+	phy-mode = "rmii";
 };
 
 &fmc {

@@ -27,6 +27,7 @@
 #define SPI_CTRL		0x04
 #define SPI_CE0_CTRL		0x10
 #define SPI_DECODE_ADDR_REG	0x30
+#define SPI_MISC_CTRL		0x54
 
 #define SPI_FULL_DUPLEX_RX_REG	0x1e4
 
@@ -37,8 +38,6 @@
 #define SPI_LSB_FIRST_CTRL	BIT(5)
 #define SPI_CE_INACTIVE		BIT(2)
 #define SPI_CMD_USER_MODE	(0x3)
-
-#define SPI_FULL_DUPLEX		0x00000001
 
 struct aspeed_spi_host {
 	phys_addr_t			 ahb_base_phy;
@@ -51,11 +50,8 @@ struct aspeed_spi_host {
 	u32				 ahb_clk;
 	u32				 ctrl_val[5];
 	void __iomem			*chip_ahb_base[5];
-	/* lock: make sure only a user can access the controller once. */
-	struct mutex			 lock;
 	u8				 cs_change;
 	const struct aspeed_spi_info	*info;
-	u32				 flag;
 };
 
 struct aspeed_spi_info {
@@ -345,18 +341,15 @@ static void aspeed_spi_stop_user(struct spi_device *spi)
 }
 
 static void aspeed_spi_transfer_tx(struct aspeed_spi_host *host, const u8 *tx_buf,
-				   u8 *rx_buf, void *dst, u32 len,
-				   bool *full_duplex_rx)
+				   u8 *rx_buf, void *dst, u32 len)
 {
 	u32 i;
 
 	for (i = 0; i < len; i++) {
 		writeb(tx_buf[i], dst);
 
-		if (rx_buf && (host->flag & SPI_FULL_DUPLEX)) {
+		if (rx_buf && tx_buf == rx_buf)
 			rx_buf[i] = readb(host->ctrl_reg + SPI_FULL_DUPLEX_RX_REG);
-			*full_duplex_rx = true;
-		}
 	}
 }
 
@@ -369,21 +362,21 @@ static int aspeed_spi_transfer(struct spi_controller *ctlr,
 	struct spi_device *spi = msg->spi;
 	struct spi_transfer *xfer;
 	const u8 *tx_buf;
-	bool full_duplex_rx;
 	u8 *rx_buf;
 	u32 cs;
 	u32 j = 0;
-	u32 ctrl_val;
+	u32 ctrl_val, normal_mode;
 	void __iomem *ctrl_reg;
 
-	if (host->cs_change == 0) {
-		mutex_lock(&host->lock);
+	if (host->cs_change == 0)
 		aspeed_spi_start_user(spi);
-	}
 
 	cs = spi->chip_select;
 	ctrl_reg = host->ctrl_reg + SPI_CE0_CTRL + cs * 4;
 	ctrl_val = readl(ctrl_reg);
+
+	normal_mode = readl(host->ctrl_reg + SPI_MISC_CTRL);
+	writel(0x0, host->ctrl_reg + SPI_MISC_CTRL);
 
 	dev_dbg(dev, "cs: %d\n", cs);
 
@@ -396,8 +389,6 @@ static int aspeed_spi_transfer(struct spi_controller *ctlr,
 
 		tx_buf = xfer->tx_buf;
 		rx_buf = xfer->rx_buf;
-
-		full_duplex_rx = false;
 
 		if (tx_buf) {
 			ctrl_val &= ~SPI_IO_MASK;
@@ -414,10 +405,10 @@ static int aspeed_spi_transfer(struct spi_controller *ctlr,
 
 			aspeed_spi_transfer_tx(host, tx_buf, rx_buf,
 					       (void *)host->chip_ahb_base[cs],
-					       xfer->len, &full_duplex_rx);
+					       xfer->len);
 		}
 
-		if (rx_buf && !full_duplex_rx) {
+		if (rx_buf && rx_buf != tx_buf) {
 			ctrl_val &= ~SPI_IO_MASK;
 			if (spi->mode & SPI_RX_DUAL)
 				ctrl_val |= SPI_DUAL_IO_MODE;
@@ -443,10 +434,9 @@ static int aspeed_spi_transfer(struct spi_controller *ctlr,
 
 	msg->status = 0;
 
-	spi_finalize_current_message(ctlr);
+	writel(normal_mode, host->ctrl_reg + SPI_MISC_CTRL);
 
-	if (host->cs_change == 0)
-		mutex_unlock(&host->lock);
+	spi_finalize_current_message(ctlr);
 
 	return 0;
 }
@@ -527,10 +517,6 @@ static int aspeed_spi_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	host->flag = 0;
-	if (of_property_read_bool(dev->of_node, "spi-aspeed-full-duplex"))
-		host->flag |= SPI_FULL_DUPLEX;
-
 	host->ctrl->setup = aspeed_spi_setup;
 	host->ctrl->transfer_one_message = aspeed_spi_transfer;
 	host->ctrl->num_chipselect = host->info->max_cs;
@@ -539,8 +525,6 @@ static int aspeed_spi_probe(struct platform_device *pdev)
 	host->info->set_segment(host);
 	aspeed_spi_enable(host, true);
 	aspeed_spi_chip_set_type(host);
-
-	mutex_init(&host->lock);
 
 	err = devm_spi_register_controller(dev, host->ctrl);
 	if (err) {
@@ -552,7 +536,7 @@ static int aspeed_spi_probe(struct platform_device *pdev)
 
 disable_clk:
 	clk_disable_unprepare(host->clk);
-	mutex_destroy(&host->lock);
+
 	return err;
 }
 
@@ -562,7 +546,6 @@ static int aspeed_spi_remove(struct platform_device *pdev)
 
 	aspeed_spi_enable(host, false);
 	clk_disable_unprepare(host->clk);
-	mutex_destroy(&host->lock);
 
 	return 0;
 }
@@ -640,5 +623,4 @@ MODULE_DESCRIPTION("ASPEED Pure SPI Driver");
 MODULE_AUTHOR("Ryan Chen");
 MODULE_AUTHOR("Chin-Ting Kuo");
 MODULE_LICENSE("GPL");
-
 

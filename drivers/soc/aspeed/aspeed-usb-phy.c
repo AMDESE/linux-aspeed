@@ -111,4 +111,3 @@ module_platform_driver(aspeed_usb_phy_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Neal Liu <neal_liu@aspeedtech.com>");
-
