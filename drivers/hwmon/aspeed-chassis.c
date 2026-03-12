@@ -159,7 +159,7 @@
  }
  
  static const struct of_device_id aspeed_chassis_of_table[] = {
-	 { .compatible = "aspeed,ast2700-chassis" },
+	 { .compatible = "aspeed,ast2600-chassis" },
 	 {}
  };
  MODULE_DEVICE_TABLE(of, aspeed_chassis_of_table);
