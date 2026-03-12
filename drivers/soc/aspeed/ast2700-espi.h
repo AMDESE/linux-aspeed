@@ -1,12 +1,18 @@
 /* SPDX-License-Identifier: GPL-2.0+ */
 /*
+ * Register definitions for Aspeed AST2700 eSPI controller
  * Copyright 2023 Aspeed Technology Inc.
  */
 #ifndef _AST2700_ESPI_H_
 #define _AST2700_ESPI_H_
 
 #include <linux/bits.h>
-#include "aspeed-espi-comm.h"
+#include "aspeed-espi.h"
+
+/* SCU regiseters */
+#define SCU1_DDR			0x0c8
+#define   SCU1_DDR_DIS_ESPI0_AHB	BIT(0)
+#define   SCU1_DDR_DIS_ESPI1_AHB	BIT(1)
 
 /* global registers */
 #define ESPI_CTRL			0x000
@@ -23,6 +29,7 @@
 #define   ESPI_INT_EN_RST_ASSERT	BIT(30)
 #define ESPI_DEV_ID			0x010
 #define ESPI_CAP_GEN			0x014
+#define   ESPI_CAP_GEN_RTC_SUP		BIT(29)
 #define ESPI_CAP_CH0			0x018
 #define ESPI_CAP_CH1			0x01c
 #define ESPI_CAP_CH2			0x020
@@ -106,25 +113,44 @@
 #define   ESPI_CH1_CTRL_SW_RDY		BIT(1)
 #define ESPI_CH1_STS			0x204
 #define ESPI_CH1_INT_STS		0x208
-#define   ESPI_CH1_INT_STS_GPIO		BIT(2)
+#define   ESPI_CH1_INT_STS_GPIO		BIT(1)
+#define   ESPI_CH1_INT_STS_GPIO_CLR	BIT(2)
+#define   ESPI_CH1_INT_STS_EVT1		BIT(2)
+#define   ESPI_CH1_INT_STS_EVT1_CLR	BIT(1)
+#define	  ESPI_CH1_INT_STS_EVT0		BIT(0)
 #define ESPI_CH1_INT_EN			0x20c
-#define   ESPI_CH1_INT_EN_GPIO		BIT(2)
+#define   ESPI_CH1_INT_EN_GPIO		BIT(1)
+#define   ESPI_CH1_INT_EN_SYS_EVT1	BIT(2)
+#define   ESPI_CH1_INT_EN_SYS_EVT0	BIT(0)
 #define ESPI_CH1_EVT0			0x210
+#define	  ESPI_CH1_EVT0_PLTRSTN		BIT(5)
 #define ESPI_CH1_EVT0_INT_EN		0x214
+#define	  ESPI_CH1_EVT0_INT_EN_PLTRSTN	BIT(5)
 #define ESPI_CH1_EVT0_INT_T0		0x218
+#define	  ESPI_CH1_EVT0_INT_T0_PLTRSTN	BIT(5)
 #define ESPI_CH1_EVT0_INT_T1		0x21c
+#define	  ESPI_CH1_EVT0_INT_T1_PLTRSTN	BIT(5)
 #define ESPI_CH1_EVT0_INT_T2		0x220
+#define	  ESPI_CH1_EVT0_INT_T2_PLTRSTN	BIT(5)
 #define ESPI_CH1_EVT0_INT_STS		0x224
+#define	  ESPI_CH1_EVT0_INT_STS_PLTRSTN	BIT(5)
 #define ESPI_CH1_EVT1			0x230
+#define   ESPI_CH1_EVT1_PCH_GENE	GENMASK(15, 8)
+#define   ESPI_CH1_EVT1_BMC_GENE	GENMASK(31, 24)
 #define ESPI_CH1_EVT1_INT_EN		0x234
+#define   ESPI_CH1_EVT1_INT_EN_PCH_GENE	GENMASK(15, 8)
 #define ESPI_CH1_EVT1_INT_T0		0x238
+#define	  ESPI_CH1_EVT1_INT_T0_PCH_GENE	GENMASK(15, 8)
 #define ESPI_CH1_EVT1_INT_T1		0x23c
+#define	  ESPI_CH1_EVT1_INT_T1_PCH_GENE	GENMASK(15, 8)
 #define ESPI_CH1_EVT1_INT_T2		0x240
+#define	  ESPI_CH1_EVT1_INT_T2_PCH_GENE	GENMASK(15, 8)
 #define ESPI_CH1_EVT1_INT_STS		0x244
+#define	 ESPI_CH1_EVT1_INT_STS_PCH_GENE	GENMASK(15, 8)
 #define ESPI_CH1_GPIO_VAL0		0x250
 #define ESPI_CH1_GPIO_VAL1		0x254
 #define ESPI_CH1_GPIO_DIR0		0x258
-#define ESPI_CH1_GPIO_DIR1		0x258
+#define ESPI_CH1_GPIO_DIR1		0x25c
 #define ESPI_CH1_GPIO_RSTSEL0		0x260
 #define ESPI_CH1_GPIO_RSTSEL1		0x264
 #define ESPI_CH1_GPIO_GRP		0x268
@@ -170,8 +196,12 @@
 #define ESPI_CH2_TX_DATA		0x32c
 #define ESPI_CH2_RX_DESC_EPTR		0x330
 #define ESPI_CH2_RX_DESC_RPTR		0x334
+#define	  ESPI_CH2_RX_DESC_RPTR_UPDATE	BIT(31)
+#define   ESPI_CH2_RX_DESC_RPTR_RP	GENMASK(11, 0)
 #define ESPI_CH2_RX_DESC_WPTR		0x338
 #define   ESPI_CH2_RX_DESC_WPTR_VALID	BIT(31)
+#define   ESPI_CH2_RX_DESC_WPTR_SP	GENMASK(27, 16)
+#define   ESPI_CH2_RX_DESC_WPTR_WP	GENMASK(11, 0)
 #define ESPI_CH2_RX_DESC_TMOUT		0x33c
 #define ESPI_CH2_TX_DESC_EPTR		0x340
 #define ESPI_CH2_TX_DESC_RPTR		0x344
@@ -261,11 +291,17 @@
 #define ESPI_MMBI_INT_EN		0x80c
 #define ESPI_MMBI_HOST_RWP(x)		(0x810 + ((x) << 3))
 
-enum ast2700_edaf_mode {
-	EDAF_MODE_MIX,
-	EDAF_MODE_SW,
-	EDAF_MODE_HW,
-	EDAF_MODES,
-};
+void ast2700_espi_pre_init(struct aspeed_espi *espi);
+void ast2700_espi_post_init(struct aspeed_espi *espi);
+void ast2700_espi_deinit(struct aspeed_espi *espi);
+int ast2700_espi_perif_probe(struct aspeed_espi *espi);
+int ast2700_espi_perif_remove(struct aspeed_espi *espi);
+int ast2700_espi_vw_probe(struct aspeed_espi *espi);
+int ast2700_espi_vw_remove(struct aspeed_espi *espi);
+int ast2700_espi_oob_probe(struct aspeed_espi *espi);
+int ast2700_espi_oob_remove(struct aspeed_espi *espi);
+int ast2700_espi_flash_probe(struct aspeed_espi *espi);
+int ast2700_espi_flash_remove(struct aspeed_espi *espi);
+irqreturn_t ast2700_espi_isr(int irq, void *arg);
 
 #endif

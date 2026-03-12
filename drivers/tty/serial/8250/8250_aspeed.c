@@ -15,7 +15,6 @@
 #include <linux/reset.h>
 #include <linux/dma-mapping.h>
 #include <linux/circ_buf.h>
-#include <linux/kfifo.h>
 #include <linux/tty_flip.h>
 #include <linux/pm_runtime.h>
 #include <linux/soc/aspeed/aspeed-udma.h>
@@ -23,17 +22,24 @@
 #include "8250.h"
 
 #define DEVICE_NAME "aspeed-uart"
+#define UNKNOWN 0
+#define AST2500_PLAT 1
+#define AST2600_PLAT 2
+#define AST2700_PLAT 3
 
 /* offsets for the aspeed virtual uart registers */
 #define VUART_GCRA	0x20
 #define   VUART_GCRA_VUART_EN			BIT(0)
 #define   VUART_GCRA_SIRQ_POLARITY		BIT(1)
+#define   VUART_GCRA_CHARACTER_TIMEOUT_TIME_MASK	GENMASK(3, 2)
 #define   VUART_GCRA_DISABLE_HOST_TX_DISCARD	BIT(5)
 #define VUART_GCRB	0x24
 #define   VUART_GCRB_HOST_SIRQ_MASK		GENMASK(7, 4)
 #define   VUART_GCRB_HOST_SIRQ_SHIFT		4
 #define VUART_ADDRL	0x28
 #define VUART_ADDRH	0x2c
+#define VUART_GCRG	0x38
+#define   VUART_GCRG_CHARACTER_TIMEOUT_TIME_CONTROL	BIT(1)
 
 #define DMA_TX_BUFSZ	PAGE_SIZE
 #define DMA_RX_BUFSZ	(64 * 1024)
@@ -44,6 +50,7 @@ struct ast8250_vuart {
 	u32 port;
 	u32 sirq;
 	u32 sirq_pol;
+	bool character_timeout_time_en;
 };
 
 struct ast8250_udma {
@@ -55,7 +62,6 @@ struct ast8250_udma {
 	dma_addr_t tx_addr;
 	dma_addr_t rx_addr;
 
-	struct circ_buf tx_circ;
 	struct circ_buf *tx_rb;
 	struct circ_buf *rx_rb;
 
@@ -66,6 +72,7 @@ struct ast8250_udma {
 struct ast8250_data {
 	int line;
 
+	struct resource *res;
 	u8 __iomem *regs;
 
 	bool is_vuart;
@@ -78,32 +85,20 @@ struct ast8250_data {
 	struct ast8250_udma dma;
 };
 
-static void ast8250_sync_tx_rb(struct uart_port *port, struct circ_buf *tx_rb)
-{
-	struct tty_port *tport = &port->state->port;
-	struct __kfifo *kfifo = &tport->xmit_fifo.kfifo;
-
-	tx_rb->buf = tport->xmit_buf;
-	tx_rb->head = kfifo->in;
-	tx_rb->tail = kfifo->out;
-}
-
 static void ast8250_dma_tx_complete(int tx_rb_rptr, void *id)
 {
+	u32 count;
+	unsigned long flags;
 	struct uart_port *port = id;
 	struct ast8250_data *data = port->private_data;
-	struct tty_port *tport = &port->state->port;
-	struct circ_buf *tx_rb = data->dma.tx_rb;
-	unsigned long flags;
-	u32 count;
 
 	uart_port_lock_irqsave(port, &flags);
 
-	ast8250_sync_tx_rb(port, tx_rb);
-	count = CIRC_CNT(tx_rb_rptr, tx_rb->tail, data->dma.tx_rbsz);
-	uart_xmit_advance(port, count);
+	count = CIRC_CNT(tx_rb_rptr, port->state->xmit.tail, data->dma.tx_rbsz);
+	port->state->xmit.tail = tx_rb_rptr;
+	port->icount.tx += count;
 
-	if (kfifo_len(&tport->xmit_fifo) < WAKEUP_CHARS)
+	if (kfifo_len(&port->state->port.xmit_fifo) < WAKEUP_CHARS)
 		uart_write_wakeup(port);
 
 	uart_port_unlock_irqrestore(port, flags);
@@ -112,7 +107,7 @@ static void ast8250_dma_tx_complete(int tx_rb_rptr, void *id)
 static void ast8250_dma_rx_complete(int rx_rb_wptr, void *id)
 {
 	unsigned long flags;
-	struct uart_port *up = (struct uart_port*)id;
+	struct uart_port *up = id;
 	struct tty_port *tp = &up->state->port;
 	struct ast8250_data *data = up->private_data;
 	struct ast8250_udma *dma = &data->dma;
@@ -135,7 +130,7 @@ static void ast8250_dma_rx_complete(int rx_rb_wptr, void *id)
 		rx_rb->tail += count;
 		rx_rb->tail %= rx_rbsz;
 
-        up->icount.rx += count;
+		up->icount.rx += count;
 	}
 
 	if (count) {
@@ -151,8 +146,6 @@ static void ast8250_dma_start_tx(struct uart_port *port)
 	struct ast8250_data *data = port->private_data;
 	struct ast8250_udma *dma = &data->dma;
 	struct circ_buf *tx_rb = dma->tx_rb;
-
-	ast8250_sync_tx_rb(port, tx_rb);
 
 	dma_sync_single_for_device(port->dev,
 			dma->tx_addr, dma->tx_rbsz, DMA_TO_DEVICE);
@@ -195,6 +188,18 @@ static void ast8250_vuart_init(struct ast8250_data *data)
 	else
 		reg &= ~VUART_GCRA_SIRQ_POLARITY;
 	writeb(reg, data->regs + VUART_GCRA);
+
+	if (vuart->character_timeout_time_en) {
+		/* Character timeout time */
+		reg = readb(data->regs + VUART_GCRA);
+		reg |= VUART_GCRA_CHARACTER_TIMEOUT_TIME_MASK;
+		writeb(reg, data->regs + VUART_GCRA);
+
+		/* Character timeout time by LCLK control bit */
+		reg = readb(data->regs + VUART_GCRG);
+		reg |= VUART_GCRG_CHARACTER_TIMEOUT_TIME_CONTROL;
+		writeb(reg, data->regs + VUART_GCRG);
+	}
 }
 
 static void ast8250_vuart_set_host_tx_discard(struct ast8250_data *data, bool discard)
@@ -250,8 +255,7 @@ static int ast8250_startup(struct uart_port *port)
 		 * To keep the TX/RX operation consistency, we use the
 		 * streaming DMA interface instead of the coherent one
 		 */
-		dma->tx_rb = &dma->tx_circ;
-		dma->tx_circ.buf = port->state->port.xmit_buf;
+		dma->tx_rb = &port->state->xmit;
 		dma->rx_rb->buf = kzalloc(data->dma.rx_rbsz, GFP_KERNEL);
 		if (IS_ERR_OR_NULL(dma->rx_rb->buf)) {
 			dev_err(port->dev, "failed to allcoate RX DMA buffer\n");
@@ -276,14 +280,14 @@ static int ast8250_startup(struct uart_port *port)
 		}
 
 		rc = aspeed_udma_request_tx_chan(dma->ch, dma->tx_addr,
-				dma->tx_rb, dma->tx_rbsz, ast8250_dma_tx_complete, port, dma->tx_tmout_dis);
+				dma->tx_rbsz, ast8250_dma_tx_complete, port, dma->tx_tmout_dis);
 		if (rc) {
 			dev_err(port->dev, "failed to request DMA TX channel\n");
 			goto free_dma_n_out;
 		}
 
 		rc = aspeed_udma_request_rx_chan(dma->ch, dma->rx_addr,
-				dma->rx_rb, dma->rx_rbsz, ast8250_dma_rx_complete, port, dma->rx_tmout_dis);
+				dma->rx_rbsz, ast8250_dma_rx_complete, port, dma->rx_tmout_dis);
 		if (rc) {
 			dev_err(port->dev, "failed to request DMA RX channel\n");
 			goto free_dma_n_out;
@@ -356,45 +360,19 @@ static int __maybe_unused ast8250_resume(struct device *dev)
 	return 0;
 }
 
-static int ast8250_probe(struct platform_device *pdev)
+static int ast8250_probe_of(struct platform_device *pdev, struct uart_port *p,
+			    struct ast8250_data *data)
 {
-	int rc;
-	struct uart_8250_port uart = {};
-	struct uart_port *port = &uart.port;
 	struct device *dev = &pdev->dev;
-	struct ast8250_data *data;
+	int rc;
 
-	struct resource *res;
-	u32 irq;
-
-	rc = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64));
-	if (rc) {
-		dev_err(dev, "cannot set 64-bits DMA mask\n");
-		return rc;
-	}
-
-	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
-	if (data == NULL)
-	    return -ENOMEM;
-
-	data->dma.rx_rb = devm_kzalloc(dev, sizeof(data->dma.rx_rb), GFP_KERNEL);
-	if (data->dma.rx_rb == NULL)
-		return -ENOMEM;
-
-	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		if (irq != -EPROBE_DEFER)
-			dev_err(dev, "failed to get IRQ number\n");
-		return irq;
-	}
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (res == NULL) {
+	data->res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!data->res) {
 		dev_err(dev, "failed to get register base\n");
 		return -ENODEV;
 	}
 
-	data->regs = devm_ioremap(dev, res->start, resource_size(res));
+	data->regs = devm_ioremap(dev, data->res->start, resource_size(data->res));
 	if (IS_ERR(data->regs)) {
 		dev_err(dev, "failed to map registers\n");
 		return PTR_ERR(data->regs);
@@ -406,18 +384,12 @@ static int ast8250_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	rc = clk_prepare_enable(data->clk);
-	if (rc) {
-		dev_err(dev, "failed to enable clock\n");
-		return rc;
-	}
-
 	data->rst = devm_reset_control_get_optional_exclusive(dev, NULL);
-	if (!IS_ERR(data->rst))
-		reset_control_deassert(data->rst);
 
 	data->is_vuart = of_property_read_bool(dev->of_node, "virtual");
 	if (data->is_vuart) {
+		u32 plat = (unsigned long)of_device_get_match_data(dev);
+
 		rc = of_property_read_u32(dev->of_node, "port", &data->vuart.port);
 		if (rc) {
 			dev_err(dev, "failed to get VUART port address\n");
@@ -436,9 +408,10 @@ static int ast8250_probe(struct platform_device *pdev)
 			return -ENODEV;
 		}
 
-		ast8250_vuart_init(data);
-		ast8250_vuart_set_host_tx_discard(data, true);
-		ast8250_vuart_set_enable(data, true);
+		if (plat == AST2700_PLAT)
+			data->vuart.character_timeout_time_en = true;
+		else
+			data->vuart.character_timeout_time_en = false;
 	}
 
 	data->use_dma = of_property_read_bool(dev->of_node, "dma-mode");
@@ -453,23 +426,68 @@ static int ast8250_probe(struct platform_device *pdev)
 		data->dma.rx_tmout_dis = of_property_read_bool(dev->of_node, "dma-rx-timeout-disable");
 	}
 
+	return 0;
+}
+
+static int ast8250_probe(struct platform_device *pdev)
+{
+	int rc;
+	struct uart_8250_port uart = {};
+	struct uart_port *port = &uart.port;
+	struct device *dev = &pdev->dev;
+	struct ast8250_data *data;
+
+	rc = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64));
+	if (rc) {
+		dev_err(dev, "cannot set 64-bits DMA mask\n");
+		return rc;
+	}
+
+	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+
+	data->dma.rx_rb = devm_kzalloc(dev, sizeof(data->dma.rx_rb), GFP_KERNEL);
+	if (!data->dma.rx_rb)
+		return -ENOMEM;
+
+	rc = ast8250_probe_of(pdev, port, data);
+	if (rc)
+		return rc;
+
+	rc = clk_prepare_enable(data->clk);
+	if (rc) {
+		dev_err(dev, "failed to enable clock\n");
+		return rc;
+	}
+
+	if (!IS_ERR(data->rst))
+		reset_control_deassert(data->rst);
+
+	if (data->is_vuart) {
+		ast8250_vuart_init(data);
+		ast8250_vuart_set_host_tx_discard(data, true);
+		ast8250_vuart_set_enable(data, true);
+	}
+
 	spin_lock_init(&port->lock);
 	port->dev = dev;
-	port->type = PORT_16550A;
-	port->irq = irq;
-	port->line = of_alias_get_id(dev->of_node, "serial");
-	port->handle_irq = ast8250_handle_irq;
-	port->mapbase = res->start;
-	port->mapsize = resource_size(res);
+	port->mapbase = data->res->start;
+	port->mapsize = resource_size(data->res);
 	port->membase = data->regs;
-	port->uartclk = clk_get_rate(data->clk);
-	port->regshift = 2;
-	port->iotype = UPIO_MEM32;
 	port->flags = UPF_FIXED_TYPE | UPF_FIXED_PORT | UPF_SHARE_IRQ;
 	port->startup = ast8250_startup;
 	port->shutdown = ast8250_shutdown;
 	port->private_data = data;
 	uart.bugs |= UART_BUG_TXRACE;
+
+	rc = uart_read_port_properties(port);
+	if (rc)
+		return rc;
+
+	port->type = PORT_16550A;
+	port->handle_irq = ast8250_handle_irq;
+	port->uartclk = clk_get_rate(data->clk);
 
 	data->line = serial8250_register_8250_port(&uart);
 	if (data->line < 0) {
@@ -499,9 +517,9 @@ static const struct dev_pm_ops ast8250_pm_ops = {
 };
 
 static const struct of_device_id ast8250_of_match[] = {
-	{ .compatible = "aspeed,ast2500-uart" },
-	{ .compatible = "aspeed,ast2600-uart" },
-	{ .compatible = "aspeed,ast2700-uart" },
+	{ .compatible = "aspeed,ast2500-uart", .data = (void *)AST2500_PLAT},
+	{ .compatible = "aspeed,ast2600-uart", .data = (void *)AST2600_PLAT},
+	{ .compatible = "aspeed,ast2700-uart", .data = (void *)AST2700_PLAT},
 	{ },
 };
 

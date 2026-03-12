@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0+ */
 /*
+ * Aspeed eSPI protocol definitions and IOCTL methods
  * Copyright 2023 Aspeed Technology Inc.
  */
 #ifndef __ASPEED_ESPI_COMM_H__
@@ -44,71 +45,71 @@
  * Intel eSPI Interface Base Specification, Rev 1.0, Jan. 2016.
  */
 struct espi_comm_hdr {
-	uint8_t cyc;
-	uint8_t len_h : 4;
-	uint8_t tag : 4;
-	uint8_t len_l;
+	u8 cyc;
+	u8 len_h : 4;
+	u8 tag : 4;
+	u8 len_l;
 };
 
 struct espi_perif_mem32 {
-	uint8_t cyc;
-	uint8_t len_h : 4;
-	uint8_t tag : 4;
-	uint8_t len_l;
-	uint32_t addr_be;
-	uint8_t data[];
+	u8 cyc;
+	u8 len_h : 4;
+	u8 tag : 4;
+	u8 len_l;
+	u32 addr_be;
+	u8 data[];
 } __packed;
 
 struct espi_perif_mem64 {
-	uint8_t cyc;
-	uint8_t len_h : 4;
-	uint8_t tag : 4;
-	uint8_t len_l;
-	uint32_t addr_be;
-	uint8_t data[];
+	u8 cyc;
+	u8 len_h : 4;
+	u8 tag : 4;
+	u8 len_l;
+	u32 addr_be;
+	u8 data[];
 } __packed;
 
 struct espi_perif_msg {
-	uint8_t cyc;
-	uint8_t len_h : 4;
-	uint8_t tag : 4;
-	uint8_t len_l;
-	uint8_t msg_code;
-	uint8_t msg_byte[4];
-	uint8_t data[];
+	u8 cyc;
+	u8 len_h : 4;
+	u8 tag : 4;
+	u8 len_l;
+	u8 msg_code;
+	u8 msg_byte[4];
+	u8 data[];
 } __packed;
 
 struct espi_perif_cmplt {
-	uint8_t cyc;
-	uint8_t len_h : 4;
-	uint8_t tag : 4;
-	uint8_t len_l;
-	uint8_t data[];
+	u8 cyc;
+	u8 len_h : 4;
+	u8 tag : 4;
+	u8 len_l;
+	u8 data[];
 } __packed;
 
 struct espi_oob_msg {
-	uint8_t cyc;
-	uint8_t len_h : 4;
-	uint8_t tag : 4;
-	uint8_t len_l;
-	uint8_t data[];
+	u8 cyc;
+	u8 len_h : 4;
+	u8 tag : 4;
+	u8 len_l;
+	u8 data[];
 };
 
 struct espi_flash_rwe {
-	uint8_t cyc;
-	uint8_t len_h : 4;
-	uint8_t tag : 4;
-	uint8_t len_l;
-	uint32_t addr_be;
-	uint8_t data[];
+	u8 cyc;
+	u8 len_h : 4;
+	u8 tag : 4;
+	u8 len_l;
+	u32 addr_be;
+	u8 data[];
 } __packed;
 
 struct espi_flash_cmplt {
-	uint8_t cyc;
-	uint8_t len_h : 4;
-	uint8_t tag : 4;
-	uint8_t len_l;
-	uint8_t data[];
+	u8 cyc;
+	u8 len_h : 4;
+	u8 tag : 4;
+	u8 len_l;
+	u8 data[];
 } __packed;
 
 #define ESPI_MAX_PLD_LEN	BIT(12)
@@ -140,8 +141,8 @@ struct espi_flash_cmplt {
 #define ESPI_MAX_PKT_LEN	(sizeof(struct espi_perif_msg) + ESPI_MAX_PLD_LEN)
 
 struct aspeed_espi_ioc {
-	uint32_t pkt_len;
-	uint8_t *pkt;
+	u32 pkt_len;
+	u8 *pkt;
 };
 
 /*
@@ -165,11 +166,29 @@ struct aspeed_espi_ioc {
  *      Read the input value of GPIO over the VW channel
  *  - ASPEED_ESPI_VW_PUT_GPIO_VAL
  *      Write the output value of GPIO over the VW channel
+ *  - ASPEED_ESPI_VW_GET_GPIO_VAL1 (new feature in AST2700)
+ *      Read the input value1 of GPIO over the VW channel
+ *  - ASPEED_ESPI_VW_PUT_GPIO_VAL1 (new feature in AST2700)
+ *      Write the output value1 of GPIO over the VW channel
+ *  - ASPEED_ESPI_VW_GET_PCH_GENERIC
+ *      Read the input value of PCH Generic Indexes over the VW channel
+ *  - ASPEED_ESPI_VW_PUT_PCH_GENERIC
+ *      Write the output value of PCH Generic Indexes over the VW channel
  */
 #define ASPEED_ESPI_VW_GET_GPIO_VAL	_IOR(__ASPEED_ESPI_IOCTL_MAGIC, \
-					     0x10, uint8_t)
+					     0x10, u32)
 #define ASPEED_ESPI_VW_PUT_GPIO_VAL	_IOW(__ASPEED_ESPI_IOCTL_MAGIC, \
-					     0x11, uint8_t)
+					     0x11, u32)
+#ifdef CONFIG_ARM64
+#define ASPEED_ESPI_VW_GET_GPIO_VAL1	_IOR(__ASPEED_ESPI_IOCTL_MAGIC, \
+					     0x12, u32)
+#define ASPEED_ESPI_VW_PUT_GPIO_VAL1	_IOW(__ASPEED_ESPI_IOCTL_MAGIC, \
+					     0x13, u32)
+#endif
+#define ASPEED_ESPI_VW_GET_PCH_GENERIC	_IOR(__ASPEED_ESPI_IOCTL_MAGIC, \
+					     0x14, u32)
+#define ASPEED_ESPI_VW_PUT_PCH_GENERIC	_IOW(__ASPEED_ESPI_IOCTL_MAGIC, \
+					     0x15, u32)
 /*
  * Out-of-band Channel (CH2)
  *  - ASPEED_ESPI_OOB_GET_RX

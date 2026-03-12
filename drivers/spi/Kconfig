@@ -55,20 +55,7 @@ config SPI_MEM
 	  This extension is meant to simplify interaction with SPI memories
 	  by providing a high-level interface to send memory-like commands.
 
-config SPI_OFFLOAD
-	bool
-
 comment "SPI Master Controller Drivers"
-
-config SPI_AIROHA_SNFI
-	tristate "Airoha SPI NAND Flash Interface"
-	depends on ARCH_AIROHA || COMPILE_TEST
-	depends on SPI_MASTER
-	select REGMAP_MMIO
-	help
-	  This enables support for SPI-NAND mode on the Airoha NAND
-	  Flash Interface found on Airoha ARM SoCs. This controller
-	  is implemented as a SPI-MEM controller.
 
 config SPI_ALTERA
 	tristate "Altera SPI Controller platform driver"
@@ -98,36 +85,6 @@ config SPI_AMLOGIC_SPIFC_A1
 	help
 	  This enables master mode support for the SPIFC (SPI flash
 	  controller) available in Amlogic A1 (A113L SoC).
-
-config SPI_AMLOGIC_SPIFC_A4
-	tristate "Amlogic A4 SPI Flash controller"
-	depends on ARCH_MESON || COMPILE_TEST
-	select REGMAP_MMIO
-	help
-	  This enables SPI mode on the NAND Flash Controller of Amlogic
-	  ARM SoCs. It supports SPI Nor Flash and SPI NAND Flash (Could
-	  enable Host ECC HW engine). The controller implements the
-	  SPI-MEM interface, it doesn't support generic SPI.
-
-config SPI_AMLOGIC_SPISG
-	tristate "Amlogic SPISG controller"
-	depends on COMMON_CLK
-	depends on ARCH_MESON || COMPILE_TEST
-	help
-	  This enables master mode support for the SPISG (SPI scatter-gather
-	  communication controller), which is available on platforms such as
-	  Amlogic A4 SoCs.
-
-config SPI_APPLE
-	tristate "Apple SoC SPI Controller platform driver"
-	depends on ARCH_APPLE || COMPILE_TEST
-	help
-	  This enables support for the SPI controller present on
-	  many Apple SoCs, including the t8103 (M1), t8112 (M2)
-	  and t600x (M1 Pro/Max/Ultra). Multiple SPI controller
-	  instances are present on the SoC and each connects usually
-	  to a single device like spi-nor (nvram), input device controller
-	  or fingerprint sensor.
 
 config SPI_AR934X
 	tristate "Qualcomm Atheros AR934X/QCA95XX SPI controller driver"
@@ -162,9 +119,19 @@ config SPI_ASPEED_SMC
 	  controller (SPI) for the host firmware. The implementation
 	  only supports SPI NOR.
 
+config SPI_ASPEED_TXRX
+        tristate "Aspeed SPI controllers"
+        depends on ARCH_ASPEED || COMPILE_TEST
+        depends on OF
+        help
+          This enables support for SPI controller driver in the Aspeed
+          AST2600, AST2500 and AST2400 SoCs when attached
+          to SPI device chips with half-duplex mode. On AST2700,
+          full-duplex mode can be enabled.
+
 config SPI_ATMEL
 	tristate "Atmel SPI Controller"
-	depends on ARCH_MICROCHIP || COMPILE_TEST
+	depends on ARCH_AT91 || COMPILE_TEST
 	depends on OF
 	help
 	  This selects a driver for the Atmel SPI Controller, present on
@@ -198,7 +165,6 @@ config SPI_AU1550
 config SPI_AXI_SPI_ENGINE
 	tristate "Analog Devices AXI SPI Engine controller"
 	depends on HAS_IOMEM
-	select SPI_OFFLOAD
 	help
 	  This enables support for the Analog Devices AXI SPI Engine SPI controller.
 	  It is part of the SPI Engine framework that is used in some Analog Devices
@@ -260,11 +226,11 @@ config SPI_BCMBCA_HSSPI
 	  explicitly.
 
 config SPI_BITBANG
-	tristate "Utilities for Bitbanging SPI host controllers"
+	tristate "Utilities for Bitbanging SPI masters"
 	help
 	  With a few GPIO pins, your system can bitbang the SPI protocol.
 	  Select this to get SPI support through I/O pins (GPIO, parallel
-	  port, etc).  Or, some systems' SPI host controller drivers use
+	  port, etc).  Or, some systems' SPI master controller drivers use
 	  this code to manage the per-word or per-transfer accesses to the
 	  hardware shift registers.
 
@@ -290,7 +256,7 @@ config SPI_CADENCE
 
 config SPI_CADENCE_QUADSPI
 	tristate "Cadence Quad SPI controller"
-	depends on OF && (ARM || ARM64 || X86 || RISCV || MIPS || COMPILE_TEST)
+	depends on OF && (ARM || ARM64 || X86 || RISCV || COMPILE_TEST)
 	help
 	  Enable support for the Cadence Quad SPI Flash controller.
 
@@ -301,7 +267,7 @@ config SPI_CADENCE_QUADSPI
 
 config SPI_CADENCE_XSPI
 	tristate "Cadence XSPI controller"
-	depends on OF && HAS_IOMEM && 64BIT
+	depends on OF && HAS_IOMEM
 	depends on SPI_MEM
 	help
 	  Enable support for the Cadence XSPI Flash controller.
@@ -310,12 +276,6 @@ config SPI_CADENCE_XSPI
 	  Flash over up to 8-bit wide bus. Enable this option if you have a
 	  device with a Cadence XSPI controller and want to access the
 	  Flash as an MTD device.
-
-config SPI_CH341
-	tristate "CH341 USB2SPI adapter"
-	depends on SPI_MASTER && USB
-	help
-	  Enables the SPI controller on the CH341a USB to serial chip
 
 config SPI_CLPS711X
 	tristate "CLPS711X host SPI controller"
@@ -334,7 +294,6 @@ config SPI_COLDFIRE_QSPI
 config SPI_CS42L43
 	tristate "Cirrus Logic CS42L43 SPI controller"
 	depends on MFD_CS42L43 && PINCTRL_CS42L43
-	select GPIO_SWNODE_UNDEFINED
 	help
 	  This enables support for the SPI controller inside the Cirrus Logic
 	  CS42L43 audio codec.
@@ -565,18 +524,6 @@ config SPI_JCORE
 	  This enables support for the SPI master controller in the J-Core
 	  synthesizable, open source SoC.
 
-config SPI_KSPI2
-	tristate "Support for KEBA SPI master type 2 hardware"
-	depends on HAS_IOMEM
-	depends on KEBA_CP500 || COMPILE_TEST
-	select AUXILIARY_BUS
-	help
-	  This driver supports KEBA SPI master type 2 FPGA implementation,
-	  as found on CP500 devices for example.
-
-	  This driver can also be built as a module. If so, the module
-	  will be called spi-kspi2.
-
 config SPI_LM70_LLP
 	tristate "Parallel port adapter for LM70 eval board (DEVELOPMENT)"
 	depends on PARPORT
@@ -666,10 +613,10 @@ config SPI_FSL_SPI
 config SPI_FSL_DSPI
 	tristate "Freescale DSPI controller"
 	select REGMAP_MMIO
-	depends on ARCH_MXC || ARCH_NXP || M5441x || COMPILE_TEST
+	depends on SOC_VF610 || SOC_LS1021A || ARCH_LAYERSCAPE || M5441x || COMPILE_TEST
 	help
 	  This enables support for the Freescale DSPI controller in master
-	  mode. S32, VF610, LS1021A and ColdFire platforms uses the controller.
+	  mode. VF610, LS1021A and ColdFire platforms uses the controller.
 
 config SPI_FSL_ESPI
 	tristate "Freescale eSPI controller"
@@ -678,17 +625,6 @@ config SPI_FSL_ESPI
 	  This enables using the Freescale eSPI controllers in master mode.
 	  From MPC8536, 85xx platform uses the controller, and all P10xx,
 	  P20xx, P30xx,P40xx, P50xx uses this controller.
-
-config SPI_LJCA
-	tristate "Intel La Jolla Cove Adapter SPI support"
-	depends on USB_LJCA
-	default USB_LJCA
-	help
-	  Select this option to enable SPI driver for the Intel
-	  La Jolla Cove Adapter (LJCA) board.
-
-	  This driver can also be built as a module. If so, the module
-	  will be called spi-ljca.
 
 config SPI_MESON_SPICC
 	tristate "Amlogic Meson SPICC controller"
@@ -705,6 +641,15 @@ config SPI_MESON_SPIFC
 	help
 	  This enables master mode support for the SPIFC (SPI flash
 	  controller) available in Amlogic Meson SoCs.
+
+config SPI_MICROCHIP_CORE
+	tristate "Microchip FPGA SPI controllers"
+	depends on SPI_MASTER
+	help
+	  This enables the SPI driver for Microchip FPGA SPI controllers.
+	  Say Y or M here if you want to use the "hard" controllers on
+	  PolarFire SoC.
+	  If built as a module, it will be called spi-microchip-core.
 
 config SPI_MICROCHIP_CORE_QSPI
 	tristate "Microchip FPGA QSPI controllers"
@@ -748,7 +693,7 @@ config SPI_MTK_SNFI
 	  This enables support for SPI-NAND mode on the MediaTek NAND
 	  Flash Interface found on MediaTek ARM SoCs. This controller
 	  is implemented as a SPI-MEM controller with pipelined ECC
-	  capability.
+	  capcability.
 
 config SPI_WPCM_FIU
 	tristate "Nuvoton WPCM450 Flash Interface Unit"
@@ -862,16 +807,6 @@ config SPI_PL022
 	  controller. If you have an embedded system with an AMBA(R)
 	  bus and a PL022 controller, say Y or M here.
 
-config SPI_POLARFIRE_SOC
-
-	tristate "Microchip FPGA SPI controllers"
-	depends on SPI_MASTER && ARCH_MICROCHIP
-	help
-	  This enables the SPI driver for Microchip FPGA SPI controllers.
-	  Say Y or M here if you want to use the "hard" controllers on
-	  PolarFire SoC.
-	  If built as a module, it will be called spi-mpfs.
-
 config SPI_PPC4xx
 	tristate "PPC4xx SPI Controller"
 	depends on PPC32 && 4xx
@@ -881,25 +816,15 @@ config SPI_PPC4xx
 
 config SPI_PXA2XX
 	tristate "PXA2xx SSP SPI master"
-	depends on ARCH_PXA || ARCH_MMP || (X86 && (PCI || ACPI)) || COMPILE_TEST
+	depends on ARCH_PXA || ARCH_MMP || PCI || ACPI || COMPILE_TEST
 	select PXA_SSP if ARCH_PXA || ARCH_MMP
 	help
 	  This enables using a PXA2xx or Sodaville SSP port as a SPI master
-	  controller. The driver can be configured to use any SSP port.
+	  controller. The driver can be configured to use any SSP port and
+	  additional documentation can be found a Documentation/spi/pxa2xx.rst.
 
 config SPI_PXA2XX_PCI
 	def_tristate SPI_PXA2XX && PCI && COMMON_CLK
-
-config SPI_REALTEK_SNAND
-	tristate "Realtek SPI-NAND Flash Controller"
-	depends on MACH_REALTEK_RTL || COMPILE_TEST
-	select REGMAP
-	help
-	  This enables support for the SPI-NAND Flash controller on
-	  Realtek SoCs.
-
-	  This driver does not support generic SPI. The implementation
-	  only supports the spi-mem interface.
 
 config SPI_ROCKCHIP
 	tristate "Rockchip SPI controller driver"
@@ -927,8 +852,7 @@ config SPI_ROCKCHIP_SFC
 
 config SPI_RB4XX
 	tristate "Mikrotik RB4XX SPI master"
-	depends on SPI_MASTER && (ATH79 || COMPILE_TEST)
-	depends on OF
+	depends on SPI_MASTER && ATH79
 	help
 	  SPI controller driver for the Mikrotik RB4xx series boards.
 
@@ -944,35 +868,17 @@ config SPI_RSPI
 	help
 	  SPI driver for Renesas RSPI and QSPI blocks.
 
-config SPI_RZV2H_RSPI
-	tristate "Renesas RZ/V2H RSPI controller"
-	depends on ARCH_RENESAS || COMPILE_TEST
-	help
-	  RSPI driver for the Renesas RZ/V2H Serial Peripheral Interface (RSPI).
-	  RSPI supports both SPI host and SPI target roles. This option only
-	  enables the SPI host role.
-
 config SPI_RZV2M_CSI
 	tristate "Renesas RZ/V2M CSI controller"
 	depends on ARCH_RENESAS || COMPILE_TEST
 	help
-	  SPI driver for Renesas RZ/V2M Clocked Serial Interface (CSI).
-	  CSI supports both SPI host and SPI target roles.
+	  SPI driver for Renesas RZ/V2M Clocked Serial Interface (CSI)
 
 config SPI_QCOM_QSPI
 	tristate "QTI QSPI controller"
 	depends on ARCH_QCOM || COMPILE_TEST
 	help
 	  QSPI(Quad SPI) driver for Qualcomm QSPI controller.
-
-config SPI_QPIC_SNAND
-	tristate "QPIC SNAND controller"
-	depends on ARCH_QCOM || COMPILE_TEST
-	depends on MTD
-	help
-	  QPIC_SNAND (QPIC SPI NAND) driver for Qualcomm QPIC controller.
-	  QPIC controller supports both parallel nand and serial nand.
-	  This config will enable serial nand driver for QPIC controller.
 
 config SPI_QUP
 	tristate "Qualcomm SPI controller with QUP interface"
@@ -1063,15 +969,6 @@ config SPI_SN_F_OSPI
 	  for connecting an SPI Flash memory over up to 8-bit wide bus.
 	  It supports indirect access mode only.
 
-config SPI_SG2044_NOR
-	tristate "SG2044 SPI NOR Controller"
-	depends on ARCH_SOPHGO || COMPILE_TEST
-	help
-	  This enables support for the SG2044 SPI NOR controller,
-	  which supports Dual/Quad read and write operations while
-	  also supporting 3Byte address devices and 4Byte address
-	  devices.
-
 config SPI_SPRD
 	tristate "Spreadtrum SPI controller"
 	depends on ARCH_SPRD || COMPILE_TEST
@@ -1095,16 +992,6 @@ config SPI_STM32
 	  STM32 SPI controller supports DMA and PIO modes. When DMA
 	  is not available, the driver automatically falls back to
 	  PIO mode.
-
-config SPI_STM32_OSPI
-	tristate "STMicroelectronics STM32 OCTO SPI controller"
-	depends on ARCH_STM32 || COMPILE_TEST
-	depends on OF
-	depends on SPI_MEM
-	help
-	  This enables support for the Octo SPI controller in master mode.
-	  This driver does not support generic SPI. The implementation only
-	  supports spi-mem interface.
 
 config SPI_STM32_QSPI
 	tristate "STMicroelectronics STM32 QUAD SPI controller"
@@ -1182,10 +1069,10 @@ config SPI_TEGRA210_QUAD
 
 config SPI_TEGRA114
 	tristate "NVIDIA Tegra114 SPI Controller"
-	depends on ARCH_TEGRA || COMPILE_TEST
+	depends on (ARCH_TEGRA && TEGRA20_APB_DMA) || COMPILE_TEST
 	depends on RESET_CONTROLLER
 	help
-	  SPI controller driver for NVIDIA Tegra114 and later SoCs. This controller
+	  SPI driver for NVIDIA Tegra114 SPI Controller interface. This controller
 	  is different than the older SoCs SPI controller and also register interface
 	  get changed with this controller.
 
@@ -1235,17 +1122,6 @@ config SPI_UNIPHIER
 	  This driver supports SCSSI only.
 
 	  If your SoC supports SCSSI, say Y here.
-
-config SPI_VIRTIO
-	tristate "Virtio SPI Controller"
-	depends on SPI_MASTER && VIRTIO
-	help
-	  If you say yes to this option, support will be included for the virtio
-	  SPI controller driver. The hardware can be emulated by any device model
-	  software according to the virtio protocol.
-
-	  This driver can also be built as a module. If so, the module
-	  will be called spi-virtio.
 
 config SPI_XCOMM
 	tristate "Analog Devices AD-FMCOMMS1-EBZ SPI-I2C-bridge driver"
@@ -1306,9 +1182,7 @@ config SPI_ZYNQMP_GQSPI
 
 config SPI_AMD
 	tristate "AMD SPI controller"
-	depends on PCI
-	depends on SPI_MASTER || X86 || COMPILE_TEST
-	depends on SPI_MEM
+	depends on SPI_MASTER || COMPILE_TEST
 	help
 	  Enables SPI controller driver for AMD SoC.
 
@@ -1390,22 +1264,5 @@ endif # SPI_SLAVE
 
 config SPI_DYNAMIC
 	def_bool ACPI || OF_DYNAMIC || SPI_SLAVE
-
-if SPI_OFFLOAD
-
-comment "SPI Offload triggers"
-
-config SPI_OFFLOAD_TRIGGER_ADI_UTIL_SD
-	tristate "SPI offload trigger using ADI sigma-delta utility"
-	help
-	  SPI offload trigger from ADI sigma-delta utility FPGA IP block.
-
-config SPI_OFFLOAD_TRIGGER_PWM
-	tristate "SPI offload trigger using PWM"
-	depends on PWM
-	help
-	  Generic SPI offload trigger implemented using PWM output.
-
-endif # SPI_OFFLOAD
 
 endif # SPI

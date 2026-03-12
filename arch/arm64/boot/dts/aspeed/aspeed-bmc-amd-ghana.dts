@@ -10,13 +10,12 @@
 #include <dt-bindings/i2c/i2c.h>
 #include <dt-bindings/i3c/i3c.h>
 
-//#define VERONA 1
 #define PCIE0_EP 1      // 1: EP, 0: RC
 #define PCIE1_EP 1      // 1: EP, 0: RC
 
 / {
-	model = "AMD Nigeria PRB";
-	compatible = "amd,nigeria-bmc", "aspeed,ast2700";
+	model = "AMD Ghana PRB";
+	compatible = "amd,ghana-bmc", "aspeed,ast2700";
 
 	chosen {
 		stdout-path = &uart12;
@@ -40,7 +39,7 @@
 		#size-cells = <2>;
 		ranges;
 
-                #include "ast2700-reserved-mem.dtsi"
+		#include "ast2700-reserved-mem.dtsi"
 
 		video_engine_memory0: video0 {
 			size = <0x0 0x04000000>;  /* 64M */
@@ -58,44 +57,18 @@
 	};
 
 	aliases {
-		i2c100 = &NC_1;
-		i2c101 = &NC_2;
-		i2c102 = &riser_123;
-		i2c103 = &NC_3;
-		i2c104 = &fan_0;
-		i2c105 = &p0_pcp;
-		i2c106 = &NC_4;
-		i2c107 = &NC_5;
-		i2c108 = &riser_456;
-		i2c109 = &NC_6;
-		i2c110 = &picp;
-		i2c111 = &NC_7;
-		i2c112 = &NC_8;
-		i2c113 = &p1_pcp;
-		i2c114 = &NC_9;
-		i2c115 = &NC_10;
 		i2c116 = &p0_id;
 		i2c117 = &p0_clk;
 		i2c118 = &p0_vr;
 		i2c119 = &p0_sec;
 		i2c120 = &sys_vr;
 		i2c121 = &temp;
-		i2c122 = &fan_1;
-		i2c123 = &fan_2;
-		i2c124 = &temp_outlet;
-		i2c125 = &NC_11;
-		i2c126 = &adc;
-		i2c127 = &pcp;
-		i2c128 = &p0_lcd;
-		i2c129 = &p1_lcd;
-		i2c130 = &clk;
-		i2c131 = &usb3;
+		i2c122 = &fan_pump;
 		i2c132 = &p1_id;
 		i2c133 = &p1_clk;
 		i2c134 = &p1_vr;
 		i2c135 = &p1_sec;
 		i2c203 = &fan_board0;
-		i2c204 = &fan_board1;
 	};
 };
 
@@ -206,14 +179,14 @@
 		spi-rx-bus-width = <1>;
 	};
 	oled@0 {
-        reg = < 0 >; // Chip select 0
-        compatible = "ssd,ssd1322";
-        spi-max-frequency = <1000000>; // Adjust the frequency as needed
-        label = "ssd1322";
-        status = "okay"; // Enable the SSD1322 device
-        spi-tx-bus-width = <1>;
-        spi-rx-bus-width = <1>;
-    };
+		reg = < 0 >; // Chip select 0
+		compatible = "ssd,ssd1322";
+		spi-max-frequency = <1000000>; // Adjust the frequency as needed
+		label = "ssd1322";
+		status = "okay"; // Enable the SSD1322 device
+		spi-tx-bus-width = <1>;
+		spi-rx-bus-width = <1>;
+	};
 };
 
 //BMC Console
@@ -230,37 +203,17 @@
 	i2cswitch@70 {
 		compatible = "nxp,pca9548";
 		reg = <0x70>;
-                pinctrl-names = "default";
-                i2c-mux-idle-disconnect;
 		#address-cells = <1>;
 		#size-cells = <0>;
-		fan_board0: i2c@2 {
-			reg = <2>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-			nct7363@20 {
-				compatible = "nct,nct7363";
-				reg = <0x20>;
-				fan_sel_gpio = <5>;
-			};
-		};
-	};
 
-	i2cswitch@72 {
-		compatible = "nxp,pca9548";
-		reg = <0x72>;
-                pinctrl-names = "default";
-                i2c-mux-idle-disconnect;
-		#address-cells = <1>;
-		#size-cells = <0>;
-		fan_board1: i2c@2 {
-			reg = <2>;
+		fan_board0: i2c@1 {
+			reg = <1>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 			nct7363@20 {
 				compatible = "nct,nct7363";
 				reg = <0x20>;
-				fan_sel_gpio = <5>;
+				fan_sel_gpio = <3>;
 			};
 		};
 	};
@@ -281,121 +234,11 @@
 		compatible = "microchip,24lc256","atmel,24c256";
 		reg = <0x50>;
 	};
-
-	i2cswitch@70 {
-		compatible = "nxp,pca9548";
-		reg = <0x70>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		NC_1: i2c@0 {
-			reg = <0>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_2: i2c@1 {
-			reg = <1>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		riser_123: i2c@2 {
-			reg = <2>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_3: i2c@3 {
-			reg = <3>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		fan_0: i2c@4 {
-			reg = <4>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		p0_pcp: i2c@5 {
-			reg = <5>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_4: i2c@6 {
-			reg = <6>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_5: i2c@7 {
-			reg = <7>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-	};
 };
 
 &i2c9 {
 	// Net name SCM_I2C<1>
 	status = "okay";
-
-	i2cswitch@70 {
-		compatible = "nxp,pca9548";
-		reg = <0x70>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		riser_456: i2c@0 {
-			reg = <0>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_6: i2c@1 {
-			reg = <1>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		picp: i2c@2 {
-			reg = <2>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_7: i2c@3 {
-			reg = <3>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_8: i2c@4 {
-			reg = <4>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		p1_pcp: i2c@5 {
-			reg = <5>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_9: i2c@6 {
-			reg = <6>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_10: i2c@7 {
-			reg = <7>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-	};
 };
 
 &i2c12 {
@@ -429,23 +272,23 @@
 				compatible = "ism,ism6636a";
 				reg = <0x8>;
 			};
-                        pvdd33_s5_p0@12{
+                        pvdd18_s5_p0@12{
                                 compatible = "onsemi,fan251030";
                                 reg = <0x12>;
                         };
 			pvddcr_cpu0_p0@61 {
 				//PVDDCR_CPU0_VDDIO_MEM_S3_P0_CONTROLLER
-				compatible = "mps,mp2869";
+				compatible = "renesas,raa229639";
 				reg = <0x61>;
 			};
 			pvddcr_cpu1_p0@62 {
 				//PVDDCR_CPU1_PVDDCR_SOC_P0_CONTROLLER
-				compatible = "mps,mp2869";
+				compatible = "renesas,raa229639";
 				reg = <0x62>;
 			};
 			pvddio_p0@63 {
 				//PVDDIO_P0_CONTROLLER
-				compatible = "mps,mp2869";
+				compatible = "renesas,raa229641";
 				reg = <0x63>;
 			};
 		};
@@ -488,6 +331,10 @@
 				compatible = "onsemi,fan251030";
 				reg = <0x15>;
 			};
+			p3v3@16{
+				compatible = "onsemi,fan251015";
+				reg = <0x16>;
+			};
 		};
 
 		temp: i2c@1 {
@@ -496,71 +343,24 @@
 			#size-cells = <0>;
 		};
 
-		fan_1: i2c@2 {
-			reg = <2>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		fan_2: i2c@3 {
-			reg = <3>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		temp_outlet: i2c@4 {
-			reg = <4>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_11: i2c@5 {
-			reg = <5>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		adc: i2c@6 {
-			reg = <6>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		pcp: i2c@7 {
-			reg = <7>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
 	};
 
-	i2cswitch@72 {
+	i2cswitch@73 {
 		compatible = "nxp,pca9546";
-		reg = <0x72>;
+		reg = <0x73>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		p0_lcd: i2c@0 {
-			reg = <0>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		p1_lcd: i2c@1 {
-			reg = <1>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		clk: i2c@2 {
+		fan_pump: i2c@2 {
 			reg = <2>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-		};
 
-		usb3: i2c@3 {
-			reg = <3>;
-			#address-cells = <1>;
-			#size-cells = <0>;
+			nct7363@20 {
+				compatible = "nct,nct7363";
+				reg = <0x20>;
+				fan_sel_gpio = <3>;
+			};
 		};
 	};
 };
@@ -602,17 +402,17 @@
 			};
 			pvddcr_cpu0_p1@64 {
 				//PVDDCR_CPU0_VDDIO_MEM_S3_P0_CONTROLLER
-				compatible = "mps,mp2869";
+				compatible = "renesas,raa229639";
 				reg = <0x64>;
 			};
 			pvddcr_cpu1_p1@65 {
 				//PVDDCR_CPU1_PVDDCR_SOC_P0_CONTROLLER
-				compatible = "mps,mp2869";
+				compatible = "renesas,raa229639";
 				reg = <0x65>;
 			};
 			pvddio_p1@66 {
 				//PVDDIO_P0_CONTROLLER
-				compatible = "mps,mp2869";
+				compatible = "renesas,raa229641";
 				reg = <0x66>;
 			};
                 };
@@ -687,6 +487,7 @@
 		mrl = <69>;
 		mwl = <69>;
 	};
+
 	scoob_2p_p1: scoob@0,22401002118 {
 		reg = <0x0 0x224 0x01002118>;
 		mrl = <69>;
@@ -702,24 +503,6 @@
 		reg = <0x0 0x224 0x01002119>;
 		mrl = <69>;
 		mwl = <69>;
-	};
-};
-
-/ {
-	/* Alert_L associated with socket 0 */
-	alertl_sock0 {
-		compatible = "apml-alertl";
-		status = "okay";
-		socket-num =  /bits/ 8 <0>;
-		gpios = <&ltpi0_gpio 20 GPIO_ACTIVE_LOW>;
-	};
-
-	/* Alert_L associated with socket 1 */
-	alertl_sock1 {
-		compatible = "apml-alertl";
-		status = "okay";
-		socket-num =  /bits/ 8 <1>;
-		gpios = <&ltpi0_gpio 104 GPIO_ACTIVE_LOW>;
 	};
 };
 
@@ -914,7 +697,6 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	rec-mode = <0x1>;
 	port-addr-hbits-select = <0x1>;
 	port-addr-xbits = <0x3>;
-
 	status = "okay";
 };
 
