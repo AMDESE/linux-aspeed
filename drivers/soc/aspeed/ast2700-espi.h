@@ -8,6 +8,11 @@
 #include <linux/bits.h>
 #include "aspeed-espi-comm.h"
 
+/* SCU regiseters */
+#define SCU1_DDR			0x0c8
+#define   SCU1_DDR_DIS_ESPI0_AHB	BIT(0)
+#define   SCU1_DDR_DIS_ESPI1_AHB	BIT(1)
+
 /* global registers */
 #define ESPI_CTRL			0x000
 #define ESPI_STS			0x004
@@ -23,6 +28,7 @@
 #define   ESPI_INT_EN_RST_ASSERT	BIT(30)
 #define ESPI_DEV_ID			0x010
 #define ESPI_CAP_GEN			0x014
+#define   ESPI_CAP_GEN_RTC_SUP		BIT(29)
 #define ESPI_CAP_CH0			0x018
 #define ESPI_CAP_CH1			0x01c
 #define ESPI_CAP_CH2			0x020
@@ -124,7 +130,7 @@
 #define ESPI_CH1_GPIO_VAL0		0x250
 #define ESPI_CH1_GPIO_VAL1		0x254
 #define ESPI_CH1_GPIO_DIR0		0x258
-#define ESPI_CH1_GPIO_DIR1		0x258
+#define ESPI_CH1_GPIO_DIR1		0x25c
 #define ESPI_CH1_GPIO_RSTSEL0		0x260
 #define ESPI_CH1_GPIO_RSTSEL1		0x264
 #define ESPI_CH1_GPIO_GRP		0x268

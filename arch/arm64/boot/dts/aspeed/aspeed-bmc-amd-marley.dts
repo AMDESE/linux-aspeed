@@ -8,6 +8,9 @@
 #include "dt-bindings/gpio/aspeed-gpio.h"
 #include <dt-bindings/i2c/i2c.h>
 
+#define PCIE0_EP 1	// 1: EP, 0: RC
+#define PCIE1_EP 1	// 1: EP, 0: RC
+
 / {
 	model = "AMD Marley BMC";
 	compatible = "amd,marley-bmc", "aspeed,ast2700";
@@ -34,31 +37,13 @@
 		#size-cells = <2>;
 		ranges;
 
-		mcu_fw: mcu-firmware@42fe00000 {
-			reg = <0x4 0x2fe00000 0x0 0x200000>;
-			no-map;
-		};
-
-		atf: trusted-firmware-a@430000000 {
-			reg = <0x4 0x30000000 0x0 0x80000>;
-			no-map;
-		};
-
-		optee_core: optee_core@430080000 {
-			reg = <0x4 0x30080000 0x0 0x1000000>;
-			no-map;
-		};
+		#include "ast2700-reserved-mem.dtsi"
 
 		video_engine_memory: jpegbuffer {
 			size = <0x02000000>;	/* 32M */
 			alignment = <0x01000000>;
 			compatible = "shared-dma-pool";
 			reusable;
-		};
-
-		pcc_memory: pccbuffer {
-			reg = <0xE0000000 0x00001000>; /* 4K */
-			no-map;
 		};
 	};
 };
@@ -84,7 +69,7 @@
 
 &mac0 {
 	status = "okay";
-	phy-mode = "rgmii";
+	phy-mode = "rgmii-id";
 	phy-handle = <&ethphy0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_rgmii0_default &pinctrl_rgmii0_driving>;
@@ -448,7 +433,6 @@
 	port-addr = <0x80>;
 	dma-mode;
 	A2600-15;
-	memory-region = <&pcc_memory>;
 	rec-mode = <0x1>;
 	port-addr-hbits-select = <0x1>;
 	port-addr-xbits = <0x3>;

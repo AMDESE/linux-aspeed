@@ -200,15 +200,11 @@ static int aspeed_lpc_enable_snoop(struct aspeed_lpc_snoop *lpc_snoop,
 	lpc_snoop->chan[channel].miscdev.minor = MISC_DYNAMIC_MINOR;
 	lpc_snoop->chan[channel].miscdev.name =
 		devm_kasprintf(dev, GFP_KERNEL, "%s%d", DEVICE_NAME, channel);
-	if (!lpc_snoop->chan[channel].miscdev.name) {
-		rc = -ENOMEM;
-		goto err_free_fifo;
-	}
 	lpc_snoop->chan[channel].miscdev.fops = &snoop_fops;
 	lpc_snoop->chan[channel].miscdev.parent = dev;
 	rc = misc_register(&lpc_snoop->chan[channel].miscdev);
 	if (rc)
-		goto err_free_fifo;
+		return rc;
 
 	/* Enable LPC snoop channel at requested port */
 	switch (channel) {
@@ -225,8 +221,7 @@ static int aspeed_lpc_enable_snoop(struct aspeed_lpc_snoop *lpc_snoop,
 		hicrb_en = HICRB_ENSNP1D;
 		break;
 	default:
-		rc = -EINVAL;
-		goto err_misc_deregister;
+		return -EINVAL;
 	}
 
 	regmap_update_bits(lpc_snoop->regmap, HICR5, hicr5_en, hicr5_en);
@@ -236,12 +231,6 @@ static int aspeed_lpc_enable_snoop(struct aspeed_lpc_snoop *lpc_snoop,
 		regmap_update_bits(lpc_snoop->regmap, HICRB,
 				hicrb_en, hicrb_en);
 
-	return 0;
-
-err_misc_deregister:
-	misc_deregister(&lpc_snoop->chan[channel].miscdev);
-err_free_fifo:
-	kfifo_free(&lpc_snoop->chan[channel].fifo);
 	return rc;
 }
 
@@ -342,7 +331,7 @@ err:
 	return rc;
 }
 
-static void aspeed_lpc_snoop_remove(struct platform_device *pdev)
+static int aspeed_lpc_snoop_remove(struct platform_device *pdev)
 {
 	struct aspeed_lpc_snoop *lpc_snoop = dev_get_drvdata(&pdev->dev);
 
@@ -351,6 +340,8 @@ static void aspeed_lpc_snoop_remove(struct platform_device *pdev)
 	aspeed_lpc_disable_snoop(lpc_snoop, 1);
 
 	clk_disable_unprepare(lpc_snoop->clk);
+
+	return 0;
 }
 
 static const struct aspeed_lpc_snoop_model_data ast2400_model_data = {
@@ -377,7 +368,7 @@ static struct platform_driver aspeed_lpc_snoop_driver = {
 		.of_match_table = aspeed_lpc_snoop_match,
 	},
 	.probe = aspeed_lpc_snoop_probe,
-	.remove_new = aspeed_lpc_snoop_remove,
+	.remove = aspeed_lpc_snoop_remove,
 };
 
 module_platform_driver(aspeed_lpc_snoop_driver);
