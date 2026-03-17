@@ -1,17 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright 2017 Google Inc
- *
- * Provides a simple driver to control the ASPEED LPC snoop interface which
- * allows the BMC to listen on and save the data written by
- * the host to an arbitrary LPC I/O port.
- *
- * Typically used by the BMC to "watch" host boot progress via port
- * 0x80 writes made by the BIOS during the boot process.
+ * Copyright 2023 Aspeed Technology Inc
  */
 
 #include <linux/bitops.h>
-#include <linux/clk.h>
 #include <linux/interrupt.h>
 #include <linux/fs.h>
 #include <linux/kfifo.h>
@@ -22,11 +15,14 @@
 #include <linux/platform_device.h>
 #include <linux/poll.h>
 #include <linux/regmap.h>
+//#include <linux/idr.h>
 
 #define DEVICE_NAME	"aspeed-lpc-snoop"
 
-#define NUM_SNOOP_CHANNELS 2
-#define SNOOP_FIFO_SIZE 2048
+static DEFINE_IDA(aspeed_lpc_snoop_ida);
+
+#define SNOOP_HW_CHANNEL_NUM	2
+#define SNOOP_FIFO_SIZE			2048
 
 #define HICR5	0x80
 #define HICR5_EN_SNP0W		BIT(0)
@@ -36,6 +32,7 @@
 #define HICR6	0x84
 #define HICR6_STR_SNP0W		BIT(0)
 #define HICR6_STR_SNP1W		BIT(1)
+#define HICR6_NFE_WA		BIT(20)
 #define SNPWADR	0x90
 #define SNPWADR_CH0_MASK	GENMASK(15, 0)
 #define SNPWADR_CH0_SHIFT	0
@@ -51,30 +48,32 @@
 #define HICRB_ENSNP1D		BIT(15)
 
 struct aspeed_lpc_snoop_model_data {
-	/* The ast2400 has bits 14 and 15 as reserved, whereas the ast2500
-	 * can use them.
+	/*
+	 * The ast2400 has bits 14 and 15 as reserved, whereas the ast2500 and later
+	 * can use them. These two bits for are for eSPI interface to respond ACCEPT
+	 * when snooping Host port I/O write.
 	 */
 	unsigned int has_hicrb_ensnp;
 };
 
 struct aspeed_lpc_snoop_channel {
-	struct kfifo		fifo;
-	wait_queue_head_t	wq;
-	struct miscdevice	miscdev;
+	int id;
+	struct miscdevice mdev;
+	wait_queue_head_t wq;
+	struct kfifo fifo;
 };
 
 struct aspeed_lpc_snoop {
-	struct regmap		*regmap;
-	int			irq;
-	struct clk		*clk;
-	struct aspeed_lpc_snoop_channel chan[NUM_SNOOP_CHANNELS];
+	struct aspeed_lpc_snoop_channel chan[SNOOP_HW_CHANNEL_NUM];
+	struct regmap *regmap;
+	int irq;
 };
 
 static struct aspeed_lpc_snoop_channel *snoop_file_to_chan(struct file *file)
 {
 	return container_of(file->private_data,
 			    struct aspeed_lpc_snoop_channel,
-			    miscdev);
+			    mdev);
 }
 
 static ssize_t snoop_file_read(struct file *file, char __user *buffer,
@@ -87,11 +86,13 @@ static ssize_t snoop_file_read(struct file *file, char __user *buffer,
 	if (kfifo_is_empty(&chan->fifo)) {
 		if (file->f_flags & O_NONBLOCK)
 			return -EAGAIN;
+
 		ret = wait_event_interruptible(chan->wq,
-				!kfifo_is_empty(&chan->fifo));
+					       !kfifo_is_empty(&chan->fifo));
 		if (ret == -ERESTARTSYS)
 			return -EINTR;
 	}
+
 	ret = kfifo_to_user(&chan->fifo, buffer, count, &copied);
 	if (ret)
 		return ret;
@@ -100,11 +101,12 @@ static ssize_t snoop_file_read(struct file *file, char __user *buffer,
 }
 
 static __poll_t snoop_file_poll(struct file *file,
-				    struct poll_table_struct *pt)
+				struct poll_table_struct *pt)
 {
 	struct aspeed_lpc_snoop_channel *chan = snoop_file_to_chan(file);
 
 	poll_wait(file, &chan->wq, pt);
+
 	return !kfifo_is_empty(&chan->fifo) ? EPOLLIN : 0;
 }
 
@@ -120,94 +122,95 @@ static void put_fifo_with_discard(struct aspeed_lpc_snoop_channel *chan, u8 val)
 {
 	if (!kfifo_initialized(&chan->fifo))
 		return;
+
 	if (kfifo_is_full(&chan->fifo))
 		kfifo_skip(&chan->fifo);
+
 	kfifo_put(&chan->fifo, val);
+
 	wake_up_interruptible(&chan->wq);
 }
 
 static irqreturn_t aspeed_lpc_snoop_irq(int irq, void *arg)
 {
-	struct aspeed_lpc_snoop *lpc_snoop = arg;
+	struct aspeed_lpc_snoop *snoop = arg;
 	u32 reg, data;
+	u8 val;
 
-	if (regmap_read(lpc_snoop->regmap, HICR6, &reg))
+	if (regmap_read(snoop->regmap, HICR6, &reg))
 		return IRQ_NONE;
 
 	/* Check if one of the snoop channels is interrupting */
-	reg &= (HICR6_STR_SNP0W | HICR6_STR_SNP1W);
-	if (!reg)
+	if (!(reg & (HICR6_STR_SNP0W | HICR6_STR_SNP1W)))
 		return IRQ_NONE;
 
-	/* Ack pending IRQs */
-	regmap_write(lpc_snoop->regmap, HICR6, reg);
+	/* Check if NFE WA is set */
+	if (reg & HICR6_NFE_WA) {
+		/* Ack pending IRQs with keeping NFE WA */
+		regmap_write(snoop->regmap, HICR6,
+			     (HICR6_STR_SNP0W | HICR6_STR_SNP1W | HICR6_NFE_WA));
+	} else {
+		/* Ack pending IRQs */
+		regmap_write(snoop->regmap, HICR6,
+			     (HICR6_STR_SNP0W | HICR6_STR_SNP1W));
+	}
 
 	/* Read and save most recent snoop'ed data byte to FIFO */
-	regmap_read(lpc_snoop->regmap, SNPWDR, &data);
+	regmap_read(snoop->regmap, SNPWDR, &data);
 
 	if (reg & HICR6_STR_SNP0W) {
-		u8 val = (data & SNPWDR_CH0_MASK) >> SNPWDR_CH0_SHIFT;
-
-		put_fifo_with_discard(&lpc_snoop->chan[0], val);
+		val = (data & SNPWDR_CH0_MASK) >> SNPWDR_CH0_SHIFT;
+		put_fifo_with_discard(&snoop->chan[0], val);
 	}
-	if (reg & HICR6_STR_SNP1W) {
-		u8 val = (data & SNPWDR_CH1_MASK) >> SNPWDR_CH1_SHIFT;
 
-		put_fifo_with_discard(&lpc_snoop->chan[1], val);
+	if (reg & HICR6_STR_SNP1W) {
+		val = (data & SNPWDR_CH1_MASK) >> SNPWDR_CH1_SHIFT;
+		put_fifo_with_discard(&snoop->chan[1], val);
 	}
 
 	return IRQ_HANDLED;
 }
 
-static int aspeed_lpc_snoop_config_irq(struct aspeed_lpc_snoop *lpc_snoop,
-				       struct platform_device *pdev)
+static int aspeed_lpc_enable_snoop(struct aspeed_lpc_snoop *snoop,
+				   struct device *dev, int hw_channel, u16 port)
 {
-	struct device *dev = &pdev->dev;
-	int rc;
+	const struct aspeed_lpc_snoop_model_data *model_data;
+	u32 hicr5_en, snpwadr_mask, snpwadr_shift, hicrb_en;
+	struct aspeed_lpc_snoop_channel *chan;
+	int rc = 0;
 
-	lpc_snoop->irq = platform_get_irq(pdev, 0);
-	if (!lpc_snoop->irq)
-		return -ENODEV;
+	model_data = of_device_get_match_data(dev);
 
-	rc = devm_request_irq(dev, lpc_snoop->irq,
-			      aspeed_lpc_snoop_irq, IRQF_SHARED,
-			      DEVICE_NAME, lpc_snoop);
-	if (rc < 0) {
-		dev_warn(dev, "Unable to request IRQ %d\n", lpc_snoop->irq);
-		lpc_snoop->irq = 0;
+	chan = &snoop->chan[hw_channel];
+
+	init_waitqueue_head(&chan->wq);
+
+	/* Create FIFO datastructure */
+	rc = kfifo_alloc(&chan->fifo, SNOOP_FIFO_SIZE, GFP_KERNEL);
+	if (rc) {
+		dev_err(dev, "cannot allocate kFIFO\n");
 		return rc;
 	}
 
-	return 0;
-}
+	chan->id = ida_alloc(&aspeed_lpc_snoop_ida, GFP_KERNEL);
+	if (chan->id < 0) {
+		dev_err(dev, "cannot allocate ID\n");
+		goto err_free_fifo;
+	}
 
-static int aspeed_lpc_enable_snoop(struct aspeed_lpc_snoop *lpc_snoop,
-				   struct device *dev,
-				   int channel, u16 lpc_port)
-{
-	int rc = 0;
-	u32 hicr5_en, snpwadr_mask, snpwadr_shift, hicrb_en;
-	const struct aspeed_lpc_snoop_model_data *model_data =
-		of_device_get_match_data(dev);
-
-	init_waitqueue_head(&lpc_snoop->chan[channel].wq);
-	/* Create FIFO datastructure */
-	rc = kfifo_alloc(&lpc_snoop->chan[channel].fifo,
-			 SNOOP_FIFO_SIZE, GFP_KERNEL);
-	if (rc)
-		return rc;
-
-	lpc_snoop->chan[channel].miscdev.minor = MISC_DYNAMIC_MINOR;
-	lpc_snoop->chan[channel].miscdev.name =
-		devm_kasprintf(dev, GFP_KERNEL, "%s%d", DEVICE_NAME, channel);
-	lpc_snoop->chan[channel].miscdev.fops = &snoop_fops;
-	lpc_snoop->chan[channel].miscdev.parent = dev;
-	rc = misc_register(&lpc_snoop->chan[channel].miscdev);
-	if (rc)
-		return rc;
+	chan->mdev.parent = dev;
+	chan->mdev.minor = MISC_DYNAMIC_MINOR;
+	chan->mdev.name = devm_kasprintf(dev, GFP_KERNEL, "%s%d",
+					 DEVICE_NAME, chan->id);
+	chan->mdev.fops = &snoop_fops;
+	rc = misc_register(&chan->mdev);
+	if (rc) {
+		dev_err(dev, "cannot register misc device\n");
+		goto err_free_fifo;
+	}
 
 	/* Enable LPC snoop channel at requested port */
-	switch (channel) {
+	switch (hw_channel) {
 	case 0:
 		hicr5_en = HICR5_EN_SNP0W | HICR5_ENINT_SNP0W;
 		snpwadr_mask = SNPWADR_CH0_MASK;
@@ -221,30 +224,36 @@ static int aspeed_lpc_enable_snoop(struct aspeed_lpc_snoop *lpc_snoop,
 		hicrb_en = HICRB_ENSNP1D;
 		break;
 	default:
-		return -EINVAL;
+		rc = -EINVAL;
+		goto err_misc_deregister;
 	}
 
-	regmap_update_bits(lpc_snoop->regmap, HICR5, hicr5_en, hicr5_en);
-	regmap_update_bits(lpc_snoop->regmap, SNPWADR, snpwadr_mask,
-			   lpc_port << snpwadr_shift);
-	if (model_data->has_hicrb_ensnp)
-		regmap_update_bits(lpc_snoop->regmap, HICRB,
-				hicrb_en, hicrb_en);
+	regmap_update_bits(snoop->regmap, HICR5, hicr5_en, hicr5_en);
+	regmap_update_bits(snoop->regmap, SNPWADR, snpwadr_mask, port << snpwadr_shift);
 
+	if (model_data->has_hicrb_ensnp)
+		regmap_update_bits(snoop->regmap, HICRB, hicrb_en, hicrb_en);
+
+	return 0;
+
+err_misc_deregister:
+	misc_deregister(&chan->mdev);
+err_free_fifo:
+	kfifo_free(&chan->fifo);
 	return rc;
 }
 
-static void aspeed_lpc_disable_snoop(struct aspeed_lpc_snoop *lpc_snoop,
-				     int channel)
+static void aspeed_lpc_disable_snoop(struct aspeed_lpc_snoop *snoop,
+				     int hw_channel)
 {
-	switch (channel) {
+	switch (hw_channel) {
 	case 0:
-		regmap_update_bits(lpc_snoop->regmap, HICR5,
+		regmap_update_bits(snoop->regmap, HICR5,
 				   HICR5_EN_SNP0W | HICR5_ENINT_SNP0W,
 				   0);
 		break;
 	case 1:
-		regmap_update_bits(lpc_snoop->regmap, HICR5,
+		regmap_update_bits(snoop->regmap, HICR5,
 				   HICR5_EN_SNP1W | HICR5_ENINT_SNP1W,
 				   0);
 		break;
@@ -252,96 +261,74 @@ static void aspeed_lpc_disable_snoop(struct aspeed_lpc_snoop *lpc_snoop,
 		return;
 	}
 
-	kfifo_free(&lpc_snoop->chan[channel].fifo);
-	misc_deregister(&lpc_snoop->chan[channel].miscdev);
+	kfifo_free(&snoop->chan[hw_channel].fifo);
+	misc_deregister(&snoop->chan[hw_channel].mdev);
 }
 
 static int aspeed_lpc_snoop_probe(struct platform_device *pdev)
 {
-	struct aspeed_lpc_snoop *lpc_snoop;
+	u32 ports[SNOOP_HW_CHANNEL_NUM], port_num;
+	struct aspeed_lpc_snoop *snoop;
 	struct device *dev;
-	struct device_node *np;
-	u32 port;
-	int rc;
+	int i, rc;
 
 	dev = &pdev->dev;
 
-	lpc_snoop = devm_kzalloc(dev, sizeof(*lpc_snoop), GFP_KERNEL);
-	if (!lpc_snoop)
+	snoop = devm_kzalloc(dev, sizeof(*snoop), GFP_KERNEL);
+	if (!snoop)
 		return -ENOMEM;
 
-	np = pdev->dev.parent->of_node;
-	if (!of_device_is_compatible(np, "aspeed,ast2400-lpc-v2") &&
-	    !of_device_is_compatible(np, "aspeed,ast2500-lpc-v2") &&
-	    !of_device_is_compatible(np, "aspeed,ast2600-lpc-v2")) {
-		dev_err(dev, "unsupported LPC device binding\n");
-		return -ENODEV;
-	}
-
-	lpc_snoop->regmap = syscon_node_to_regmap(np);
-	if (IS_ERR(lpc_snoop->regmap)) {
+	snoop->regmap = syscon_node_to_regmap(pdev->dev.parent->of_node);
+	if (IS_ERR(snoop->regmap)) {
 		dev_err(dev, "Couldn't get regmap\n");
 		return -ENODEV;
 	}
 
-	dev_set_drvdata(&pdev->dev, lpc_snoop);
+	dev_set_drvdata(&pdev->dev, snoop);
 
-	rc = of_property_read_u32_index(dev->of_node, "snoop-ports", 0, &port);
-	if (rc) {
+	snoop->irq = platform_get_irq(pdev, 0);
+	if (snoop->irq < 0) {
+		dev_err(dev, "cannot get IRQ\n");
+		return snoop->irq;
+	}
+
+	rc = devm_request_irq(dev, snoop->irq, aspeed_lpc_snoop_irq,
+			      IRQF_SHARED, DEVICE_NAME, snoop);
+	if (rc < 0) {
+		dev_err(dev, "cannot request IRQ %d\n", snoop->irq);
+		return rc;
+	}
+
+	port_num = of_property_read_variable_u32_array(dev->of_node,
+						       "snoop-ports",
+						       ports, 1, SNOOP_HW_CHANNEL_NUM);
+	if (port_num < 0) {
 		dev_err(dev, "no snoop ports configured\n");
 		return -ENODEV;
 	}
 
-	lpc_snoop->clk = devm_clk_get(dev, NULL);
-	if (IS_ERR(lpc_snoop->clk)) {
-		rc = PTR_ERR(lpc_snoop->clk);
-		if (rc != -EPROBE_DEFER)
-			dev_err(dev, "couldn't get clock\n");
-		return rc;
-	}
-	rc = clk_prepare_enable(lpc_snoop->clk);
-	if (rc) {
-		dev_err(dev, "couldn't enable clock\n");
-		return rc;
-	}
-
-	rc = aspeed_lpc_snoop_config_irq(lpc_snoop, pdev);
-	if (rc)
-		goto err;
-
-	rc = aspeed_lpc_enable_snoop(lpc_snoop, dev, 0, port);
-	if (rc)
-		goto err;
-
-	/* Configuration of 2nd snoop channel port is optional */
-	if (of_property_read_u32_index(dev->of_node, "snoop-ports",
-				       1, &port) == 0) {
-		rc = aspeed_lpc_enable_snoop(lpc_snoop, dev, 1, port);
-		if (rc) {
-			aspeed_lpc_disable_snoop(lpc_snoop, 0);
+	for (i = 0; i < port_num; ++i) {
+		rc = aspeed_lpc_enable_snoop(snoop, dev, i, ports[i]);
+		if (rc)
 			goto err;
-		}
+
+		dev_info(dev, "Initialised channel %d to snoop IO address 0x%x\n",
+			 snoop->chan[i].id, ports[i]);
 	}
 
 	return 0;
 
 err:
-	clk_disable_unprepare(lpc_snoop->clk);
-
 	return rc;
 }
 
-static int aspeed_lpc_snoop_remove(struct platform_device *pdev)
+static void aspeed_lpc_snoop_remove(struct platform_device *pdev)
 {
-	struct aspeed_lpc_snoop *lpc_snoop = dev_get_drvdata(&pdev->dev);
+	struct aspeed_lpc_snoop *snoop = dev_get_drvdata(&pdev->dev);
+	int i;
 
-	/* Disable both snoop channels */
-	aspeed_lpc_disable_snoop(lpc_snoop, 0);
-	aspeed_lpc_disable_snoop(lpc_snoop, 1);
-
-	clk_disable_unprepare(lpc_snoop->clk);
-
-	return 0;
+	for (i = 0; i < SNOOP_HW_CHANNEL_NUM; ++i)
+		aspeed_lpc_disable_snoop(snoop, i);
 }
 
 static const struct aspeed_lpc_snoop_model_data ast2400_model_data = {
@@ -368,7 +355,7 @@ static struct platform_driver aspeed_lpc_snoop_driver = {
 		.of_match_table = aspeed_lpc_snoop_match,
 	},
 	.probe = aspeed_lpc_snoop_probe,
-	.remove = aspeed_lpc_snoop_remove,
+	.remove_new = aspeed_lpc_snoop_remove,
 };
 
 module_platform_driver(aspeed_lpc_snoop_driver);
@@ -376,4 +363,5 @@ module_platform_driver(aspeed_lpc_snoop_driver);
 MODULE_DEVICE_TABLE(of, aspeed_lpc_snoop_match);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Robert Lippert <rlippert@google.com>");
+MODULE_AUTHOR("Chia-Wei Wang <chiawei_wang@aspeedtech.com>");
 MODULE_DESCRIPTION("Linux driver to control Aspeed LPC snoop functionality");

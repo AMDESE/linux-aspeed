@@ -639,6 +639,33 @@ static void ast2600_espi_perif_isr(struct ast2600_espi *espi)
 	}
 }
 
+static void ast2600_espi_perif_sw_reset(struct ast2600_espi *espi)
+{
+	struct device *dev;
+	uint32_t reg;
+
+	dev = espi->dev;
+
+	reg = readl(espi->regs + ESPI_CTRL);
+	reg &= ~(ESPI_CTRL_PERIF_NP_TX_SW_RST
+		 | ESPI_CTRL_PERIF_NP_RX_SW_RST
+		 | ESPI_CTRL_PERIF_PC_TX_SW_RST
+		 | ESPI_CTRL_PERIF_PC_RX_SW_RST
+		 | ESPI_CTRL_PERIF_NP_TX_DMA_EN
+		 | ESPI_CTRL_PERIF_PC_TX_DMA_EN
+		 | ESPI_CTRL_PERIF_PC_RX_DMA_EN
+		 | ESPI_CTRL_PERIF_SW_RDY);
+	writel(reg, espi->regs + ESPI_CTRL);
+
+	udelay(1);
+
+	reg |= (ESPI_CTRL_PERIF_NP_TX_SW_RST
+		| ESPI_CTRL_PERIF_NP_RX_SW_RST
+		| ESPI_CTRL_PERIF_PC_TX_SW_RST
+		| ESPI_CTRL_PERIF_PC_RX_SW_RST);
+	writel(reg, espi->regs + ESPI_CTRL);
+}
+
 static void ast2600_espi_perif_reset(struct ast2600_espi *espi)
 {
 	struct ast2600_espi_perif *perif;
@@ -660,22 +687,10 @@ static void ast2600_espi_perif_reset(struct ast2600_espi *espi)
 	writel(reg, espi->regs + ESPI_CTRL2);
 
 	reg = readl(espi->regs + ESPI_CTRL);
-	reg &= ~(ESPI_CTRL_PERIF_NP_TX_SW_RST
-		 | ESPI_CTRL_PERIF_NP_RX_SW_RST
-		 | ESPI_CTRL_PERIF_PC_TX_SW_RST
-		 | ESPI_CTRL_PERIF_PC_RX_SW_RST
-		 | ESPI_CTRL_PERIF_NP_TX_DMA_EN
+	reg &= ~(ESPI_CTRL_PERIF_NP_TX_DMA_EN
 		 | ESPI_CTRL_PERIF_PC_TX_DMA_EN
 		 | ESPI_CTRL_PERIF_PC_RX_DMA_EN
 		 | ESPI_CTRL_PERIF_SW_RDY);
-	writel(reg, espi->regs + ESPI_CTRL);
-
-	udelay(1);
-
-	reg |= (ESPI_CTRL_PERIF_NP_TX_SW_RST
-		| ESPI_CTRL_PERIF_NP_RX_SW_RST
-		| ESPI_CTRL_PERIF_PC_TX_SW_RST
-		| ESPI_CTRL_PERIF_PC_RX_SW_RST);
 	writel(reg, espi->regs + ESPI_CTRL);
 
 	if (perif->mmbi.enable) {
@@ -953,23 +968,38 @@ static long ast2600_espi_vw_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 {
 	struct ast2600_espi_vw *vw;
 	struct ast2600_espi *espi;
-	uint32_t gpio;
+	uint32_t gpio, hw_mode;
 
 	vw = container_of(fp->private_data, struct ast2600_espi_vw, mdev);
 	espi = container_of(vw, struct ast2600_espi, vw);
 	gpio = vw->gpio.val;
+	hw_mode = vw->gpio.hw_mode;
+
+	if (hw_mode) {
+		dev_err(espi->dev, "HW mode: vGPIO reflect on physical GPIO. Get state from GPIO driver.\n");
+		return -EFAULT;
+	}
 
 	switch (cmd) {
 	case ASPEED_ESPI_VW_GET_GPIO_VAL:
-		if (put_user(gpio, (uint32_t __user *)arg))
+		if (put_user(gpio, (uint32_t __user *)arg)) {
+			dev_err(espi->dev, "failed to get vGPIO value\n");
 			return -EFAULT;
-		break;
-	case ASPEED_ESPI_VW_PUT_GPIO_VAL:
-		if (get_user(gpio, (uint32_t __user *)arg))
-			return -EFAULT;
+		}
 
+		dev_info(espi->dev, "Get vGPIO value: 0x%x\n", gpio);
+		break;
+
+	case ASPEED_ESPI_VW_PUT_GPIO_VAL:
+		if (get_user(gpio, (uint32_t __user *)arg)) {
+			dev_err(espi->dev, "failed to put vGPIO value\n");
+			return -EFAULT;
+		}
+
+		dev_info(espi->dev, "Put vGPIO value: 0x%x\n", gpio);
 		writel(gpio, espi->regs + ESPI_VW_GPIO_VAL);
 		break;
+
 	default:
 		return -EINVAL;
 	};
@@ -994,6 +1024,12 @@ static void ast2600_espi_vw_isr(struct ast2600_espi *espi)
 	if (sts & ESPI_INT_STS_VW_GPIO) {
 		vw->gpio.val = readl(espi->regs + ESPI_VW_GPIO_VAL);
 		writel(ESPI_INT_STS_VW_GPIO, espi->regs + ESPI_INT_STS);
+	} else if (sts & ESPI_INT_STS_VW_SYSEVT) {
+		/* Handle system event */
+		writel(ESPI_INT_STS_VW_SYSEVT, espi->regs + ESPI_INT_STS);
+	} else if (sts & (ESPI_INT_STS_VW_SYSEVT1)) {
+		/* Handle system event1 */
+		writel(ESPI_INT_STS_VW_SYSEVT1, espi->regs + ESPI_INT_STS);
 	}
 }
 
@@ -1018,6 +1054,17 @@ static void ast2600_espi_vw_reset(struct ast2600_espi *espi)
 	      | ((vw->gpio.hw_mode) ? 0 : ESPI_CTRL_VW_GPIO_SW)
 	      | ESPI_CTRL_VW_SW_RDY;
 	writel(reg, espi->regs + ESPI_CTRL);
+
+	writel(0x0, espi->regs + ESPI_VW_SYSEVT_INT_T0);
+	writel(0x0, espi->regs + ESPI_VW_SYSEVT_INT_T1);
+
+	reg = readl(espi->regs + ESPI_INT_EN);
+	reg |= ESPI_INT_EN_RST_DEASSERT;
+	writel(reg, espi->regs + ESPI_INT_EN);
+
+	writel(0xffffffff, espi->regs + ESPI_VW_SYSEVT_INT_EN);
+	writel(0x1, espi->regs + ESPI_VW_SYSEVT1_INT_EN);
+	writel(0x1, espi->regs + ESPI_VW_SYSEVT1_INT_T0);
 }
 
 static int ast2600_espi_vw_probe(struct ast2600_espi *espi)
@@ -1968,6 +2015,7 @@ static irqreturn_t ast2600_espi_isr(int irq, void *arg)
 		reset_control_assert(espi->rst);
 		reset_control_deassert(espi->rst);
 
+		ast2600_espi_perif_sw_reset(espi);
 		ast2600_espi_perif_reset(espi);
 		ast2600_espi_vw_reset(espi);
 		ast2600_espi_oob_reset(espi);
