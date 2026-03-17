@@ -18,6 +18,12 @@
 		   SPI_MEM_OP_DUMMY(ndummy, 0),				\
 		   SPI_MEM_OP_DATA_IN(len, buf, 0))
 
+#define SPI_NOR_VSR_WREN_OP						\
+	SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_VSR_WREN, 0),		\
+		   SPI_MEM_OP_NO_ADDR,					\
+		   SPI_MEM_OP_NO_DUMMY,					\
+		   SPI_MEM_OP_NO_DATA)
+
 #define SPI_NOR_WREN_OP							\
 	SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_WREN, 0),			\
 		   SPI_MEM_OP_NO_ADDR,					\
@@ -133,6 +139,7 @@ enum spi_nor_option_flags {
 	SNOR_F_RWW		= BIT(14),
 	SNOR_F_ECC		= BIT(15),
 	SNOR_F_NO_WP		= BIT(16),
+	SNOR_F_WR_VSR		= BIT(17),
 };
 
 struct spi_nor_read_command {
@@ -435,6 +442,7 @@ struct spi_nor_fixups {
 			 const struct sfdp_bfpt *bfpt);
 	int (*post_sfdp)(struct spi_nor *nor);
 	int (*late_init)(struct spi_nor *nor);
+	void (*force_fixup)(struct spi_nor *nor);
 };
 
 /**
@@ -537,6 +545,7 @@ struct flash_info {
 	u8 fixup_flags;
 #define SPI_NOR_4B_OPCODES		BIT(0)
 #define SPI_NOR_IO_MODE_EN_VOLATILE	BIT(1)
+#define SPI_NOR_FORCE_WRITE_VOLATILE_SR	BIT(2)
 
 	u8 mfr_flags;
 
@@ -675,6 +684,7 @@ int spi_nor_read_cr(struct spi_nor *nor, u8 *cr);
 int spi_nor_write_sr(struct spi_nor *nor, const u8 *sr, size_t len);
 int spi_nor_write_sr_and_check(struct spi_nor *nor, u8 sr1);
 int spi_nor_write_16bit_cr_and_check(struct spi_nor *nor, u8 cr);
+int spi_nor_nvcr_bit4_quad_enable(struct spi_nor *nor);
 
 ssize_t spi_nor_read_data(struct spi_nor *nor, loff_t from, size_t len,
 			  u8 *buf);
@@ -741,5 +751,7 @@ void spi_nor_debugfs_shutdown(void);
 static inline void spi_nor_debugfs_register(struct spi_nor *nor) {}
 static inline void spi_nor_debugfs_shutdown(void) {}
 #endif
+
+int spi_nor_prep_and_lock_rd(struct spi_nor *nor, loff_t start, size_t len);
 
 #endif /* __LINUX_MTD_SPI_NOR_INTERNAL_H */

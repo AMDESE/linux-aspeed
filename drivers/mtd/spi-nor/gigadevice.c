@@ -83,6 +83,9 @@ static const struct flash_info gigadevice_nor_parts[] = {
 	{ "gd25b512m", INFO(0xc8471a, 0, 64 * 1024, 1024)
 		PARSE_SFDP
 		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB) },
+	{ "gd25b512m", INFO(0xc8471a, 0, 64 * 1024, 1024)
+		PARSE_SFDP
+		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB) },
 	{ "gd55b01ge", INFO(0xc8471b, 0, 64 * 1024, 2048)
 		PARSE_SFDP
 		FLAGS(SPI_NOR_HAS_LOCK | SPI_NOR_HAS_TB) },
