@@ -21,6 +21,7 @@
 /* Flash opcodes. */
 #define SPINOR_OP_WRDI		0x04	/* Write disable */
 #define SPINOR_OP_WREN		0x06	/* Write enable */
+#define SPINOR_OP_VSR_WREN	0x50	/* Write enable for volatile register */
 #define SPINOR_OP_RDSR		0x05	/* Read status register */
 #define SPINOR_OP_WRSR		0x01	/* Write status register 1 byte */
 #define SPINOR_OP_RDSR2		0x3f	/* Read status register 2 */
@@ -80,6 +81,9 @@
 /* Used for SST flashes only. */
 #define SPINOR_OP_BP		0x02	/* Byte program */
 #define SPINOR_OP_AAI_WP	0xad	/* Auto address increment word program */
+#define SPINOR_OP_SST_RDNVCR	0xB5	/* Read nonvolatile configuration register */
+#define SPINOR_OP_SST_WRNVCR	0xB1	/* Write nonvolatile configuration register */
+#define SPINOR_SST_RST_HOLD_CTRL	BIT(4) /* Nonvolatile configuration register bit 4*/
 
 /* Used for Macronix and Winbond flashes. */
 #define SPINOR_OP_EN4B		0xb7	/* Enter 4-byte mode */
@@ -449,5 +453,7 @@ static inline struct device_node *spi_nor_get_flash_node(struct spi_nor *nor)
  */
 int spi_nor_scan(struct spi_nor *nor, const char *name,
 		 const struct spi_nor_hwcaps *hwcaps);
+
+u32 spi_nor_convert_addr(struct spi_nor *nor, loff_t addr);
 
 #endif
