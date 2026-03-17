@@ -488,17 +488,17 @@
                         };
 			pvddcr_cpu0_p0@61 {
 				//PVDDCR_CPU0_VDDIO_MEM_S3_P0_CONTROLLER
-				compatible = "mps,mp2856";
+				compatible = "mps,mp2869";
 				reg = <0x61>;
 			};
 			pvddcr_cpu1_p0@62 {
 				//PVDDCR_CPU1_PVDDCR_SOC_P0_CONTROLLER
-				compatible = "mps,mp2856";
+				compatible = "mps,mp2869";
 				reg = <0x62>;
 			};
 			pvddio_p0@63 {
 				//PVDDIO_P0_CONTROLLER
-				compatible = "mps,mp2856";
+				compatible = "mps,mp2869";
 				reg = <0x63>;
 			};
 		};
@@ -655,17 +655,17 @@
 			};
 			pvddcr_cpu0_p1@64 {
 				//PVDDCR_CPU0_VDDIO_MEM_S3_P0_CONTROLLER
-				compatible = "mps,mp2856";
+				compatible = "mps,mp2869";
 				reg = <0x64>;
 			};
 			pvddcr_cpu1_p1@65 {
 				//PVDDCR_CPU1_PVDDCR_SOC_P0_CONTROLLER
-				compatible = "mps,mp2856";
+				compatible = "mps,mp2869";
 				reg = <0x65>;
 			};
 			pvddio_p1@66 {
 				//PVDDIO_P0_CONTROLLER
-				compatible = "mps,mp2856";
+				compatible = "mps,mp2869";
 				reg = <0x66>;
 			};
                 };
