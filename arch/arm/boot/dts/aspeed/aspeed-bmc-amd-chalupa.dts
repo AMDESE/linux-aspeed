@@ -534,6 +534,7 @@
 &i2c10 {
 	// Net name i2c7 (SCM_I2C7)
 	status = "okay";
+	bus-frequency = <400000>;
 	multi-master;
 	mctp-controller;
 	mctp@10 {
