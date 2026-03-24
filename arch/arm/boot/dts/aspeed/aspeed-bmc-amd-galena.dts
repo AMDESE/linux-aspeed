@@ -333,6 +333,10 @@
 						mi350p_slot0_rm_chnl: mi350p_rm@0 {
 							reg = <0>; #address-cells = <1>; #size-cells = <0>;
 							mctp-controller;
+							fru_eprom@56 {
+								compatible = "microchip,24lc512","atmel,24c512";
+								reg = <0x56>;
+							};
 						};
 					};
 				};
@@ -352,6 +356,10 @@
 						mi350p_slot1_rm_chnl: mi350p_rm@0 {
 							reg = <0>; #address-cells = <1>; #size-cells = <0>;
 							mctp-controller;
+                                                        fru_eprom@56 {
+                                                                compatible = "microchip,24lc512","atmel,24c512";
+                                                                reg = <0x56>;
+                                                        };							
 						};
 					};
 				};
@@ -370,6 +378,10 @@
 						mi350p_slot2_rm_chnl: mi350p_rm@0 {
 							reg = <0>; #address-cells = <1>; #size-cells = <0>;
 							mctp-controller;
+                                                        fru_eprom@56 {
+                                                                compatible = "microchip,24lc512","atmel,24c512";
+                                                                reg = <0x56>;
+                                                        };							
 						};
 					};
 				};
@@ -388,6 +400,10 @@
 						mi350p_slot3_rm_chnl: mi350p_rm@0 {
 							reg = <0>; #address-cells = <1>; #size-cells = <0>;
 							mctp-controller;
+                                                        fru_eprom@56 {
+                                                                compatible = "microchip,24lc512","atmel,24c512";
+                                                                reg = <0x56>;
+                                                        };							
 						};
 					};
 				};
