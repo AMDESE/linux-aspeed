@@ -529,6 +529,18 @@
 				#interrupt-cells = <2>;
 			};
 
+			jtag1: jtag@1e6e4100 {
+				compatible = "aspeed,ast2600-jtag";
+				reg= <0x1e6e4100 0x40>;
+				interrupts = <GIC_SPI 53 IRQ_TYPE_LEVEL_HIGH>;
+				clocks = <&syscon ASPEED_CLK_AHB>;
+				resets = <&syscon ASPEED_RESET_JTAG_MASTER2>;
+				reset-names = "jtag";
+				pinctrl-names = "default";
+				pinctrl-0 = <&pinctrl_jtagm_default>;
+				status = "disabled";
+			};
+
 			rtc: rtc@1e781000 {
 				compatible = "aspeed,ast2600-rtc";
 				reg = <0x1e781000 0x18>;
