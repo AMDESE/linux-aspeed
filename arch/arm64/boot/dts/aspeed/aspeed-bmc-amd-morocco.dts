@@ -948,11 +948,27 @@
 		assigned-address = <0x4c>;
 	};
 
+<<<<<<< Updated upstream
+=======
+	sbtsi_p0_iod0_AB: sbtsi@4c,22400000119 {
+		reg = <0x4c 0x224 0x00000119>;
+		assigned-address = <0x4c>;
+	};
+
+>>>>>>> Stashed changes
 	sbrmi_p0_iod0: sbrmi@3c,22400001118 {
 		reg = <0x3c 0x224 0x00001118>;
 		assigned-address = <0x3c>;
 	};
 
+<<<<<<< Updated upstream
+=======
+	sbrmi_p0_iod0_AB: sbrmi@3c,22400001119 {
+		reg = <0x3c 0x224 0x00001119>;
+		assigned-address = <0x3c>;
+	};
+
+>>>>>>> Stashed changes
 	scoob_p0: scoob@0,22400002118 {
 		reg = <0x0 0x224 0x00002118>;
 		mrl = <69>;
@@ -980,29 +996,66 @@
 		assigned-address = <0x48>;
 	};
 
+<<<<<<< Updated upstream
+=======
+	sbtsi_p1_iod0_AB: sbtsi@48,22401000119 {
+		status = "okay";
+		reg = <0x48 0x224 0x01000119>;
+		assigned-address = <0x48>;
+	};
+
+>>>>>>> Stashed changes
 	sbtsi_2x1p_iod0: sbtsi@4c,22400000118 {
 		status = "disabled";
 		reg = <0x4c 0x224 0x00000118>;
 		assigned-address = <0x48>;
 	};
 
+<<<<<<< Updated upstream
+=======
+	sbtsi_2x1p_iod0_AB: sbtsi@4c,22400000119 {
+		status = "disabled";
+		reg = <0x4c 0x224 0x00000119>;
+		assigned-address = <0x48>;
+	};
+
+>>>>>>> Stashed changes
 	sbrmi_p1_iod0: sbrmi@38,22401001118 {
 		status = "okay";
 		reg = <0x38 0x224 0x01001118>;
 		assigned-address = <0x38>;
 	};
 
+<<<<<<< Updated upstream
+=======
+	sbrmi_p1_iod0_AB: sbrmi@38,22401001119 {
+		status = "okay";
+		reg = <0x38 0x224 0x01001119>;
+		assigned-address = <0x38>;
+	};
+
+>>>>>>> Stashed changes
 	sbrmi_2x1p_iod0: sbrmi@3c,22400001118 {
 		status = "disabled";
 		reg = <0x3c 0x224 0x00001118>;
 		assigned-address = <0x38>;
 	};
 
+<<<<<<< Updated upstream
+=======
+	sbrmi_2x1p_iod0_AB: sbrmi@3c,22400001119 {
+		status = "disabled";
+		reg = <0x3c 0x224 0x00001119>;
+		assigned-address = <0x38>;
+	};
+#if 0
+>>>>>>> Stashed changes
 	scoob_2x1p_p1: scoob@0,22400002118 {
 		reg = <0x0 0x224 0x00002118>;
 		mrl = <69>;
 		mwl = <69>;
 	};
+
 	scoob_2p_p1: scoob@0,22401002118 {
 		reg = <0x0 0x224 0x01002118>;
 		mrl = <69>;
@@ -1019,6 +1072,10 @@
 		mrl = <69>;
 		mwl = <69>;
 	};
+<<<<<<< Updated upstream
+=======
+#endif
+>>>>>>> Stashed changes
 };
 
 #ifdef I3C_HUB
