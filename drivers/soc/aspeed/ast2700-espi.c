@@ -99,6 +99,9 @@ struct ast2700_espi_vw {
 		uint32_t val0;
 		uint32_t val1;
 	} gpio;
+	struct {
+		uint8_t pch_generic;
+	} platform;
 
 	struct miscdevice mdev;
 };
@@ -1015,10 +1018,13 @@ static long ast2700_espi_vw_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 	struct ast2700_espi_vw *vw;
 	struct ast2700_espi *espi;
 	uint64_t gpio;
+	uint8_t pch_generic;
+	uint32_t reg;
 
 	vw = container_of(fp->private_data, struct ast2700_espi_vw, mdev);
 	espi = container_of(vw, struct ast2700_espi, vw);
 	gpio = ((uint64_t)vw->gpio.val1 << 32) | vw->gpio.val0;
+	pch_generic = vw->platform.pch_generic;
 
 	switch (cmd) {
 	case ASPEED_ESPI_VW_GET_GPIO_VAL:
@@ -1032,6 +1038,18 @@ static long ast2700_espi_vw_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 
 		writel(gpio >> 32, espi->regs + ESPI_CH1_GPIO_VAL1);
 		writel(gpio & 0xffffffff, espi->regs + ESPI_CH1_GPIO_VAL0);
+		break;
+	case ASPEED_ESPI_VW_GET_PCH_GENERIC:
+		if (put_user(pch_generic, (uint8_t __user *)arg))
+			return -EFAULT;
+		break;
+	case ASPEED_ESPI_VW_PUT_PCH_GENERIC:
+		if (get_user(pch_generic, (uint8_t __user *)arg))
+			return -EFAULT;
+		reg = readl(espi->regs + ESPI_CH1_EVT1);
+		reg &= ~ESPI_CH1_EVT1_BMC_GENE;
+		reg |= FIELD_PREP(ESPI_CH1_EVT1_BMC_GENE, pch_generic);
+		writel(reg, espi->regs + ESPI_CH1_EVT1);
 		break;
 
 	default:
@@ -1050,6 +1068,8 @@ static void ast2700_espi_vw_isr(struct ast2700_espi *espi)
 {
 	struct ast2700_espi_vw *vw;
 	uint32_t sts;
+	uint32_t evt1_sts;
+	uint32_t evt1;
 
 	vw = &espi->vw;
 
@@ -1058,7 +1078,18 @@ static void ast2700_espi_vw_isr(struct ast2700_espi *espi)
 	if (sts & ESPI_CH1_INT_STS_GPIO) {
 		vw->gpio.val0 = readl(espi->regs + ESPI_CH1_GPIO_VAL0);
 		vw->gpio.val1 = readl(espi->regs + ESPI_CH1_GPIO_VAL1);
-		writel(ESPI_CH1_INT_STS_GPIO, espi->regs + ESPI_CH1_INT_STS);
+		writel(ESPI_CH1_INT_STS_GPIO_CLR, espi->regs + ESPI_CH1_INT_STS);
+	}
+
+	if (sts & ESPI_CH1_INT_STS_EVT1) {
+		evt1_sts = readl(espi->regs + ESPI_CH1_EVT1_INT_STS);
+		if (evt1_sts & ESPI_CH1_EVT1_INT_STS_PCH_GENE) {
+			evt1 = readl(espi->regs + ESPI_CH1_EVT1);
+			vw->platform.pch_generic = FIELD_GET(ESPI_CH1_EVT1_PCH_GENE, evt1);
+			writel(ESPI_CH1_EVT1_INT_STS_PCH_GENE,
+			       espi->regs + ESPI_CH1_EVT1_INT_STS);
+		}
+		writel(ESPI_CH1_INT_STS_EVT1_CLR, espi->regs + ESPI_CH1_INT_STS);
 	}
 }
 
@@ -1076,8 +1107,14 @@ static void ast2700_espi_vw_reset(struct ast2700_espi *espi)
 
 	vw->gpio.val0 = readl(espi->regs + ESPI_CH1_GPIO_VAL0);
 	vw->gpio.val1 = readl(espi->regs + ESPI_CH1_GPIO_VAL1);
+	vw->platform.pch_generic = FIELD_GET(ESPI_CH1_EVT1_PCH_GENE,
+					     readl(espi->regs + ESPI_CH1_EVT1));
 
-	writel(ESPI_CH1_INT_EN_GPIO, espi->regs + ESPI_CH1_INT_EN);
+	writel(ESPI_CH1_EVT1_INT_T2_PCH_GENE, espi->regs + ESPI_CH1_EVT1_INT_T2);
+	writel(ESPI_CH1_EVT1_INT_EN_PCH_GENE, espi->regs + ESPI_CH1_EVT1_INT_EN);
+
+	writel(ESPI_CH1_INT_EN_GPIO | ESPI_CH1_INT_EN_SYS_EVT1,
+	       espi->regs + ESPI_CH1_INT_EN);
 
 	reg = readl(espi->regs + ESPI_CH1_CTRL)
 	      | ((vw->gpio.hw_mode) ? ESPI_CH1_CTRL_GPIO_HW : 0)
