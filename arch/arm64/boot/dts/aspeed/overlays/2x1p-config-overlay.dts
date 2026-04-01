@@ -12,9 +12,21 @@
 			assigned-address = <0x48>;
 			};
 
+			sbtsi_p1_iod0_AB: sbtsi@48,22401000119 {
+			status = "disabled";
+			reg = <0x48 0x224 0x01000119>;
+			assigned-address = <0x48>;
+			};
+
 			sbtsi_2x1p_iod0: sbtsi@4c,22400000118 {
 			status = "okay";
 			reg = <0x4c 0x224 0x00000118>;
+			assigned-address = <0x48>;
+			};
+
+			sbtsi_2x1p_iod0_AB: sbtsi@4c,22400000119 {
+			status = "okay";
+			reg = <0x4c 0x224 0x00000119>;
 			assigned-address = <0x48>;
 			};
 
@@ -24,9 +36,21 @@
 			assigned-address = <0x38>;
 			};
 
+			sbrmi_p1_iod0_AB: sbrmi@38,22401001119 {
+			status = "disabled";
+			reg = <0x38 0x224 0x01001119>;
+			assigned-address = <0x38>;
+			};
+
 			sbrmi_2x1p_iod0: sbrmi@3c,22400001118 {
 			status = "okay";
 			reg = <0x3c 0x224 0x00001118>;
+			assigned-address = <0x38>;
+			};
+
+			sbrmi_2x1p_iod0_AB: sbrmi@3c,22400001119 {
+			status = "okay";
+			reg = <0x3c 0x224 0x00001119>;
 			assigned-address = <0x38>;
 			};
 		};
