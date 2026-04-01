@@ -165,11 +165,19 @@ struct aspeed_espi_ioc {
  *      Read the input value of GPIO over the VW channel
  *  - ASPEED_ESPI_VW_PUT_GPIO_VAL
  *      Write the output value of GPIO over the VW channel
+ *  - ASPEED_ESPI_VW_GET_PCH_GENERIC
+ *      Read the input value of PCH Generic indexes over the VW channel
+ *  - ASPEED_ESPI_VW_PUT_PCH_GENERIC
+ *      Write the output value of PCH Generic indexes over the VW channel
  */
 #define ASPEED_ESPI_VW_GET_GPIO_VAL	_IOR(__ASPEED_ESPI_IOCTL_MAGIC, \
 					     0x10, uint8_t)
 #define ASPEED_ESPI_VW_PUT_GPIO_VAL	_IOW(__ASPEED_ESPI_IOCTL_MAGIC, \
 					     0x11, uint8_t)
+#define ASPEED_ESPI_VW_GET_PCH_GENERIC	_IOR(__ASPEED_ESPI_IOCTL_MAGIC, \
+					     0x14, uint8_t)
+#define ASPEED_ESPI_VW_PUT_PCH_GENERIC	_IOW(__ASPEED_ESPI_IOCTL_MAGIC, \
+					     0x15, uint8_t)
 /*
  * Out-of-band Channel (CH2)
  *  - ASPEED_ESPI_OOB_GET_RX
