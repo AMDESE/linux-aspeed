@@ -533,6 +533,10 @@
 	/*Z0-Z7*/	"","","","","","","","";
 };
 
+&jtag1 {
+	status = "okay";
+};
+
 &video {
 	status = "okay";
 	memory-region = <&video_engine_memory>;
@@ -560,7 +564,9 @@
 
 &kcs3 {
 	status = "okay";
-	aspeed,lpc-io-reg = <0xCA2>;
+	compatible = "aspeed,ast2600-kcs-bmc";
+	kcs-io-addr = <0xca2>;
+	kcs-channel = <3>;
 };
 
 &uart_routing {
