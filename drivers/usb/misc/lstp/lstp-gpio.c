@@ -6,6 +6,8 @@
  */
 
 #include <linux/gpio/driver.h>
+#include <linux/irq.h>
+#include <linux/irqdesc.h>
 #include <linux/limits.h>
 #include <linux/minmax.h>
 #include <linux/module.h>
@@ -34,6 +36,15 @@ enum lstp_gpio_state {
 	LSTP_GPIO_STATE_HIGH = 0x01,
 };
 
+enum lstp_gpio_irq_config {
+	LSTP_GPIO_IRQ_DISABLED = 0x00,
+	LSTP_GPIO_IRQ_RISING = 0x01,
+	LSTP_GPIO_IRQ_FALLING = 0x02,
+	LSTP_GPIO_IRQ_BOTH_EDGE = 0x03,
+	LSTP_GPIO_IRQ_HIGH = 0x04,
+	LSTP_GPIO_IRQ_LOW = 0x05,
+};
+
 static const char *lstp_gpio_cmd_name(u8 cmd)
 {
 	switch (cmd) {
@@ -59,6 +70,46 @@ static const char *lstp_gpio_fw_direction_name(u8 direction)
 		return "output";
 	case LSTP_GPIO_DIRECTION_INPUT:
 		return "input";
+	default:
+		return "invalid";
+	}
+}
+
+static const char *lstp_gpio_irq_name(u8 irq_type)
+{
+	switch (irq_type) {
+	case LSTP_GPIO_IRQ_DISABLED:
+		return "disabled";
+	case LSTP_GPIO_IRQ_RISING:
+		return "rising";
+	case LSTP_GPIO_IRQ_FALLING:
+		return "falling";
+	case LSTP_GPIO_IRQ_BOTH_EDGE:
+		return "both";
+	case LSTP_GPIO_IRQ_HIGH:
+		return "high";
+	case LSTP_GPIO_IRQ_LOW:
+		return "low";
+	default:
+		return "invalid";
+	}
+}
+
+static const char *lstp_gpio_linux_irq_name(unsigned int type)
+{
+	switch (type & IRQ_TYPE_SENSE_MASK) {
+	case IRQ_TYPE_NONE:
+		return "none";
+	case IRQ_TYPE_EDGE_RISING:
+		return "edge-rising";
+	case IRQ_TYPE_EDGE_FALLING:
+		return "edge-falling";
+	case IRQ_TYPE_EDGE_BOTH:
+		return "edge-both";
+	case IRQ_TYPE_LEVEL_HIGH:
+		return "level-high";
+	case IRQ_TYPE_LEVEL_LOW:
+		return "level-low";
 	default:
 		return "invalid";
 	}
@@ -97,12 +148,40 @@ struct lstp_gpio_set_value_request {
 	u8 value;
 } __packed;
 
+struct lstp_gpio_get_irq_config_request {
+	__le16 gpio_index;
+} __packed;
+
+struct lstp_gpio_get_irq_config_response {
+	u8 irq_type;
+} __packed;
+
+struct lstp_gpio_set_irq_config_request {
+	__le16 gpio_index;
+	u8 irq_type;
+} __packed;
+
+struct lstp_gpio_irq_event_request {
+	__le16 gpio_index;
+	u8 value;
+} __packed;
+
+struct lstp_gpio_irq_line {
+	unsigned int type;
+	u8 remote_type;
+	bool enabled;
+	bool masked;
+	bool update_pending;
+};
+
 struct lstp_gpio_priv {
 	struct gpio_chip gc;
 	struct lstp_channel *ch;
 	const char **names;
 	struct lstp_gpio_line_config *line_cfgs;
 	unsigned int num_line_cfgs;
+	struct mutex irq_lock;
+	struct lstp_gpio_irq_line *irq_lines;
 };
 
 static void lstp_gpio_dump_line_configs(struct lstp_channel *ch,
@@ -356,6 +435,265 @@ static int lstp_gpio_set_value_locked(struct lstp_gpio_priv *priv, unsigned int 
 
 	return ret;
 }
+
+static int lstp_gpio_set_irq_config_locked(struct lstp_gpio_priv *priv, unsigned int offset,
+					   u8 irq_type)
+{
+	struct device *dev = &priv->ch->usb->intf->dev;
+	struct lstp_gpio_set_irq_config_request req = {
+		.gpio_index = cpu_to_le16(offset),
+		.irq_type = irq_type,
+	};
+	int ret;
+
+	dev_dbg(dev, "%s: ch_%d: GPIO %u irq_type=%s(%u)\n", __func__, priv->ch->ch_id, offset,
+		lstp_gpio_irq_name(irq_type), irq_type);
+
+	ret = lstp_gpio_xfer_locked(priv, LSTP_GPIO_CMD_SET_IRQ_CONFIG, &req, sizeof(req), NULL, 0);
+	if (ret)
+		dev_err(dev, "%s: ch_%d: GPIO %u irq_type=%s(%u) failed (%d)\n", __func__,
+			priv->ch->ch_id, offset, lstp_gpio_irq_name(irq_type), irq_type, ret);
+
+	return ret;
+}
+
+static int lstp_gpio_irq_type_to_remote(unsigned int type, u8 *irq_type)
+{
+	switch (type & IRQ_TYPE_SENSE_MASK) {
+	case IRQ_TYPE_NONE:
+		*irq_type = LSTP_GPIO_IRQ_DISABLED;
+		return 0;
+	case IRQ_TYPE_EDGE_RISING:
+		*irq_type = LSTP_GPIO_IRQ_RISING;
+		return 0;
+	case IRQ_TYPE_EDGE_FALLING:
+		*irq_type = LSTP_GPIO_IRQ_FALLING;
+		return 0;
+	case IRQ_TYPE_EDGE_BOTH:
+		*irq_type = LSTP_GPIO_IRQ_BOTH_EDGE;
+		return 0;
+	case IRQ_TYPE_LEVEL_HIGH:
+		*irq_type = LSTP_GPIO_IRQ_HIGH;
+		return 0;
+	case IRQ_TYPE_LEVEL_LOW:
+		*irq_type = LSTP_GPIO_IRQ_LOW;
+		return 0;
+	default:
+		return -EINVAL;
+	}
+}
+
+static int lstp_gpio_irq_sync_line(struct lstp_gpio_priv *priv, unsigned int offset)
+{
+	struct lstp_gpio_irq_line *line = &priv->irq_lines[offset];
+	struct device *dev = &priv->ch->usb->intf->dev;
+	u8 remote_type = LSTP_GPIO_IRQ_DISABLED;
+	int ret;
+
+	if (!line->update_pending)
+		return 0;
+
+	if (line->enabled && !line->masked) {
+		ret = lstp_gpio_irq_type_to_remote(line->type, &remote_type);
+		if (ret) {
+			dev_err(dev, "%s: ch_%d: GPIO %u has unsupported Linux IRQ type=%s(0x%x)\n",
+				__func__, priv->ch->ch_id, offset,
+				lstp_gpio_linux_irq_name(line->type), line->type);
+			return ret;
+		}
+	}
+
+	if (remote_type == line->remote_type) {
+		line->update_pending = false;
+		dev_dbg(dev,
+			"%s: ch_%d: GPIO %u irq config already synced as %s(%u) enabled=%d masked=%d\n",
+			__func__, priv->ch->ch_id, offset, lstp_gpio_irq_name(remote_type),
+			remote_type, line->enabled, line->masked);
+		return 0;
+	}
+
+	dev_dbg(dev,
+		"%s: ch_%d: GPIO %u syncing irq type linux=%s(0x%x) remote=%s(%u) enabled=%d masked=%d prev_remote=%s(%u)\n",
+		__func__, priv->ch->ch_id, offset, lstp_gpio_linux_irq_name(line->type), line->type,
+		lstp_gpio_irq_name(remote_type), remote_type, line->enabled, line->masked,
+		lstp_gpio_irq_name(line->remote_type), line->remote_type);
+
+	mutex_lock(&priv->ch->tx_mutex);
+	ret = lstp_gpio_set_irq_config_locked(priv, offset, remote_type);
+	mutex_unlock(&priv->ch->tx_mutex);
+	if (ret)
+		return ret;
+
+	WRITE_ONCE(line->remote_type, remote_type);
+	line->update_pending = false;
+	return 0;
+}
+
+static void lstp_gpio_irq_mask(struct irq_data *d)
+{
+	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+	struct lstp_gpio_priv *priv = gpiochip_get_data(gc);
+	struct lstp_gpio_irq_line *line = &priv->irq_lines[irqd_to_hwirq(d)];
+	struct device *dev = &priv->ch->usb->intf->dev;
+
+	line->masked = true;
+	line->update_pending = true;
+	dev_dbg(dev, "%s: ch_%d: GPIO %lu masked\n", __func__, priv->ch->ch_id, irqd_to_hwirq(d));
+}
+
+static void lstp_gpio_irq_unmask(struct irq_data *d)
+{
+	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+	struct lstp_gpio_priv *priv = gpiochip_get_data(gc);
+	struct lstp_gpio_irq_line *line = &priv->irq_lines[irqd_to_hwirq(d)];
+	struct device *dev = &priv->ch->usb->intf->dev;
+
+	line->masked = false;
+	line->update_pending = true;
+	dev_dbg(dev, "%s: ch_%d: GPIO %lu unmasked\n", __func__, priv->ch->ch_id, irqd_to_hwirq(d));
+}
+
+static void lstp_gpio_irq_enable(struct irq_data *d)
+{
+	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+	struct lstp_gpio_priv *priv = gpiochip_get_data(gc);
+	struct lstp_gpio_irq_line *line = &priv->irq_lines[irqd_to_hwirq(d)];
+	struct device *dev = &priv->ch->usb->intf->dev;
+
+	gpiochip_enable_irq(gc, irqd_to_hwirq(d));
+	line->enabled = true;
+	line->masked = false;
+	line->update_pending = true;
+	dev_dbg(dev, "%s: ch_%d: GPIO %lu enabled\n", __func__, priv->ch->ch_id, irqd_to_hwirq(d));
+}
+
+static void lstp_gpio_irq_disable(struct irq_data *d)
+{
+	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+	struct lstp_gpio_priv *priv = gpiochip_get_data(gc);
+	struct lstp_gpio_irq_line *line = &priv->irq_lines[irqd_to_hwirq(d)];
+	struct device *dev = &priv->ch->usb->intf->dev;
+
+	line->enabled = false;
+	line->masked = true;
+	line->update_pending = true;
+	gpiochip_disable_irq(gc, irqd_to_hwirq(d));
+	dev_dbg(dev, "%s: ch_%d: GPIO %lu disabled\n", __func__, priv->ch->ch_id, irqd_to_hwirq(d));
+}
+
+static int lstp_gpio_irq_set_type(struct irq_data *d, unsigned int type)
+{
+	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+	struct lstp_gpio_priv *priv = gpiochip_get_data(gc);
+	struct lstp_gpio_irq_line *line = &priv->irq_lines[irqd_to_hwirq(d)];
+	struct device *dev = &priv->ch->usb->intf->dev;
+	u8 remote_type;
+	int ret;
+
+	ret = lstp_gpio_irq_type_to_remote(type, &remote_type);
+	if (ret) {
+		dev_err(dev, "%s: ch_%d: GPIO %lu unsupported Linux IRQ type=%s(0x%x)\n", __func__,
+			priv->ch->ch_id, irqd_to_hwirq(d), lstp_gpio_linux_irq_name(type), type);
+		return ret;
+	}
+
+	line->type = type & IRQ_TYPE_SENSE_MASK;
+	line->update_pending = true;
+	dev_dbg(dev, "%s: ch_%d: GPIO %lu linux_type=%s(0x%x) remote_type=%s(%u)\n", __func__,
+		priv->ch->ch_id, irqd_to_hwirq(d), lstp_gpio_linux_irq_name(line->type), line->type,
+		lstp_gpio_irq_name(remote_type), remote_type);
+	return 0;
+}
+
+static void lstp_gpio_irq_bus_lock(struct irq_data *d)
+{
+	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+	struct lstp_gpio_priv *priv = gpiochip_get_data(gc);
+
+	mutex_lock(&priv->irq_lock);
+}
+
+static void lstp_gpio_irq_bus_sync_unlock(struct irq_data *d)
+{
+	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
+	struct lstp_gpio_priv *priv = gpiochip_get_data(gc);
+	int ret;
+
+	ret = lstp_gpio_irq_sync_line(priv, irqd_to_hwirq(d));
+	if (ret)
+		dev_err(&priv->ch->usb->intf->dev, "%s: ch_%d: GPIO %lu irq sync failed (%d)\n",
+			__func__, priv->ch->ch_id, irqd_to_hwirq(d), ret);
+
+	mutex_unlock(&priv->irq_lock);
+}
+
+static void lstp_gpio_irq_event_callback(struct lstp_channel *ch)
+{
+	struct lstp_gpio_priv *priv = ch->priv;
+	struct device *dev = &ch->usb->intf->dev;
+	struct lstp_packet *irq_pkt = (struct lstp_packet *)ch->irq_buf;
+	struct lstp_gpio_irq_event_request *evt;
+	unsigned int offset;
+	u8 remote_type;
+	u8 cmd;
+	int ret;
+
+	if (!priv || !priv->gc.irq.domain) {
+		dev_warn(dev, "%s: ch_%d: dropping IRQ packet without gpio irqdomain\n", __func__,
+			 ch->ch_id);
+		return;
+	}
+
+	cmd = GET_BIT_0_6(irq_pkt->hdr.cmd);
+	if (cmd != LSTP_GPIO_CMD_IRQ_EVENT) {
+		dev_warn(dev, "%s: ch_%d: unexpected unsolicited GPIO cmd=0x%02x len=%u\n",
+			 __func__, ch->ch_id, cmd, le16_to_cpu(irq_pkt->hdr.length));
+		return;
+	}
+
+	evt = LSTP_GET_PAYLOAD(irq_pkt, struct lstp_gpio_irq_event_request);
+	if (!evt) {
+		dev_err(dev, "%s: ch_%d: IRQ_EVENT payload too small (len=%u)\n", __func__,
+			ch->ch_id, le16_to_cpu(irq_pkt->hdr.length));
+		return;
+	}
+
+	offset = le16_to_cpu(evt->gpio_index);
+	if (offset >= priv->gc.ngpio) {
+		dev_err(dev, "%s: ch_%d: IRQ_EVENT GPIO %u out of range (max %u)\n", __func__,
+			ch->ch_id, offset, priv->gc.ngpio - 1);
+		return;
+	}
+
+	remote_type = READ_ONCE(priv->irq_lines[offset].remote_type);
+	if (remote_type == LSTP_GPIO_IRQ_DISABLED) {
+		dev_dbg(dev,
+			"%s: ch_%d: dropping IRQ_EVENT GPIO %u value=%u because remote_type is disabled\n",
+			__func__, ch->ch_id, offset, evt->value);
+		return;
+	}
+
+	dev_dbg(dev, "%s: ch_%d: IRQ_EVENT GPIO %u value=%u remote_type=%s(%u)\n", __func__,
+		ch->ch_id, offset, evt->value, lstp_gpio_irq_name(remote_type), remote_type);
+
+	ret = generic_handle_domain_irq_safe(priv->gc.irq.domain, offset);
+	if (ret)
+		dev_err(dev, "%s: ch_%d: generic_handle_domain_irq_safe GPIO %u failed (%d)\n",
+			__func__, ch->ch_id, offset, ret);
+}
+
+static const struct irq_chip lstp_gpio_irq_chip = {
+	.name = "lstp-gpio-irq",
+	.irq_enable = lstp_gpio_irq_enable,
+	.irq_disable = lstp_gpio_irq_disable,
+	.irq_mask = lstp_gpio_irq_mask,
+	.irq_unmask = lstp_gpio_irq_unmask,
+	.irq_set_type = lstp_gpio_irq_set_type,
+	.irq_bus_lock = lstp_gpio_irq_bus_lock,
+	.irq_bus_sync_unlock = lstp_gpio_irq_bus_sync_unlock,
+	.flags = IRQCHIP_IMMUTABLE,
+	GPIOCHIP_IRQ_RESOURCE_HELPERS,
+};
 
 /**
  * lstp_gpio_get_direction() - Report firmware-configured direction for a GPIO line.
@@ -817,6 +1155,10 @@ int lstp_gpio_init(struct lstp_channel *ch)
 	if (!ch->resp_buf)
 		return -ENOMEM;
 
+	ch->irq_buf = devm_kzalloc(dev, ch->usb->bulk_rx_size, GFP_KERNEL);
+	if (!ch->irq_buf)
+		return -ENOMEM;
+
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
@@ -824,6 +1166,11 @@ int lstp_gpio_init(struct lstp_channel *ch)
 	priv->ch = ch;
 	priv->line_cfgs = line_cfgs;
 	priv->num_line_cfgs = fw_ngpio;
+	mutex_init(&priv->irq_lock);
+
+	priv->irq_lines = devm_kcalloc(dev, ngpio, sizeof(*priv->irq_lines), GFP_KERNEL);
+	if (!priv->irq_lines)
+		return -ENOMEM;
 
 	if (ch->of_node && !of_property_read_string(ch->of_node, "label", &label)) {
 		priv->gc.label = label;
@@ -847,6 +1194,12 @@ int lstp_gpio_init(struct lstp_channel *ch)
 	priv->gc.direction_output = lstp_gpio_direction_output;
 	priv->gc.get = lstp_gpio_get;
 	priv->gc.set = lstp_gpio_set;
+	gpio_irq_chip_set_chip(&priv->gc.irq, &lstp_gpio_irq_chip);
+	priv->gc.irq.parent_handler = NULL;
+	priv->gc.irq.num_parents = 0;
+	priv->gc.irq.parents = NULL;
+	priv->gc.irq.default_type = IRQ_TYPE_NONE;
+	priv->gc.irq.handler = handle_simple_irq;
 
 	if (ch->of_node) {
 		priv->gc.fwnode = of_fwnode_handle(ch->of_node);
@@ -863,6 +1216,7 @@ int lstp_gpio_init(struct lstp_channel *ch)
 		return ret;
 
 	ch->priv = priv;
+	ch->irq_callback = lstp_gpio_irq_event_callback;
 
 	dev_info(dev, "%s: ch_%d: Initialized GPIO chip %s with %u lines\n", __func__, ch->ch_id,
 		 priv->gc.label, priv->gc.ngpio);
