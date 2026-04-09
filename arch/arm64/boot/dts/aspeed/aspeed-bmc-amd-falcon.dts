@@ -330,15 +330,15 @@
 				reg = <0x42>;
 			};
 			vdd33s5run@08 {
-				// P0_VDD_18_S5_RUN
-				// Infineon: TDA38740A
+				// P0_VDD_33_S5_RUN
+				// TDK:FS1604
 				compatible = "pmbus";
 				reg = <0x08>;
 			};
 			vdd18s5run@47 {
-				// P0_VDD_33_S5_RUN
-				// TDK:FS1604
-				compatible = "pmbus";
+				// P0_VDD_18_S5_RUN
+				// Infineon: TDA38740A
+				compatible = "infineon,tda38740a";
 				reg = <0x47>;
 			};
 		};
@@ -366,7 +366,7 @@
 				// 4F in EVT2
 				// P3V3_AUX
 				// Infineon: TDA38725A
-				compatible = "pmbus";
+				compatible = "infineon,tda38725a";
 				reg = <0x4F>;
 			};
 			p2v5_aux@0B{
