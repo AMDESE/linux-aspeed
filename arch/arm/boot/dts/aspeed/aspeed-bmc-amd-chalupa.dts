@@ -21,10 +21,10 @@
 	// aliases to the OOB interface for
 	// MI350P RM Channels for each PCIe slot.
 	aliases {
-		i2c180 = &mi350p_slot0_rm_chnl;
-		i2c181 = &mi350p_slot1_rm_chnl;
-		i2c182 = &mi350p_slot2_rm_chnl;
-		i2c183 = &mi350p_slot3_rm_chnl;
+		i2c180 = &pcie0_oob_chnl;
+		i2c181 = &pcie1_oob_chnl;
+		i2c182 = &pcie2_oob_chnl;
+		i2c183 = &pcie3_oob_chnl;
 	};
 
 	reserved-memory {
@@ -600,93 +600,35 @@
 		#size-cells = <0>;
 
 		// PCIe slot0 on the Chalupa
-		pcie_i2c@0 {
+		pcie0_oob_chnl: pcie_i2c@0 {
 			reg = <0>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-
-			// following switch is on the MI350P card not on the Chalupa
-			i2cswitch@77 {
-				compatible = "nxp,pca9546";
-				reg = <0x77>;
-				#address-cells = <1>;
-				#size-cells = <0>;
-				mi350p_slot0_rm_chnl: mi350p_rm@0 {
-					reg = <0>; #address-cells = <1>; #size-cells = <0>;
-					mctp-controller;
-					fru_eprom@56 {
-							compatible = "microchip,24lc512","atmel,24c512";
-							reg = <0x56>;
-					};
-				};
-			};
+			mctp-controller;
 		};
 
 		// PCIe slot1 on the Chalupa
-		pcie_i2c@1 {
+		pcie1_oob_chnl: pcie_i2c@1 {
 			reg = <1>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-
-			// following switch is on the MI350P card not on the Chalupa
-			i2cswitch@77 {
-				compatible = "nxp,pca9546";
-				reg = <0x77>;
-				#address-cells = <1>;
-				#size-cells = <0>;
-				mi350p_slot1_rm_chnl: mi350p_rm@0 {
-					reg = <0>; #address-cells = <1>; #size-cells = <0>;
-					mctp-controller;
-					fru_eprom@56 {
-							compatible = "microchip,24lc512","atmel,24c512";
-							reg = <0x56>;
-					};
-				};
-			};
+			mctp-controller;
 		};
 
 		// PCIe slot2 on the Chalupa
-		pcie_i2c@2 {
+		pcie2_oob_chnl: pcie_i2c@2 {
 			reg = <2>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			// following switch is on the MI350P card not on the Chalupa
-			i2cswitch@77 {
-				compatible = "nxp,pca9546";
-				reg = <0x77>;
-				#address-cells = <1>;
-				#size-cells = <0>;
-				mi350p_slot2_rm_chnl: mi350p_rm@0 {
-					reg = <0>; #address-cells = <1>; #size-cells = <0>;
-					mctp-controller;
-					fru_eprom@56 {
-							compatible = "microchip,24lc512","atmel,24c512";
-							reg = <0x56>;
-					};
-				};
-			};
+			mctp-controller;
 		};
 
 		// PCIe slot3 on the Chalupa
-		pcie_i2c@3 {
+		pcie3_oob_chnl: pcie_i2c@3 {
 			reg = <3>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			// following switch is on the MI350P card not on the Chalupa
-			i2cswitch@77 {
-				compatible = "nxp,pca9546";
-				reg = <0x77>;
-				#address-cells = <1>;
-				#size-cells = <0>;
-				mi350p_slot3_rm_chnl: mi350p_rm@0 {
-					reg = <0>; #address-cells = <1>; #size-cells = <0>;
-					mctp-controller;
-					fru_eprom@56 {
-							compatible = "microchip,24lc512","atmel,24c512";
-							reg = <0x56>;
-					};
-				};
-			};
+			mctp-controller;
 		};
 	}; //i2cswitch@72
 };
