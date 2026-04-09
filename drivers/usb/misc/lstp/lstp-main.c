@@ -159,7 +159,7 @@ int lstp_validate_resp(struct lstp_usb *dev, struct lstp_packet *rx_pkt,
 
 	/* Validate payload length matches expectation (if specified) */
 	payload_len = le16_to_cpu(rx_hdr->length);
-	if (expected_payload_len != LSTP_ANY_RX_LEN && payload_len != expected_payload_len) {
+	if (expected_payload_len != LSTP_ANY_RX_LEN && payload_len < expected_payload_len) {
 		dev_err(&dev->intf->dev,
 			"%s: ch_%u: Unexpected payload length (expected %zu, got %zu, raw_status=0x%02x payload=%*ph)\n",
 			__func__, ch_id, expected_payload_len, payload_len, rx_hdr->status,
