@@ -427,8 +427,7 @@ static void map_sbtsi_pid_to_static_addr(struct i3c_device *i3cdev,
 {
 	if ((i3cdev->bus->id == 4) &&
 	   ((i3cdev->desc->info.pid == 0x118) ||
-	    (i3cdev->desc->info.pid == 0x22400000119) ||
-	    (i3cdev->desc->info.pid == 0x2240000011A)))
+	    (i3cdev->desc->info.pid == 0x22400000119)))
 	{
 		tsi_dev->dev_static_addr = 0x4C;
 	}
@@ -436,9 +435,7 @@ static void map_sbtsi_pid_to_static_addr(struct i3c_device *i3cdev,
 		((i3cdev->desc->info.pid == 0x118) ||
 		 (i3cdev->desc->info.pid == 0x01000118) ||
 		 (i3cdev->desc->info.pid == 0x22400000119) ||
-		 (i3cdev->desc->info.pid == 0x22401000119) ||
-		 (i3cdev->desc->info.pid == 0x2240000011A) ||
-		 (i3cdev->desc->info.pid == 0x2240100011A)))
+		 (i3cdev->desc->info.pid == 0x22401000119)))
 	{
 			tsi_dev->dev_static_addr = 0x48;
 	}
@@ -652,10 +649,6 @@ static const struct i3c_device_id sbtsi_i3c_id[] = {
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x1, 0x119, NULL), /* Socket:0, IOD:1 */
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x119, NULL), /* Socket:1 IOD:0 */
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x101, 0x119, NULL), /* Socket:1 IOD:1 */
-	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x11A, NULL), /* SP8 Socket:0, IOD:0 */
-	I3C_DEVICE_EXTRA_INFO(0x112, 0x1, 0x11A, NULL), /* SP8 Socket:0, IOD:1 */
-	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x11A, NULL), /* SP8 Socket:1 IOD:0 */
-	I3C_DEVICE_EXTRA_INFO(0x112, 0x101, 0x11A, NULL), /* SP8 Socket:1 IOD:1 */
 	{}
 };
 MODULE_DEVICE_TABLE(i3c, sbtsi_i3c_id);
