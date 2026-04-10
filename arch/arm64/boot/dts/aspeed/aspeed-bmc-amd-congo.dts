@@ -875,6 +875,16 @@
 	i2c-scl-hz = <1000000>;
 	mctp-controller;
 
+	sbtsi_p0_iod0: sbtsi@0,22400000118 {
+		reg = <0x0 0x224 0x00000118>;
+		assigned-address = <0x4c>;
+	};
+
+	sbrmi_p0_iod0: sbrmi@0,22400001118 {
+		reg = <0x0 0x224 0x00001118>;
+		assigned-address = <0x3c>;
+	};
+
 	scoob_p0: scoob@0,22400002118 {
 		reg = <0x0 0x224 0x00002118>;
 		mrl = <69>;
