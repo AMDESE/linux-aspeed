@@ -575,6 +575,16 @@
 		assigned-address = <0x3c>;
 	};
 
+	sbtsi_p0_iod0_AB: sbtsi@0,22400000119 {
+		reg = <0x0 0x224 0x00000119>;
+		assigned-address = <0x4c>;
+	};
+
+	sbrmi_p0_iod0_AB: sbrmi@0,22400001119 {
+		reg = <0x0 0x224 0x00001119>;
+		assigned-address = <0x3c>;
+	};
+
 	scoob_p0: scoob@0,22400002118 {
 		reg = <0x0 0x224 0x00002118>;
 		mrl = <69>;
