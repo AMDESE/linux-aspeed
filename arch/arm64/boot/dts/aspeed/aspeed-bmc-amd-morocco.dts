@@ -896,6 +896,16 @@
 	i2c-scl-hz = <1000000>;
 	mctp-controller;
 
+	sbtsi_p0_iod0: sbtsi@0,22400000118 {
+		reg = <0x0 0x224 0x00000118>;
+		assigned-address = <0x4c>;
+	};
+
+	sbrmi_p0_iod0: sbrmi@0,22400001118 {
+		reg = <0x0 0x224 0x00001118>;
+		assigned-address = <0x3c>;
+	};
+
 	scoob_p0: scoob@0,22400002118 {
 		reg = <0x0 0x224 0x00002118>;
 		mrl = <69>;
@@ -916,6 +926,30 @@
 	i3c-scl-hz = <10000000>;
 	i2c-scl-hz = <1000000>;
 	mctp-controller;
+
+	/* TSI Venice A0 2P */
+	sbtsi_p1_iod0: sbtsi@0,22401000118 {
+		reg = <0x0 0x224 0x01000118>;
+		assigned-address = <0x48>;
+	};
+
+	/* RMI Venice A0 2P */
+	sbrmi_p1_iod0: sbrmi@0,22401001118 {
+		reg = <0x0 0x224 0x01001118>;
+		assigned-address = <0x38>;
+	};
+
+	/* TSI Venice A0 2X1P */
+	sbtsi_2x1p_p1_iod0: sbtsi@0,22400000118 {
+		reg = <0x0 0x224 0x00000118>;
+		assigned-address = <0x48>;
+	};
+
+	/* RMI Venice A0 2X1P */
+	sbrmi_2x1p_p1_iod0: sbrmi@0,22400001118 {
+		reg = <0x0 0x224 0x00001118>;
+		assigned-address = <0x38>;
+	};
 
 	scoob_2x1p_p1: scoob@0,22400002118 {
 		reg = <0x0 0x224 0x00002118>;
