@@ -554,6 +554,16 @@
 	i3c-scl-hz = <12500000>;
 	i2c-scl-hz = <1000000>;
 	mctp-controller;
+
+	sbtsi_p0_sp8: sbtsi@0,2240000011A {
+		reg = <0x0 0x224 0x0000011A>;
+		assigned-address = <0x4c>;
+	};
+
+	sbrmi_p0_sp8: sbrmi@0,2240000111A {
+		reg = <0x0 0x224 0x0000111A>;
+		assigned-address = <0x3c>;
+	};
 };
 
 &i3c5 {
@@ -563,6 +573,30 @@
 	i3c-scl-hz = <12500000>;
 	i2c-scl-hz = <1000000>;
 	mctp-controller;
+
+	/* TSI SP8 2P */
+	sbtsi_p1_sp8: sbtsi@0,2240100011A {
+		reg = <0x0 0x224 0x0100011A>;
+		assigned-address = <0x48>;
+	};
+
+	/* RMI SP8 2P */
+	sbrmi_p1_sp8: sbrmi@0,2240100111A {
+		reg = <0x0 0x224 0x0100111A>;
+		assigned-address = <0x38>;
+	};
+
+	/* TSI SP8 2x1P */
+	sbtsi_2x1p_p1_sp8: sbtsi@0,2240000011A {
+		reg = <0x0 0x224 0x0000011A>;
+		assigned-address = <0x48>;
+	};
+
+	/* RMI SP8 2x1P */
+	sbrmi_2x1p_p1_sp8: sbrmi@0,2240000111A {
+		reg = <0x0 0x224 0x0000111A>;
+		assigned-address = <0x38>;
+	};
 };
 
 #ifdef I3C_HUB
