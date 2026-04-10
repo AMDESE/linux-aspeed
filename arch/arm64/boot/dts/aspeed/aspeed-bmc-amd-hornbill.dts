@@ -819,6 +819,12 @@
 		gpios = <&ltpi0_gpio 104 GPIO_ACTIVE_LOW>;
 	};
 
+	/* TSI SP8 2P */
+	sbtsi_p1_sp8: sbtsi@0,2240100011A {
+		reg = <0x0 0x224 0x0100011A>;
+		assigned-address = <0x48>;
+	};
+
 	sbrmi_p1_sp8: sbrmi@0,2240100111A {
 		reg = <0x0 0x224 0x0100111A>;
 		assigned-address = <0x38>;

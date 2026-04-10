@@ -384,6 +384,16 @@
 	i3c-scl-hz = <12500000>;
 	i2c-scl-hz = <1000000>;
 	mctp-controller;
+
+	sbtsi_p0_sp8: sbtsi@0,2240000011A {
+		reg = <0x0 0x224 0x0000011A>;
+		assigned-address = <0x4c>;
+	};
+
+	sbrmi_p0_sp8: sbrmi@0,2240000111A {
+		reg = <0x0 0x224 0x0000111A>;
+		assigned-address = <0x3c>;
+	};
 };
 
 / {
