@@ -425,17 +425,13 @@ static const char *sbtsi_addr_to_label(u8 addr)
 static void map_sbtsi_pid_to_static_addr(struct i3c_device *i3cdev,
 			struct apml_sbtsi_device *tsi_dev)
 {
-	if ((i3cdev->bus->id == 4) &&
-	   ((i3cdev->desc->info.pid == 0x118) ||
-	    (i3cdev->desc->info.pid == 0x22400000119)))
+	if ((i3cdev->bus->id == 4) && (i3cdev->desc->info.pid == 0x118))
 	{
 		tsi_dev->dev_static_addr = 0x4C;
 	}
 	else if ((i3cdev->bus->id == 5) &&
-		((i3cdev->desc->info.pid == 0x118) ||
-		 (i3cdev->desc->info.pid == 0x01000118) ||
-		 (i3cdev->desc->info.pid == 0x22400000119) ||
-		 (i3cdev->desc->info.pid == 0x22401000119)))
+			((i3cdev->desc->info.pid == 0x118) ||
+			(i3cdev->desc->info.pid == 0x01000118)))
 	{
 			tsi_dev->dev_static_addr = 0x48;
 	}
@@ -645,10 +641,6 @@ static const struct i3c_device_id sbtsi_i3c_id[] = {
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x1, 0x118, NULL), /* Socket:0, IOD:1 */
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x118, NULL), /* Socket:1 IOD:0 */
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x101, 0x118, NULL), /* Socket:1 IOD:1 */
-	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x119, NULL), /* Socket:0, IOD:0 */
-	I3C_DEVICE_EXTRA_INFO(0x112, 0x1, 0x119, NULL), /* Socket:0, IOD:1 */
-	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x119, NULL), /* Socket:1 IOD:0 */
-	I3C_DEVICE_EXTRA_INFO(0x112, 0x101, 0x119, NULL), /* Socket:1 IOD:1 */
 	{}
 };
 MODULE_DEVICE_TABLE(i3c, sbtsi_i3c_id);
