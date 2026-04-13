@@ -605,15 +605,15 @@ static void sbtsi_i2c_remove(struct i2c_client *client)
 static const struct i3c_device_id sbtsi_i3c_id[] = {
                     /* (MID, PARTID, EXTIN, DRVDATA) */
 	I3C_DEVICE_EXTRA_INFO(0, 0x0000, 0x118, NULL), /* P0 - IOD0 - SBTSI */
-	I3C_DEVICE_EXTRA_INFO(0, 0x0001, 0x118, NULL), /* P0 - IOD1 - SBTST */
 	I3C_DEVICE_EXTRA_INFO(0, 0x0100, 0x118, NULL), /* P1 - IOD0 - SBTSI */
-	I3C_DEVICE_EXTRA_INFO(0, 0x0101, 0x118, NULL), /* P1 - IOD1 - SBTSI */
 	I3C_DEVICE_EXTRA_INFO(0x112, 0, 0x1, NULL),
 	I3C_DEVICE_EXTRA_INFO(0, 0x0, 0x0, NULL),
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x118, NULL), /* Socket:0, IOD:0 */
-	I3C_DEVICE_EXTRA_INFO(0x112, 0x1, 0x118, NULL), /* Socket:0, IOD:1 */
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x118, NULL), /* Socket:1 IOD:0 */
-	I3C_DEVICE_EXTRA_INFO(0x112, 0x101, 0x118, NULL), /* Socket:1 IOD:1 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x119, NULL), /* Venice Socket:0, IOD:0  AB/B0 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x119, NULL), /* Venice Socket:1 IOD:0 AB/B0 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x11A, NULL), /* SP8 Socket:0, IOD:0 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x11A, NULL), /* SP8 Socket:1 IOD:0 */
 	{}
 };
 MODULE_DEVICE_TABLE(i3c, sbtsi_i3c_id);
