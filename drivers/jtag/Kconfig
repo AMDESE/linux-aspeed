@@ -3,7 +3,7 @@ menuconfig JTAG
 	help
 	  This provides basic core functionality support for JTAG class devices.
 	  Hardware that is equipped with a JTAG microcontroller can be
-	  supported by using this drivers interfaces.
+	  supported by using this driver's interfaces.
 	  This driver exposes a set of IOCTLs to the user space for
 	  the following commands:
 	    SDR: Performs an IEEE 1149.1 Data Register scan

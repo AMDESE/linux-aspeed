@@ -71,7 +71,7 @@
 #define ASPEED_JTAG_SW_MODE_TDIO		BIT(16)
 
 /* ASPEED_JTAG_TCK : TCK Control */
-#define ASPEED_JTAG_TCK_DIVISOR_MASK	GENMASK(10, 0)
+#define ASPEED_JTAG_TCK_DIVISOR_MASK	GENMASK(11, 0)
 #define ASPEED_JTAG_TCK_GET_DIV(x)	((x) & ASPEED_JTAG_TCK_DIVISOR_MASK)
 
 /* ASPEED_JTAG_EC : Controller set for go to IDLE */
@@ -248,8 +248,8 @@ static u32 aspeed_jtag_read(struct aspeed_jtag *aspeed_jtag, u32 reg)
 static void aspeed_jtag_write(struct aspeed_jtag *aspeed_jtag, u32 val, u32 reg)
 {
 #ifdef DEBUG_JTAG
-	dev_dbg(aspeed_jtag->dev, "write:%s val = 0x%08x\n",
-		regnames[reg], val);
+	dev_dbg(aspeed_jtag->dev, "write:%s val = 0x%08x\n", regnames[reg],
+		val);
 #endif
 	writel(val, aspeed_jtag->reg_base + reg);
 }
@@ -272,7 +272,6 @@ static int aspeed_jtag_freq_set(struct jtag *jtag, u32 freq)
 	if (div > ASPEED_JTAG_TCK_DIVISOR_MASK)
 		div = ASPEED_JTAG_TCK_DIVISOR_MASK;
 	tck_val = aspeed_jtag_read(aspeed_jtag, ASPEED_JTAG_TCK);
-	dev_dbg(aspeed_jtag->dev, "aspeed_jtag_freq_set:  tck_val = 0x%08x\n", tck_val);
 	aspeed_jtag_write(aspeed_jtag,
 			  (tck_val & ~ASPEED_JTAG_TCK_DIVISOR_MASK) | div,
 			  ASPEED_JTAG_TCK);
@@ -377,10 +376,6 @@ static inline void aspeed_jtag_master_26xx(struct aspeed_jtag *aspeed_jtag)
 	if (aspeed_jtag->mode & JTAG_XFER_HW_MODE) {
 		aspeed_jtag_write(aspeed_jtag, 0, ASPEED_JTAG_CTRL);
 		aspeed_jtag_write(aspeed_jtag, 0, ASPEED_JTAG_SW);
-		aspeed_jtag_write(aspeed_jtag,
-			reg_val | ASPEED_JTAG_GBLCTRL_ENG_MODE_EN |
-			ASPEED_JTAG_GBLCTRL_ENG_OUT_EN,
-			ASPEED_JTAG_GBLCTRL);
 	} else {
 		aspeed_jtag_write(aspeed_jtag,
 				  ASPEED_JTAG_SW_MODE_EN |
@@ -424,9 +419,9 @@ static int aspeed_jtag_mode_set(struct jtag *jtag, struct jtag_mode *jtag_mode)
 		aspeed_jtag->llops->master_enable(aspeed_jtag);
 		break;
 	case JTAG_CONTROL_MODE:
-		if (jtag_mode->mode == JTAG_MASTER_OUTPUT_DISABLE)
+		if (jtag_mode->mode == JTAG_CONTROLLER_OUTPUT_DISABLE)
 			aspeed_jtag->llops->output_disable(aspeed_jtag);
-		else if (jtag_mode->mode == JTAG_MASTER_MODE)
+		else if (jtag_mode->mode == JTAG_CONTROLLER_MODE)
 			aspeed_jtag->llops->master_enable(aspeed_jtag);
 		break;
 	default:
@@ -602,9 +597,6 @@ static void aspeed_jtag_set_tap_state(struct aspeed_jtag *aspeed_jtag,
 	from = from_state;
 	to = end_state;
 
-	if (from == JTAG_STATE_CURRENT)
-		from = aspeed_jtag->current_state;
-
 	for (i = 0; i < _tms_cycle_lookup[from][to].count; i++)
 		aspeed_jtag_tck_cycle(aspeed_jtag,
 				      ((_tms_cycle_lookup[from][to].tmsbits
@@ -640,6 +632,10 @@ static int aspeed_jtag_status_set(struct jtag *jtag,
 	struct aspeed_jtag *aspeed_jtag = jtag_priv(jtag);
 	int i;
 
+	if (tapstate->from == JTAG_STATE_CURRENT)
+		tapstate->from = aspeed_jtag->current_state;
+	if (tapstate->endstate == JTAG_STATE_CURRENT)
+		tapstate->endstate = aspeed_jtag->current_state;
 #ifdef DEBUG_JTAG
 	dev_dbg(aspeed_jtag->dev, "Set TAP state: %s\n",
 		end_status_str[tapstate->endstate]);
@@ -678,7 +674,6 @@ static int aspeed_jtag_shctrl_tms_mask(enum jtag_tapstate from,
 				       u32 start_shift, u32 end_shift,
 				       u32 *tms_mask)
 {
-	// _tms_cycle_lookup[16][4].count
 	u32 pre_tms = start_shift ? _tms_cycle_lookup[from][to].count : 0;
 	u32 post_tms = end_shift ? _tms_cycle_lookup[there][endstate].count : 0;
 	u32 tms_value = start_shift ? _tms_cycle_lookup[from][to].tmsbits : 0;
@@ -687,6 +682,7 @@ static int aspeed_jtag_shctrl_tms_mask(enum jtag_tapstate from,
 					 << pre_tms :
 				 0;
 	if (pre_tms > GENMASK(2, 0) || post_tms > GENMASK(2, 0)) {
+		pr_err("pre/port tms count is greater than hw limit");
 		return -EINVAL;
 	}
 	*tms_mask = start_shift | ASPEED_JTAG_SHCTRL_PRE_TMS(pre_tms) |
@@ -698,7 +694,8 @@ static int aspeed_jtag_shctrl_tms_mask(enum jtag_tapstate from,
 static void aspeed_jtag_set_tap_state_hw2(struct aspeed_jtag *aspeed_jtag,
 					  struct jtag_tap_state *tapstate)
 {
-	u32 reg_val;
+	u32 reg_val, execute_tck;
+	u32 tck = tapstate->tck;
 
 	/* x TMS high + 1 TMS low */
 	if (tapstate->reset || tapstate->endstate == JTAG_STATE_TLRESET) {
@@ -716,20 +713,14 @@ static void aspeed_jtag_set_tap_state_hw2(struct aspeed_jtag *aspeed_jtag,
 		while (aspeed_jtag_read(aspeed_jtag, ASPEED_JTAG_GBLCTRL) & ASPEED_JTAG_GBLCTRL_FORCE_TMS)
 			;
 		aspeed_jtag->current_state = JTAG_STATE_TLRESET;
-	} else if (tapstate->endstate == JTAG_STATE_IDLE &&
-                  aspeed_jtag->current_state != JTAG_STATE_IDLE) {
-               /* Always go to RTI, do not wait for shift operation */
-               aspeed_jtag_set_tap_state(aspeed_jtag,
-                                         aspeed_jtag->current_state,
-                                         JTAG_STATE_IDLE);
-               aspeed_jtag->current_state = JTAG_STATE_IDLE;
-        } else {
+	} else {
 		aspeed_jtag_set_tap_state(aspeed_jtag,
 					  aspeed_jtag->current_state,
 					  tapstate->endstate);
 	}
 	/* Run TCK */
-	if (tapstate->tck) {
+	while (tck) {
+		execute_tck = tck > GENMASK(9, 0) ? GENMASK(9, 0) : tck;
 		/* Disable sw mode */
 		aspeed_jtag_write(aspeed_jtag, 0, ASPEED_JTAG_SW);
 		aspeed_jtag_write(aspeed_jtag, 0, ASPEED_JTAG_PADCTRL0);
@@ -738,14 +729,15 @@ static void aspeed_jtag_set_tap_state_hw2(struct aspeed_jtag *aspeed_jtag,
 		aspeed_jtag_write(aspeed_jtag,
 				  reg_val | ASPEED_JTAG_GBLCTRL_FIFO_CTRL_MODE |
 					  ASPEED_JTAG_GBLCTRL_STSHIFT(0) |
-					  ASPEED_JTAG_GBLCTRL_UPDT_SHIFT(tapstate->tck),
+					  ASPEED_JTAG_GBLCTRL_UPDT_SHIFT(execute_tck),
 				  ASPEED_JTAG_GBLCTRL);
 
 		aspeed_jtag_write(aspeed_jtag,
 				  ASPEED_JTAG_SHCTRL_STSHIFT_EN |
-					  ASPEED_JTAG_SHCTRL_LWRDT_SHIFT(tapstate->tck),
+					  ASPEED_JTAG_SHCTRL_LWRDT_SHIFT(execute_tck),
 				  ASPEED_JTAG_SHCTRL);
 		aspeed_jtag_wait_shift_complete(aspeed_jtag);
+		tck -= execute_tck;
 	}
 }
 
@@ -754,6 +746,10 @@ static int aspeed_jtag_status_set_26xx(struct jtag *jtag,
 {
 	struct aspeed_jtag *aspeed_jtag = jtag_priv(jtag);
 
+	if (tapstate->from == JTAG_STATE_CURRENT)
+		tapstate->from = aspeed_jtag->current_state;
+	if (tapstate->endstate == JTAG_STATE_CURRENT)
+		tapstate->endstate = aspeed_jtag->current_state;
 #ifdef DEBUG_JTAG
 	dev_dbg(aspeed_jtag->dev, "Set TAP state: status %s from %s to %s\n",
 		end_status_str[aspeed_jtag->current_state],
@@ -1169,10 +1165,6 @@ static int aspeed_jtag_xfer_hw2(struct aspeed_jtag *aspeed_jtag,
 		exit = JTAG_STATE_EXIT1DR;
 		exitx = JTAG_STATE_EXIT1IR;
 	}
-	if (aspeed_jtag->current_state == JTAG_STATE_CURRENT) {
-		dev_warn(aspeed_jtag->dev, "STATE_CURRENT is requested, assigning to State %u", aspeed_jtag->status);
-		aspeed_jtag->current_state = aspeed_jtag->status;
-	}
 #ifdef DEBUG_JTAG
 	dev_dbg(aspeed_jtag->dev,
 		"HW2 JTAG SHIFT %s, length %d status %s from %s to %s then %s pad 0x%x\n",
@@ -1182,6 +1174,7 @@ static int aspeed_jtag_xfer_hw2(struct aspeed_jtag *aspeed_jtag,
 		end_status_str[shift],
 		end_status_str[xfer->endstate], xfer->padding);
 #endif
+
 	if (aspeed_jtag->current_state == shift) {
 		start_shift = 0;
 	} else {
@@ -1265,10 +1258,7 @@ static int aspeed_jtag_xfer_hw2(struct aspeed_jtag *aspeed_jtag,
 			 * Transmit bytes that were not equals to column length
 			 * and after the transfer go to Pause IR/DR.
 			 */
-			dev_dbg(aspeed_jtag->dev,
-				"SHCTRL_TMS_MASK -- current state %u, shift %u, exit %u, endstate %u\n",
-				aspeed_jtag->current_state, shift, exit, endstate
-			);
+
 			ret = aspeed_jtag_shctrl_tms_mask(aspeed_jtag->current_state, shift, exit,
 							  endstate, start_shift, 0, &tms_mask);
 			if (ret)
@@ -1291,10 +1281,6 @@ static int aspeed_jtag_xfer_hw2(struct aspeed_jtag *aspeed_jtag,
 			/*
 			 * Read bytes equals to column length
 			 */
-			dev_dbg(aspeed_jtag->dev,
-				"SHCTRL_TMS_MASK -- current state %u, shift %u, exit %u, endstate %u\n",
-				aspeed_jtag->current_state, shift, exit, endstate
-			);
 			shift_bits = remain_xfer;
 			ret = aspeed_jtag_shctrl_tms_mask(aspeed_jtag->current_state, shift, exit,
 							  endstate, start_shift, end_shift,
