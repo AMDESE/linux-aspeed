@@ -6,11 +6,12 @@ config USB_LSTP
 	depends on I2C
 	depends on SPI
 	depends on GPIOLIB
+	depends on TTY
 	help
 	  This adds support for the NVIDIA Low-Speed Transport Protocol (LSTP)
 	  USB adapter. The LSTP adapter provides USB-to-I2C, USB-to-SPI,
-	  USB-to-GPIO, and USB-to-IPMI interfaces for host communication with
-	  connected devices.
+	  USB-to-GPIO, USB-to-UART, and USB-to-IPMI interfaces for host
+	  communication with connected devices.
 
 	  This driver can also be built as a module. If so, the module will be
 	  called lstp.

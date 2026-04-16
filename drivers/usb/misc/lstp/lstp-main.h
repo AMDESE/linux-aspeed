@@ -8,6 +8,7 @@
 #ifndef __LSTP_MAIN_H
 #define __LSTP_MAIN_H
 
+#include <linux/init.h>
 #include <linux/usb.h>
 #include <linux/mutex.h>
 #include <linux/tty.h>
@@ -137,9 +138,11 @@ struct lstp_channel {
 	unsigned long irq_buffer_lock;
 	bool rx_ready; /* Response received from callback */
 	u8 *tx_buf;
+	u8 *tx_resp_buf;
 	u8 *resp_buf; /* Buffer for solicited responses */
 	u8 *irq_buf; /* Buffer for unsolicited requests/IRQs */
 	struct urb *bulk_tx_urb;
+	struct urb *bulk_tx_resp_urb;
 	wait_queue_head_t rx_wq;
 	lstp_irq_callback irq_callback;
 	void *priv; /* Channel-specific private data (e.g., i2c_adapter) */
@@ -154,8 +157,13 @@ int lstp_gpio_init(struct lstp_channel *ch);
 int lstp_gpio_start(struct lstp_channel *ch);
 int lstp_i2c_init(struct lstp_channel *ch);
 int lstp_i2c_start(struct lstp_channel *ch);
+int lstp_uart_init(struct lstp_channel *ch);
+int lstp_uart_start(struct lstp_channel *ch);
 int lstp_ipmi_init(struct lstp_channel *ch);
 int lstp_ipmi_start(struct lstp_channel *ch);
+
+int __init lstp_uart_driver_init(void);
+void lstp_uart_driver_exit(void);
 
 /* Internal LSTP helper functions */
 int lstp_status_to_errno(u8 status);
@@ -165,6 +173,7 @@ int lstp_validate_resp(struct lstp_usb *dev, struct lstp_packet *rx_pkt,
 int lstp_ch0_read(struct lstp_usb *dev, u8 ch_id, u16 offset, u16 length);
 
 /* USB Helper Functions */
+void lstp_usb_tx_callback(struct urb *urb);
 int lstp_recv_resp_helper(struct lstp_channel *ch, u8 cmd, u16 tx_len, u16 rx_len);
 void lstp_unlock_resp_buffer(struct lstp_channel *ch);
 

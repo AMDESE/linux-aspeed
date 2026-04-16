@@ -874,6 +874,15 @@ static struct lstp_channel *lstp_create_channel(struct lstp_usb *dev, u8 ch_id)
 	if (ret)
 		return NULL;
 
+	ch->bulk_tx_resp_urb = usb_alloc_urb(0, GFP_KERNEL);
+	if (!ch->bulk_tx_resp_urb)
+		return NULL;
+
+	ret = devm_add_action_or_reset(&dev->intf->dev, lstp_kill_and_free_urb,
+				       ch->bulk_tx_resp_urb);
+	if (ret)
+		return NULL;
+
 	ch->ch_id = ch_id;
 	ch->usb = dev;
 	mutex_init(&ch->tx_mutex);
@@ -1009,15 +1018,20 @@ static int lstp_init_channels(struct lstp_usb *dev)
 			if (ret)
 				return ret;
 			break;
-		case LSTP_CHANNEL_TYPE_I2C:
-			ret = lstp_i2c_init(ch);
-			if (ret)
-				return ret;
-			break;
-		case LSTP_CHANNEL_TYPE_IPMI:
-			ret = lstp_init_channel_of_node(ch, "nv,lstp-ipmi");
-			if (ret)
-				return ret;
+			case LSTP_CHANNEL_TYPE_I2C:
+				ret = lstp_i2c_init(ch);
+				if (ret)
+					return ret;
+				break;
+			case LSTP_CHANNEL_TYPE_UART:
+				ret = lstp_uart_init(ch);
+				if (ret)
+					return ret;
+				break;
+			case LSTP_CHANNEL_TYPE_IPMI:
+				ret = lstp_init_channel_of_node(ch, "nv,lstp-ipmi");
+				if (ret)
+					return ret;
 			ret = lstp_ipmi_init(ch);
 			if (ret)
 				return ret;
@@ -1065,15 +1079,20 @@ static int lstp_start_channels(struct lstp_usb *dev)
 			if (ret)
 				return ret;
 			break;
-		case LSTP_CHANNEL_TYPE_I2C:
-			ret = lstp_i2c_start(ch);
-			if (ret)
-				return ret;
-			break;
-		case LSTP_CHANNEL_TYPE_IPMI:
-			ret = lstp_ipmi_start(ch);
-			if (ret)
-				return ret;
+			case LSTP_CHANNEL_TYPE_I2C:
+				ret = lstp_i2c_start(ch);
+				if (ret)
+					return ret;
+				break;
+			case LSTP_CHANNEL_TYPE_UART:
+				ret = lstp_uart_start(ch);
+				if (ret)
+					return ret;
+				break;
+			case LSTP_CHANNEL_TYPE_IPMI:
+				ret = lstp_ipmi_start(ch);
+				if (ret)
+					return ret;
 			break;
 		default:
 			break;
@@ -1209,7 +1228,7 @@ static void lstp_disconnect(struct usb_interface *intf)
  * lstp_usb_tx_callback() - USB TX URB completion callback.
  * @urb: Completed transmit URB
  */
-static void lstp_usb_tx_callback(struct urb *urb)
+void lstp_usb_tx_callback(struct urb *urb)
 {
 	struct lstp_channel *ch = urb->context;
 
@@ -1427,6 +1446,30 @@ static struct usb_driver lstp_usb_driver = {
 	.id_table = lstp_id_table,
 };
 
-module_usb_driver(lstp_usb_driver);
+static int __init lstp_module_init(void)
+{
+	int ret;
+
+	ret = lstp_uart_driver_init();
+	if (ret)
+		return ret;
+
+	ret = usb_register(&lstp_usb_driver);
+	if (ret) {
+		lstp_uart_driver_exit();
+		return ret;
+	}
+
+	return 0;
+}
+
+static void __exit lstp_module_exit(void)
+{
+	usb_deregister(&lstp_usb_driver);
+	lstp_uart_driver_exit();
+}
+
+module_init(lstp_module_init);
+module_exit(lstp_module_exit);
 
 MODULE_LICENSE("GPL");
