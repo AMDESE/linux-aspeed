@@ -683,7 +683,7 @@ static void lstp_gpio_irq_event_callback(struct lstp_channel *ch)
 }
 
 static const struct irq_chip lstp_gpio_irq_chip = {
-	.name = "lstp-gpio-irq",
+	.name = "obmf-gpio-irq",
 	.irq_enable = lstp_gpio_irq_enable,
 	.irq_disable = lstp_gpio_irq_disable,
 	.irq_mask = lstp_gpio_irq_mask,
@@ -1218,8 +1218,8 @@ int lstp_gpio_init(struct lstp_channel *ch)
 	ch->priv = priv;
 	ch->irq_callback = lstp_gpio_irq_event_callback;
 
-	dev_info(dev, "%s: ch_%d: Initialized GPIO chip %s with %u lines\n", __func__, ch->ch_id,
-		 priv->gc.label, priv->gc.ngpio);
+	dev_info(dev, "OBMF GPIO channel %d initialized chip %s with %u lines\n",
+		 ch->ch_id, priv->gc.label, priv->gc.ngpio);
 	return 0;
 }
 

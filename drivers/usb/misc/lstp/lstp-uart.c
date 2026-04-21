@@ -134,8 +134,9 @@ static int lstp_uart_send_with_retry(struct lstp_uart_ctx *ctx, size_t len)
 			break;
 
 		if (++retries >= LSTP_UART_NAK_MAX_RETRIES) {
-			dev_warn(&ch->usb->intf->dev, "%s: ch_%d: NAK retry limit reached (%d)\n",
-				 __func__, ch->ch_id, retries);
+			dev_warn(&ch->usb->intf->dev,
+				 "OBMF UART channel %d NAK retry limit reached (%d)\n",
+				 ch->ch_id, retries);
 			break;
 		}
 
@@ -143,7 +144,7 @@ static int lstp_uart_send_with_retry(struct lstp_uart_ctx *ctx, size_t len)
 	} while (true);
 
 	if (ret)
-		dev_warn(&ch->usb->intf->dev, "%s: ch_%d: Failed to write (%d)\n", __func__,
+		dev_warn(&ch->usb->intf->dev, "OBMF UART channel %d write failed (%d)\n",
 			 ch->ch_id, ret);
 
 	return ret;
@@ -240,7 +241,7 @@ static void lstp_uart_irq_callback(struct lstp_channel *ch)
 			  sizeof(struct lstp_header), lstp_usb_tx_callback, ch);
 	ret = usb_submit_urb(ch->bulk_tx_resp_urb, GFP_ATOMIC);
 	if (ret)
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: Failed to submit TX URB (%d)\n", __func__,
+		dev_err(&ch->usb->intf->dev, "OBMF UART channel %d failed to submit TX URB (%d)\n",
 			ch->ch_id, ret);
 }
 
@@ -540,7 +541,7 @@ int lstp_uart_init(struct lstp_channel *ch)
 
 	ret = lstp_alloc_minor(ch);
 	if (ret < 0) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: Failed to allocate minor (%d)\n", __func__,
+		dev_err(&ch->usb->intf->dev, "OBMF UART channel %d failed to allocate minor (%d)\n",
 			ch->ch_id, ret);
 		goto err_put_port;
 	}
@@ -555,7 +556,7 @@ int lstp_uart_init(struct lstp_channel *ch)
 	if (ret)
 		return ret;
 
-	dev_info(&ch->usb->intf->dev, "%s: ch_%d: Registered\n", __func__, ch->ch_id);
+	dev_info(&ch->usb->intf->dev, "OBMF UART channel %d registered\n", ch->ch_id);
 	return 0;
 
 err_put_port:
@@ -579,15 +580,15 @@ int lstp_uart_start(struct lstp_channel *ch)
 	tty_dev = tty_port_register_device(&ctx->port, lstp_tty_driver, ctx->minor,
 					   &ch->usb->intf->dev);
 	if (IS_ERR(tty_dev)) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: Failed to register TTY (%ld)\n", __func__,
+		dev_err(&ch->usb->intf->dev, "OBMF UART channel %d failed to register TTY (%ld)\n",
 			ch->ch_id, PTR_ERR(tty_dev));
 		return PTR_ERR(tty_dev);
 	}
 
 	ch->child_dev = tty_dev;
 
-	dev_info(&ch->usb->intf->dev, "%s: ch_%d: Started /dev/ttyLSTP%d\n", __func__, ch->ch_id,
-		 ctx->minor);
+	dev_info(&ch->usb->intf->dev, "OBMF UART channel %d started as /dev/ttyOBMF%d\n",
+		 ch->ch_id, ctx->minor);
 	return 0;
 }
 
@@ -596,7 +597,7 @@ int lstp_uart_start(struct lstp_channel *ch)
  *****************************************************************************/
 
 /*
- * Register the global ttyLSTP driver. Called once at module load;
+ * Register the global ttyOBMF driver. Called once at module load;
  * individual channels register their devices later via lstp_uart_start().
  */
 int __init lstp_uart_driver_init(void)
@@ -608,8 +609,8 @@ int __init lstp_uart_driver_init(void)
 	if (IS_ERR(lstp_tty_driver))
 		return PTR_ERR(lstp_tty_driver);
 
-	lstp_tty_driver->driver_name = "lstp";
-	lstp_tty_driver->name = "ttyLSTP";
+	lstp_tty_driver->driver_name = "obmf";
+	lstp_tty_driver->name = "ttyOBMF";
 	lstp_tty_driver->major = 0;
 	lstp_tty_driver->minor_start = 0;
 	lstp_tty_driver->type = TTY_DRIVER_TYPE_SERIAL;
@@ -628,7 +629,7 @@ int __init lstp_uart_driver_init(void)
 	return 0;
 }
 
-/* Unregister the global ttyLSTP driver and free minor number space. */
+/* Unregister the global ttyOBMF driver and free minor number space. */
 void lstp_uart_driver_exit(void)
 {
 	if (!lstp_tty_driver)

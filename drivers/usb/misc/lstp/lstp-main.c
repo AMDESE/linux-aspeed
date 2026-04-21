@@ -94,15 +94,15 @@ int lstp_validate_rx_pkt(struct lstp_usb *dev, struct lstp_packet *rx_pkt, size_
 
 	/* Validate header size */
 	if (actual_length < sizeof(struct lstp_header)) {
-		dev_err(&dev->intf->dev, "%s: Packet without header (got %zu, need >=%lu)\n",
-			__func__, actual_length, sizeof(struct lstp_header));
+		dev_err(&dev->intf->dev, "OBMF packet without header (got %zu, need >=%lu)\n",
+			actual_length, sizeof(struct lstp_header));
 		return -EIO;
 	}
 
 	/* Validate channel ID */
 	ch_id = rx_hdr->ch_id;
 	if (ch_id > dev->max_ch_id) {
-		dev_err(&dev->intf->dev, "%s: Invalid channel ID (got %u, max %u)\n", __func__,
+		dev_err(&dev->intf->dev, "OBMF invalid channel ID (got %u, max %u)\n",
 			ch_id, dev->max_ch_id);
 		return -EIO;
 	}
@@ -113,15 +113,15 @@ int lstp_validate_rx_pkt(struct lstp_usb *dev, struct lstp_packet *rx_pkt, size_
 	/* Overflow protection: validate payload length against buffer capacity */
 	/* TODO: remove/change these checks when we implement the multi-packet support */
 	if (claimed_payload_len > max_payload_len) {
-		dev_err(&dev->intf->dev, "%s: ch_%u: Payload too large (claims %zu, max %zu)\n",
-			__func__, ch_id, claimed_payload_len, max_payload_len);
+		dev_err(&dev->intf->dev, "OBMF channel %u payload too large (claims %zu, max %zu)\n",
+			ch_id, claimed_payload_len, max_payload_len);
 		return -EIO;
 	}
 
 	/* Underflow protection: validate received data matches claimed payload */
 	if (sizeof(struct lstp_header) + claimed_payload_len > actual_length) {
-		dev_err(&dev->intf->dev, "%s: ch_%u: Payload too short (claims %zu, got %zu)\n",
-			__func__, ch_id, claimed_payload_len,
+		dev_err(&dev->intf->dev, "OBMF channel %u payload too short (claims %zu, got %zu)\n",
+			ch_id, claimed_payload_len,
 			actual_length - sizeof(struct lstp_header));
 		return -EIO;
 	}
@@ -212,8 +212,8 @@ int lstp_ch0_read(struct lstp_usb *dev, u8 ch_id, u16 offset, u16 length)
 			   sizeof(struct lstp_header) + sizeof(ch0_req->read), NULL,
 			   LSTP_USB_REQUEST_TIMEOUT_MS);
 	if (ret) {
-		dev_err(&dev->intf->dev, "%s: ch_0: Could not send request for ch_%d (%d)\n",
-			__func__, ch_id, ret);
+		dev_err(&dev->intf->dev, "OBMF management channel could not send request for channel %d (%d)\n",
+			ch_id, ret);
 		goto out_free;
 	}
 
@@ -221,8 +221,8 @@ int lstp_ch0_read(struct lstp_usb *dev, u8 ch_id, u16 offset, u16 length)
 	ret = usb_bulk_msg(dev->udev, usb_rcvbulkpipe(dev->udev, dev->bulk_in_ep), dev->rx_buf,
 			   dev->bulk_rx_size, &actual_length, LSTP_USB_RESPONSE_TIMEOUT_MS);
 	if (ret) {
-		dev_err(&dev->intf->dev, "%s: ch_0: Could not receive response for ch_%d (%d)\n",
-			__func__, ch_id, ret);
+		dev_err(&dev->intf->dev, "OBMF management channel could not receive response for channel %d (%d)\n",
+			ch_id, ret);
 		goto out_free;
 	}
 
@@ -233,14 +233,14 @@ int lstp_ch0_read(struct lstp_usb *dev, u8 ch_id, u16 offset, u16 length)
 		goto out_free;
 
 	if (rx_pkt->hdr.ch_id != LSTP_CHANNEL_TYPE_MGMT) {
-		dev_err(&dev->intf->dev, "%s: ch_0: Wrong channel ID (expected %u, got %u)\n",
-			__func__, LSTP_CHANNEL_TYPE_MGMT, rx_pkt->hdr.ch_id);
+		dev_err(&dev->intf->dev, "OBMF management channel got wrong channel ID (expected %u, got %u)\n",
+			LSTP_CHANNEL_TYPE_MGMT, rx_pkt->hdr.ch_id);
 		ret = -EIO;
 		goto out_free;
 	}
 
 	if (GET_BIT_7(rx_pkt->hdr.status) != 1) {
-		dev_err(&dev->intf->dev, "%s: ch_0: Not a response packet (bit 7 = 0)\n", __func__);
+		dev_err(&dev->intf->dev, "OBMF management channel received a non-response packet\n");
 		ret = -EIO;
 		goto out_free;
 	}
@@ -294,7 +294,7 @@ static int lstp_ch0_read_enabled_urb(struct lstp_usb *dev, u8 ch_id, u8 *ch_flag
 	ret = lstp_recv_resp_helper(ch0, LSTP_CH0_CMD_READ_CONFIG, sizeof(ch0_req->read),
 				    LSTP_ANY_RX_LEN);
 	if (ret) {
-		dev_err(&dev->intf->dev, "%s: ch_0: READ_CONFIG for ch_%d failed (%d)\n", __func__,
+		dev_err(&dev->intf->dev, "OBMF management READ_CONFIG for channel %d failed (%d)\n",
 			ch_id, ret);
 		goto out_mutex;
 	}
@@ -303,7 +303,7 @@ static int lstp_ch0_read_enabled_urb(struct lstp_usb *dev, u8 ch_id, u8 *ch_flag
 	ch0_resp = LSTP_GET_PAYLOAD(rx_pkt, struct lstp_ch0_resp_read);
 	if (!ch0_resp) {
 		dev_err(&dev->intf->dev,
-			"%s: ch_0: Response too small for ch_%d (got %u, need >=%lu)\n", __func__,
+			"OBMF management response too small for channel %d (got %u, need >=%lu)\n",
 			ch_id, le16_to_cpu(rx_pkt->hdr.length), sizeof(struct lstp_ch0_resp_read));
 		ret = -EIO;
 	}
@@ -359,7 +359,7 @@ static int lstp_ch0_set_enable_urb(struct lstp_usb *dev, u8 ch_id, u8 ch_type, b
 	ret = lstp_recv_resp_helper(ch0, LSTP_CH0_CMD_READ_CONFIG, sizeof(ch0_req->read),
 				    LSTP_ANY_RX_LEN);
 	if (ret) {
-		dev_err(&dev->intf->dev, "%s: ch_0: READ_CONFIG for ch_%d failed (%d)\n", __func__,
+		dev_err(&dev->intf->dev, "OBMF management READ_CONFIG for channel %d failed (%d)\n",
 			ch_id, ret);
 		goto out_mutex;
 	}
@@ -367,7 +367,7 @@ static int lstp_ch0_set_enable_urb(struct lstp_usb *dev, u8 ch_id, u8 ch_type, b
 	ch0_resp = LSTP_GET_PAYLOAD(rx_pkt, struct lstp_ch0_resp_read);
 	if (!ch0_resp) {
 		dev_err(&dev->intf->dev,
-			"%s: ch_0: Response too small for ch_%d (got %u, need >=%lu)\n", __func__,
+			"OBMF management response too small for channel %d (got %u, need >=%lu)\n",
 			ch_id, le16_to_cpu(rx_pkt->hdr.length), sizeof(struct lstp_ch0_resp_read));
 		ret = -EIO;
 		lstp_unlock_resp_buffer(ch0);
@@ -404,7 +404,7 @@ static int lstp_ch0_set_enable_urb(struct lstp_usb *dev, u8 ch_id, u8 ch_type, b
 
 	ret = lstp_recv_resp_helper(ch0, LSTP_CH0_CMD_WRITE_CONFIG, write_len, LSTP_ANY_RX_LEN);
 	if (ret) {
-		dev_err(&dev->intf->dev, "%s: ch_0: WRITE_CONFIG for ch_%d failed (%d)\n", __func__,
+		dev_err(&dev->intf->dev, "OBMF management WRITE_CONFIG for channel %d failed (%d)\n",
 			ch_id, ret);
 		goto out_mutex;
 	}
@@ -439,7 +439,7 @@ static int __maybe_unused lstp_ch0_lock(struct lstp_usb *dev)
 	ret = usb_bulk_msg(dev->udev, usb_sndbulkpipe(dev->udev, dev->bulk_out_ep), tx_pkt,
 			   sizeof(struct lstp_header), NULL, LSTP_USB_REQUEST_TIMEOUT_MS);
 	if (ret) {
-		dev_err(&dev->intf->dev, "%s: ch_0: Could not send lock request (%d)\n", __func__,
+		dev_err(&dev->intf->dev, "OBMF management channel could not send lock request (%d)\n",
 			ret);
 		goto out_free;
 	}
@@ -447,8 +447,8 @@ static int __maybe_unused lstp_ch0_lock(struct lstp_usb *dev)
 	ret = usb_bulk_msg(dev->udev, usb_rcvbulkpipe(dev->udev, dev->bulk_in_ep), dev->rx_buf,
 			   dev->bulk_rx_size, &actual_length, LSTP_USB_RESPONSE_TIMEOUT_MS);
 	if (ret) {
-		dev_err(&dev->intf->dev, "%s: ch_0: Could not receive lock response (%d)\n",
-			__func__, ret);
+		dev_err(&dev->intf->dev, "OBMF management channel could not receive lock response (%d)\n",
+			ret);
 		goto out_free;
 	}
 
@@ -458,14 +458,14 @@ static int __maybe_unused lstp_ch0_lock(struct lstp_usb *dev)
 		goto out_free;
 
 	if (rx_pkt->hdr.ch_id != LSTP_CHANNEL_TYPE_MGMT) {
-		dev_err(&dev->intf->dev, "%s: ch_0: Wrong channel ID (expected %u, got %u)\n",
-			__func__, LSTP_CHANNEL_TYPE_MGMT, rx_pkt->hdr.ch_id);
+		dev_err(&dev->intf->dev, "OBMF management lock response had wrong channel ID (expected %u, got %u)\n",
+			LSTP_CHANNEL_TYPE_MGMT, rx_pkt->hdr.ch_id);
 		ret = -EIO;
 		goto out_free;
 	}
 
 	if (GET_BIT_7(rx_pkt->hdr.status) != 1) {
-		dev_err(&dev->intf->dev, "%s: ch_0: Not a response packet (bit 7 = 0)\n", __func__);
+		dev_err(&dev->intf->dev, "OBMF management lock response was not marked as a response packet\n");
 		ret = -EIO;
 		goto out_free;
 	}
@@ -643,7 +643,7 @@ static int lstp_create_sysfs_hierarchy(struct lstp_usb *dev)
 	int ret;
 
 	/* Create lstp directory */
-	dev->lstp_kobj = kobject_create_and_add("lstp", &parent_dev->kobj);
+	dev->lstp_kobj = kobject_create_and_add("obmf", &parent_dev->kobj);
 	if (!dev->lstp_kobj)
 		return -ENOMEM;
 
@@ -690,7 +690,7 @@ static int lstp_channel_link_device(struct lstp_channel *ch)
 
 	ret = sysfs_create_link(&ch->kobj, &ch->child_dev->kobj, "device");
 	if (ret) {
-		dev_err(parent_dev, "%s: ch_%d: Failed to create device symlink (%d)\n", __func__,
+		dev_err(parent_dev, "OBMF channel %d failed to create device symlink (%d)\n",
 			ch->ch_id, ret);
 		return ret;
 	}
@@ -722,8 +722,7 @@ static int lstp_create_channel_sysfs(struct lstp_channel *ch)
 	ret = kobject_init_and_add(&ch->kobj, &lstp_channel_ktype, ch->usb->channel_kobj, "%d",
 				   ch->ch_id);
 	if (ret) {
-		dev_err(dev, "%s: Failed to create sysfs for ch_%d (%d)\n", __func__, ch->ch_id,
-			ret);
+		dev_err(dev, "OBMF failed to create sysfs for channel %d (%d)\n", ch->ch_id, ret);
 		kobject_put(&ch->kobj);
 		return ret;
 	}
@@ -918,7 +917,7 @@ static int lstp_init_channels(struct lstp_usb *dev)
 	/* Create channel 0 (management channel) for URB-based runtime access */
 	ch0 = lstp_create_channel(dev, 0);
 	if (!ch0) {
-		dev_err(&dev->intf->dev, "%s: Could not allocate channel 0\n", __func__);
+		dev_err(&dev->intf->dev, "OBMF could not allocate channel 0\n");
 		return -ENOMEM;
 	}
 	ch0->ch_type = LSTP_CHANNEL_TYPE_MGMT;
@@ -946,21 +945,21 @@ static int lstp_init_channels(struct lstp_usb *dev)
 
 	/* Parse READ response for CH0 */
 	if (ch0_resp->read.ch_type != LSTP_CHANNEL_TYPE_MGMT) {
-		dev_err(&dev->intf->dev, "%s: ch_0: Received wrong channel 0 type (got %d)\n",
-			__func__, ch0_resp->read.ch_type);
+		dev_err(&dev->intf->dev, "OBMF management channel has wrong channel 0 type (got %d)\n",
+			ch0_resp->read.ch_type);
 		return -EINVAL;
 	}
 
 	/* Validate channel name */
 	if (ch0_resp->read.ch_name[0] == '\0') {
-		dev_err(&dev->intf->dev, "%s: ch_0: Invalid LSTP interface name\n", __func__);
+		dev_err(&dev->intf->dev, "OBMF management channel has an invalid interface name\n");
 		return -EINVAL;
 	}
 	strscpy(dev->lstp_intf_name, ch0_resp->read.ch_name, LSTP_CH_NAME_LEN);
 
-	/* Validate LSTP version */
+	/* Validate OBMF transport version */
 	if (config->lstp_version != LSTP_VERSION) {
-		dev_err(&dev->intf->dev, "%s: ch_0: Invalid LSTP version\n", __func__);
+		dev_err(&dev->intf->dev, "OBMF management channel has an invalid protocol version\n");
 		return -EINVAL;
 	}
 	dev->lstp_version = config->lstp_version;
@@ -968,13 +967,13 @@ static int lstp_init_channels(struct lstp_usb *dev)
 	/* Validate channel count */
 	max_ch_id = config->num_channels;
 	if (max_ch_id == 0) {
-		dev_err(&dev->intf->dev, "%s: ch_0: Invalid channel count %d (min 1, max 255)\n",
-			__func__, max_ch_id);
+		dev_err(&dev->intf->dev, "OBMF management channel has invalid channel count %d (min 1, max 255)\n",
+			max_ch_id);
 		return -EINVAL;
 	}
 	dev->max_ch_id = max_ch_id;
 
-	dev_info(&dev->intf->dev, "%s: LSTP v%d: device %s discovered with %d channels\n", __func__,
+	dev_info(&dev->intf->dev, "OBMF v%d: device %s discovered with %d channels\n",
 		 dev->lstp_version, ch0_resp->read.ch_name, max_ch_id);
 
 	for (ch_id = 1; ch_id <= max_ch_id; ch_id++) {
@@ -982,8 +981,7 @@ static int lstp_init_channels(struct lstp_usb *dev)
 		struct lstp_channel *ch = lstp_create_channel(dev, ch_id);
 
 		if (!ch) {
-			dev_err(&dev->intf->dev, "%s: Could not allocate channel %d\n", __func__,
-				ch_id);
+			dev_err(&dev->intf->dev, "OBMF could not allocate channel %d\n", ch_id);
 			return -ENOMEM;
 		}
 		ret = lstp_ch0_read(dev, ch_id, 0, LSTP_READ_LEN_ALL);
@@ -993,14 +991,13 @@ static int lstp_init_channels(struct lstp_usb *dev)
 		/* Parse READ response data and init type-specific structures */
 		ch->ch_type = ch0_resp->read.ch_type;
 		dev_info(&dev->intf->dev,
-			 "%s: ch_%d: discovered type=%s(%u) flags=0x%02x name=%s payload_len=%u\n",
-			 __func__, ch_id, lstp_channel_type_name(ch->ch_type), ch->ch_type,
+			 "OBMF channel %d discovered type=%s(%u) flags=0x%02x name=%s payload_len=%u\n",
+			 ch_id, lstp_channel_type_name(ch->ch_type), ch->ch_type,
 			 ch0_resp->read.ch_flags, ch0_resp->read.ch_name,
 			 le16_to_cpu(rx_pkt->hdr.length));
 		switch (ch0_resp->read.ch_type) {
 		case LSTP_CHANNEL_TYPE_SPI:
-			dev_info(&dev->intf->dev, "%s: ch_%d: entering SPI init\n", __func__,
-				 ch_id);
+			dev_info(&dev->intf->dev, "OBMF channel %d entering SPI init\n", ch_id);
 			ret = lstp_init_channel_of_node(ch, "nv,lstp-spi");
 			if (ret)
 				return ret;
@@ -1009,8 +1006,7 @@ static int lstp_init_channels(struct lstp_usb *dev)
 				return ret;
 			break;
 		case LSTP_CHANNEL_TYPE_GPIO:
-			dev_info(&dev->intf->dev, "%s: ch_%d: entering GPIO init\n", __func__,
-				 ch_id);
+			dev_info(&dev->intf->dev, "OBMF channel %d entering GPIO init\n", ch_id);
 			ret = lstp_init_channel_of_node(ch, "nv,lstp-gpio");
 			if (ret)
 				return ret;
@@ -1037,8 +1033,8 @@ static int lstp_init_channels(struct lstp_usb *dev)
 				return ret;
 			break;
 		default:
-			dev_warn(&dev->intf->dev, "%s: Channel %d has unsupported type %d\n",
-				 __func__, ch_id, ch0_resp->read.ch_type);
+			dev_warn(&dev->intf->dev, "OBMF channel %d has unsupported type %d\n",
+				 ch_id, ch0_resp->read.ch_type);
 			break;
 		}
 	}
@@ -1066,15 +1062,15 @@ static int lstp_start_channels(struct lstp_usb *dev)
 
 		switch (ch->ch_type) {
 		case LSTP_CHANNEL_TYPE_SPI:
-			dev_info(&dev->intf->dev, "%s: ch_%d: starting SPI child registration\n",
-				 __func__, ch->ch_id);
+			dev_info(&dev->intf->dev, "OBMF channel %d starting SPI child registration\n",
+				 ch->ch_id);
 			ret = lstp_spi_start(ch);
 			if (ret)
 				return ret;
 			break;
 		case LSTP_CHANNEL_TYPE_GPIO:
-			dev_info(&dev->intf->dev, "%s: ch_%d: starting GPIO child registration\n",
-				 __func__, ch->ch_id);
+			dev_info(&dev->intf->dev, "OBMF channel %d starting GPIO child registration\n",
+				 ch->ch_id);
 			ret = lstp_gpio_start(ch);
 			if (ret)
 				return ret;
@@ -1141,7 +1137,7 @@ static int lstp_probe(struct usb_interface *intf, const struct usb_device_id *id
 
 	ret = usb_find_common_endpoints(intf->cur_altsetting, &ep_in, &ep_out, NULL, NULL);
 	if (ret) {
-		dev_err(&intf->dev, "%s: Could not find bulk endpoints\n", __func__);
+		dev_err(&intf->dev, "OBMF could not find bulk endpoints\n");
 		return ret;
 	}
 
@@ -1161,8 +1157,8 @@ static int lstp_probe(struct usb_interface *intf, const struct usb_device_id *id
 
 	/* Validate minimum size */
 	if (dev->bulk_tx_size < LSTP_USB_EP_MIN_SIZE || dev->bulk_rx_size < LSTP_USB_EP_MIN_SIZE) {
-		dev_err(&intf->dev, "%s: Invalid endpoint sizes (tx=%zu, rx=%zu, min=%u)\n",
-			__func__, dev->bulk_tx_size, dev->bulk_rx_size, LSTP_USB_EP_MIN_SIZE);
+		dev_err(&intf->dev, "OBMF invalid endpoint sizes (tx=%zu, rx=%zu, min=%u)\n",
+			dev->bulk_tx_size, dev->bulk_rx_size, LSTP_USB_EP_MIN_SIZE);
 		return -EINVAL;
 	}
 
@@ -1182,13 +1178,13 @@ static int lstp_probe(struct usb_interface *intf, const struct usb_device_id *id
 
 	ret = lstp_init_channels(dev);
 	if (ret) {
-		dev_err(&intf->dev, "%s: Failed to initialize channels (%d)\n", __func__, ret);
+		dev_err(&intf->dev, "OBMF failed to initialize channels (%d)\n", ret);
 		return ret;
 	}
 
 	ret = lstp_create_sysfs_hierarchy(dev);
 	if (ret) {
-		dev_err(&intf->dev, "%s: Failed to create sysfs hierarchy (%d)\n", __func__, ret);
+		dev_err(&intf->dev, "OBMF failed to create sysfs hierarchy (%d)\n", ret);
 		return ret;
 	}
 
@@ -1197,17 +1193,17 @@ static int lstp_probe(struct usb_interface *intf, const struct usb_device_id *id
 
 	ret = usb_submit_urb(dev->bulk_rx_urb, GFP_KERNEL);
 	if (ret) {
-		dev_err(&intf->dev, "%s: Could not submit bulk RX URB (%d)\n", __func__, ret);
+		dev_err(&intf->dev, "OBMF could not submit bulk RX URB (%d)\n", ret);
 		return ret;
 	}
 
 	ret = lstp_start_channels(dev);
 	if (ret) {
-		dev_err(&intf->dev, "%s: Failed to start channels (%d)\n", __func__, ret);
+		dev_err(&intf->dev, "OBMF failed to start channels (%d)\n", ret);
 		return ret;
 	}
 
-	dev_info(&intf->dev, "%s: LSTP device initialized successfully\n", __func__);
+	dev_info(&intf->dev, "OBMF device initialized successfully\n");
 	return 0;
 }
 
@@ -1217,7 +1213,7 @@ static int lstp_probe(struct usb_interface *intf, const struct usb_device_id *id
  */
 static void lstp_disconnect(struct usb_interface *intf)
 {
-	dev_info(&intf->dev, "%s: LSTP device disconnected\n", __func__);
+	dev_info(&intf->dev, "OBMF device disconnected\n");
 }
 
 /*******************************************************************************
@@ -1234,7 +1230,7 @@ void lstp_usb_tx_callback(struct urb *urb)
 
 	if (urb->status != 0 && urb->status != -ENOENT && urb->status != -ECONNRESET &&
 	    urb->status != -ESHUTDOWN) {
-		dev_warn(&ch->usb->intf->dev, "%s: ch_%d: TX URB error (%d)\n", __func__, ch->ch_id,
+		dev_warn(&ch->usb->intf->dev, "OBMF channel %d TX URB error (%d)\n", ch->ch_id,
 			 urb->status);
 	}
 }
@@ -1259,7 +1255,7 @@ static void lstp_usb_rx_callback(struct urb *urb)
 	}
 
 	if (urb->status) {
-		dev_err(&dev->intf->dev, "%s: RX URB error (%d)\n", __func__, urb->status);
+		dev_err(&dev->intf->dev, "OBMF RX URB error (%d)\n", urb->status);
 		goto resubmit;
 	}
 
@@ -1273,15 +1269,15 @@ static void lstp_usb_rx_callback(struct urb *urb)
 	struct lstp_channel *ch = dev->channels[ch_id];
 
 	if (!ch) {
-		dev_err(&dev->intf->dev, "%s: ch_%d: Channel not registered\n", __func__, ch_id);
+		dev_err(&dev->intf->dev, "OBMF channel %d is not registered\n", ch_id);
 		goto resubmit;
 	}
 
 	if (GET_BIT_7(rx_pkt->hdr.status) == 0 && ch->irq_buf && ch->irq_callback) {
 		/* Unsolicited request -> irq_buf + callback */
 		if (test_and_set_bit(LSTP_BUFFER_LOCK_BIT, &ch->irq_buffer_lock)) {
-			dev_warn(&dev->intf->dev, "%s: ch_%d: Dropping request - irq buffer busy\n",
-				 __func__, ch_id);
+			dev_warn(&dev->intf->dev, "OBMF channel %d dropping request because irq buffer is busy\n",
+				 ch_id);
 		} else {
 			dev_dbg(&dev->intf->dev,
 				"%s: ch_%d: Received unsolicited request (IRQ event)\n", __func__,
@@ -1293,8 +1289,8 @@ static void lstp_usb_rx_callback(struct urb *urb)
 	} else if (GET_BIT_7(rx_pkt->hdr.status) == 1 && ch->resp_buf) {
 		/* Solicited response -> rx_buf + wake helper */
 		if (!test_bit(LSTP_BUFFER_LOCK_BIT, &ch->resp_buffer_lock)) {
-			dev_warn(&dev->intf->dev, "%s: ch_%d: Dropping response - no one waiting\n",
-				 __func__, ch_id);
+			dev_warn(&dev->intf->dev, "OBMF channel %d dropping response because no waiter is active\n",
+				 ch_id);
 		} else {
 			memcpy(ch->resp_buf, dev->rx_buf, urb->actual_length);
 			smp_store_release(&ch->rx_ready, true); /* Unblocks recv_resp_helper() */
@@ -1302,8 +1298,8 @@ static void lstp_usb_rx_callback(struct urb *urb)
 		}
 	} else {
 		dev_err_ratelimited(&dev->intf->dev,
-				    "%s: ch_%d: Dropping packet - channel misconfigured\n",
-				    __func__, ch_id);
+				    "OBMF channel %d dropping packet because the channel is misconfigured\n",
+				    ch_id);
 	}
 
 resubmit:
@@ -1344,8 +1340,8 @@ int lstp_recv_resp_helper(struct lstp_channel *ch, u8 cmd, u16 request_len, u16 
 
 	/* Try to claim rx buffer - if already in use, that's a bug */
 	if (test_and_set_bit(LSTP_BUFFER_LOCK_BIT, &ch->resp_buffer_lock)) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: BUG - rx buffer already in use\n",
-			__func__, ch->ch_id);
+		dev_err(&ch->usb->intf->dev, "OBMF channel %d BUG: rx buffer already in use\n",
+			ch->ch_id);
 		return -EBUSY;
 	}
 
@@ -1389,7 +1385,7 @@ int lstp_recv_resp_helper(struct lstp_channel *ch, u8 cmd, u16 request_len, u16 
 			 * respond. Timeout indicates device hang.
 			 */
 			dev_err(&ch->usb->intf->dev,
-				"%s: ch_%d: Response timeout - channel disabled\n", __func__,
+				"OBMF channel %d response timeout - channel disabled\n",
 				ch->ch_id);
 			ret = -ETIMEDOUT;
 		}
@@ -1399,8 +1395,8 @@ int lstp_recv_resp_helper(struct lstp_channel *ch, u8 cmd, u16 request_len, u16 
 	ret = lstp_validate_resp(ch->usb, response_pkt, response_len);
 	if (ret) {
 		dev_err(&ch->usb->intf->dev,
-			"%s: ch_%d: invalid response for cmd=0x%02x raw_status=0x%02x rx_len=%u payload=%*ph\n",
-			__func__, ch->ch_id, cmd, response_pkt->hdr.status,
+			"OBMF channel %d invalid response for cmd=0x%02x raw_status=0x%02x rx_len=%u payload=%*ph\n",
+			ch->ch_id, cmd, response_pkt->hdr.status,
 			le16_to_cpu(response_pkt->hdr.length),
 			min_t(unsigned int, le16_to_cpu(response_pkt->hdr.length), 32U),
 			response_pkt->payload);
@@ -1440,7 +1436,7 @@ static const struct usb_device_id lstp_id_table[] = {
 MODULE_DEVICE_TABLE(usb, lstp_id_table);
 
 static struct usb_driver lstp_usb_driver = {
-	.name = "lstp",
+	.name = "obmf",
 	.probe = lstp_probe,
 	.disconnect = lstp_disconnect,
 	.id_table = lstp_id_table,

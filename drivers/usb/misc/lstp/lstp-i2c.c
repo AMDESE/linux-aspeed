@@ -64,8 +64,8 @@ static int __maybe_unused lstp_i2c_bus_recovery(struct i2c_adapter *adap)
 
 	ret = lstp_recv_resp_helper(ch, LSTP_I2C_CMD_BUS_RECOVERY, 0, 0);
 	if (ret) {
-		dev_err(&adap->dev, "%s: ch_%d: Bus recovery failed (%d)\n", __func__, ch->ch_id,
-			ret);
+		dev_err(&adap->dev, "OBMF I2C channel %d bus recovery failed (%d)\n",
+			ch->ch_id, ret);
 		goto out_mutex;
 	}
 
@@ -114,15 +114,15 @@ static int lstp_i2c_read(struct i2c_adapter *adap, struct i2c_msg *msg, bool no_
 
 	ret = lstp_i2c_validate_msg(msg);
 	if (ret) {
-		dev_err(&adap->dev, "%s: ch_%d: Invalid message to addr=0x%02x (%d)\n", __func__,
+		dev_err(&adap->dev, "OBMF I2C channel %d invalid message to addr=0x%02x (%d)\n",
 			ch->ch_id, msg->addr, ret);
 		return ret;
 	}
 
 	if (msg->len > ch->usb->bulk_rx_size - sizeof(struct lstp_header)) {
 		dev_err(&adap->dev,
-			"%s: ch_%d: Read request message to addr=0x%02x too long (%u bytes, max %zu)\n",
-			__func__, ch->ch_id, msg->addr, msg->len,
+			"OBMF I2C channel %d read request to addr=0x%02x too long (%u bytes, max %zu)\n",
+			ch->ch_id, msg->addr, msg->len,
 			ch->usb->bulk_rx_size - sizeof(struct lstp_header));
 		return -EINVAL;
 	}
@@ -141,8 +141,8 @@ static int lstp_i2c_read(struct i2c_adapter *adap, struct i2c_msg *msg, bool no_
 	ret = lstp_recv_resp_helper(ch, cmd, sizeof(i2c_req->read), msg->len);
 	if (ret) {
 		if (ret != lstp_status_to_errno(LSTP_NACK))
-			dev_err(&adap->dev, "%s: ch_%d: Read request to addr=0x%02x failed (%d)\n",
-				__func__, ch->ch_id, msg->addr, ret);
+			dev_err(&adap->dev, "OBMF I2C channel %d read request to addr=0x%02x failed (%d)\n",
+				ch->ch_id, msg->addr, ret);
 		goto out_mutex;
 	}
 
@@ -172,7 +172,7 @@ static int lstp_i2c_write(struct i2c_adapter *adap, struct i2c_msg *msg, bool no
 
 	ret = lstp_i2c_validate_msg(msg);
 	if (ret) {
-		dev_err(&adap->dev, "%s: ch_%d: Invalid message to addr=0x%02x (%d)\n", __func__,
+		dev_err(&adap->dev, "OBMF I2C channel %d invalid message to addr=0x%02x (%d)\n",
 			ch->ch_id, msg->addr, ret);
 		return ret;
 	}
@@ -180,8 +180,8 @@ static int lstp_i2c_write(struct i2c_adapter *adap, struct i2c_msg *msg, bool no
 	if (sizeof(struct lstp_header) + sizeof(i2c_req->write) + msg->len >
 	    ch->usb->bulk_tx_size) {
 		dev_err(&adap->dev,
-			"%s: ch_%d: Write message to addr=0x%02x too long (%u bytes, max %zu)\n",
-			__func__, ch->ch_id, msg->addr, msg->len,
+			"OBMF I2C channel %d write message to addr=0x%02x too long (%u bytes, max %zu)\n",
+			ch->ch_id, msg->addr, msg->len,
 			ch->usb->bulk_tx_size - sizeof(struct lstp_header) -
 				sizeof(i2c_req->write));
 		return -EINVAL;
@@ -205,8 +205,8 @@ static int lstp_i2c_write(struct i2c_adapter *adap, struct i2c_msg *msg, bool no
 	ret = lstp_recv_resp_helper(ch, cmd, sizeof(i2c_req->write) + msg->len, 0);
 	if (ret) {
 		if (ret != lstp_status_to_errno(LSTP_NACK))
-			dev_err(&adap->dev, "%s: ch_%d: Write request to addr=0x%02x failed (%d)\n",
-				__func__, ch->ch_id, msg->addr, ret);
+			dev_err(&adap->dev, "OBMF I2C channel %d write request to addr=0x%02x failed (%d)\n",
+				ch->ch_id, msg->addr, ret);
 		goto out_mutex;
 	}
 
@@ -235,15 +235,15 @@ static int lstp_i2c_read_recvlen(struct i2c_adapter *adap, struct i2c_msg *msg, 
 
 	ret = lstp_i2c_validate_msg(msg);
 	if (ret) {
-		dev_err(&adap->dev, "%s: ch_%d: Invalid message to addr=0x%02x (%d)\n", __func__,
+		dev_err(&adap->dev, "OBMF I2C channel %d invalid message to addr=0x%02x (%d)\n",
 			ch->ch_id, msg->addr, ret);
 		return ret;
 	}
 
 	if (msg->len > ch->usb->bulk_rx_size - sizeof(struct lstp_header)) {
 		dev_err(&adap->dev,
-			"%s: ch_%d: Read recvlen message to addr=0x%02x too long (%u bytes, max %zu)\n",
-			__func__, ch->ch_id, msg->addr, msg->len,
+			"OBMF I2C channel %d read-recvlen request to addr=0x%02x too long (%u bytes, max %zu)\n",
+			ch->ch_id, msg->addr, msg->len,
 			ch->usb->bulk_rx_size - sizeof(struct lstp_header));
 		return -EINVAL;
 	}
@@ -259,13 +259,13 @@ static int lstp_i2c_read_recvlen(struct i2c_adapter *adap, struct i2c_msg *msg, 
 	if (ret) {
 		if (ret != lstp_status_to_errno(LSTP_NACK))
 			dev_err(&adap->dev,
-				"%s: ch_%d: Read recvlen request to addr=0x%02x failed (%d)\n",
-				__func__, ch->ch_id, msg->addr, ret);
+				"OBMF I2C channel %d read-recvlen request to addr=0x%02x failed (%d)\n",
+				ch->ch_id, msg->addr, ret);
 		goto out_mutex;
 	}
 
 	if (le16_to_cpu(rx_pkt->hdr.length) > msg->len) {
-		dev_err(&adap->dev, "%s: ch_%d: Response too large (got %u, max %u)\n", __func__,
+		dev_err(&adap->dev, "OBMF I2C channel %d response too large (got %u, max %u)\n",
 			ch->ch_id, le16_to_cpu(rx_pkt->hdr.length), msg->len);
 		ret = -EMSGSIZE;
 	} else {
@@ -298,16 +298,16 @@ static int lstp_i2c_write_read(struct i2c_adapter *adap, struct i2c_msg *wr_msg,
 
 	ret = lstp_i2c_validate_msg(wr_msg);
 	if (ret) {
-		dev_err(&adap->dev, "%s: ch_%d: Invalid write message to addr=0x%02x (%d)\n",
-			__func__, ch->ch_id, wr_msg->addr, ret);
+		dev_err(&adap->dev, "OBMF I2C channel %d invalid write message to addr=0x%02x (%d)\n",
+			ch->ch_id, wr_msg->addr, ret);
 		return ret;
 	}
 
 	if (sizeof(struct lstp_header) + sizeof(i2c_req->wr_rd) + wr_msg->len >
 	    ch->usb->bulk_tx_size) {
 		dev_err(&adap->dev,
-			"%s: ch_%d: Write message to addr=0x%02x too long (%u bytes, max %zu)\n",
-			__func__, ch->ch_id, wr_msg->addr, wr_msg->len,
+			"OBMF I2C channel %d write message to addr=0x%02x too long (%u bytes, max %zu)\n",
+			ch->ch_id, wr_msg->addr, wr_msg->len,
 			ch->usb->bulk_tx_size - sizeof(struct lstp_header) -
 				sizeof(i2c_req->wr_rd));
 		return -EINVAL;
@@ -315,15 +315,15 @@ static int lstp_i2c_write_read(struct i2c_adapter *adap, struct i2c_msg *wr_msg,
 
 	ret = lstp_i2c_validate_msg(rd_msg);
 	if (ret) {
-		dev_err(&adap->dev, "%s: ch_%d: Invalid read message to addr=0x%02x (%d)\n",
-			__func__, ch->ch_id, rd_msg->addr, ret);
+		dev_err(&adap->dev, "OBMF I2C channel %d invalid read message to addr=0x%02x (%d)\n",
+			ch->ch_id, rd_msg->addr, ret);
 		return ret;
 	}
 
 	if (rd_msg->len > ch->usb->bulk_rx_size - sizeof(struct lstp_header)) {
 		dev_err(&adap->dev,
-			"%s: ch_%d: Read message to addr=0x%02x too long (%u bytes, max %zu)\n",
-			__func__, ch->ch_id, rd_msg->addr, rd_msg->len,
+			"OBMF I2C channel %d read message to addr=0x%02x too long (%u bytes, max %zu)\n",
+			ch->ch_id, rd_msg->addr, rd_msg->len,
 			ch->usb->bulk_rx_size - sizeof(struct lstp_header));
 		return -EINVAL;
 	}
@@ -339,8 +339,8 @@ static int lstp_i2c_write_read(struct i2c_adapter *adap, struct i2c_msg *wr_msg,
 	if (ret) {
 		if (ret != lstp_status_to_errno(LSTP_NACK))
 			dev_err(&adap->dev,
-				"%s: ch_%d: Write-read request to addr=0x%02x failed (%d)\n",
-				__func__, ch->ch_id, wr_msg->addr, ret);
+				"OBMF I2C channel %d write-read request to addr=0x%02x failed (%d)\n",
+				ch->ch_id, wr_msg->addr, ret);
 		goto out_mutex;
 	}
 
@@ -459,7 +459,7 @@ int lstp_i2c_init(struct lstp_channel *ch)
 	ch0_resp = (union lstp_ch0_resp_payload *)rx_pkt->payload;
 	ch->ch_type = ch0_resp->read.ch_type;
 	if (ch0_resp->read.ch_name[0] == '\0') {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: Invalid I2C adapter name\n", __func__,
+		dev_err(&ch->usb->intf->dev, "OBMF I2C channel %d has an invalid adapter name\n",
 			ch->ch_id);
 		return -EINVAL;
 	}
@@ -492,21 +492,21 @@ int lstp_i2c_start(struct lstp_channel *ch)
 	struct i2c_adapter *adap = ch->priv;
 
 	if (!adap) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: I2C adapter not initialized\n", __func__,
+		dev_err(&ch->usb->intf->dev, "OBMF I2C channel %d adapter not initialized\n",
 			ch->ch_id);
 		return -EINVAL;
 	}
 
 	ret = devm_i2c_add_adapter(&ch->usb->intf->dev, adap);
 	if (ret) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: Could not register I2C adapter (%d)\n",
-			__func__, ch->ch_id, ret);
+		dev_err(&ch->usb->intf->dev, "OBMF I2C channel %d could not register I2C adapter (%d)\n",
+			ch->ch_id, ret);
 		return ret;
 	}
 
 	ch->child_dev = &adap->dev;
 
-	dev_info(&ch->usb->intf->dev, "%s: I2C channel %d registered as %s\n", __func__, ch->ch_id,
-		 adap->name);
+	dev_info(&ch->usb->intf->dev, "OBMF I2C channel %d registered as %s\n",
+		 ch->ch_id, adap->name);
 	return 0;
 }

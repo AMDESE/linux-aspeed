@@ -111,7 +111,7 @@ static int lstp_spi_set_speed(struct lstp_channel *ch, u32 speed_hz, u32 *actual
 	ret = lstp_recv_resp_helper(ch, LSTP_SPI_CMD_CONFIG, sizeof(spi_req->config),
 				    sizeof(struct lstp_spi_config_resp));
 	if (ret) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: CONFIG command failed (%d)\n", __func__,
+		dev_err(&ch->usb->intf->dev, "OBMF SPI channel %d CONFIG command failed (%d)\n",
 			ch->ch_id, ret);
 		goto out_mutex;
 	}
@@ -131,15 +131,15 @@ static int lstp_spi_set_speed(struct lstp_channel *ch, u32 speed_hz, u32 *actual
 
 		if (diff_pct > 10) {
 			dev_warn(&ch->usb->intf->dev,
-				 "%s: ch_%d: SPI speed differs: requested=%u Hz, actual=%u Hz (%d%%)\n",
-				 __func__, ch->ch_id, speed_hz, actual, diff_pct);
+				 "OBMF SPI channel %d speed differs: requested=%u Hz, actual=%u Hz (%d%%)\n",
+				 ch->ch_id, speed_hz, actual, diff_pct);
 		} else {
 			dev_dbg(&ch->usb->intf->dev,
-				"%s: ch_%d: SPI speed: requested=%u Hz, actual=%u Hz\n", __func__,
+				"OBMF SPI channel %d speed: requested=%u Hz, actual=%u Hz\n",
 				ch->ch_id, speed_hz, actual);
 		}
 	} else {
-		dev_dbg(&ch->usb->intf->dev, "%s: ch_%d: SPI speed set to %u Hz\n", __func__,
+		dev_dbg(&ch->usb->intf->dev, "OBMF SPI channel %d speed set to %u Hz\n",
 			ch->ch_id, actual);
 	}
 
@@ -194,8 +194,8 @@ static int lstp_spi_transfer_one(struct spi_controller *ctrl, struct spi_device 
 
 	/* Validate chip select index */
 	if (chip_select >= ARRAY_SIZE(lstp_spi_cs_map)) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: Invalid chip select %u (max %zu)\n",
-			__func__, ch->ch_id, chip_select, ARRAY_SIZE(lstp_spi_cs_map) - 1);
+		dev_err(&ch->usb->intf->dev, "OBMF SPI channel %d invalid chip select %u (max %zu)\n",
+			ch->ch_id, chip_select, ARRAY_SIZE(lstp_spi_cs_map) - 1);
 		return -EINVAL;
 	}
 	cs_bits = lstp_spi_cs_map[chip_select];
@@ -211,7 +211,7 @@ static int lstp_spi_transfer_one(struct spi_controller *ctrl, struct spi_device 
 	if (sizeof(struct lstp_header) + xfer->len > ch->usb->bulk_tx_size ||
 	    sizeof(struct lstp_header) + xfer->len > ch->usb->bulk_rx_size) {
 		dev_err(&ch->usb->intf->dev,
-			"%s: ch_%d: Transfer length %u exceeds buffer capacity\n", __func__,
+			"OBMF SPI channel %d transfer length %u exceeds buffer capacity\n",
 			ch->ch_id, xfer->len);
 		return -EINVAL;
 	}
@@ -237,7 +237,7 @@ static int lstp_spi_transfer_one(struct spi_controller *ctrl, struct spi_device 
 	}
 
 	if (ret) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: Transfer failed (%d)\n", __func__,
+		dev_err(&ch->usb->intf->dev, "OBMF SPI channel %d transfer failed (%d)\n",
 			ch->ch_id, ret);
 		goto out_mutex;
 	}
@@ -304,8 +304,8 @@ static void lstp_spi_set_cs(struct spi_device *spi, bool state)
 
 	/* Validate chip select index */
 	if (chip_select >= ARRAY_SIZE(lstp_spi_cs_map)) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: Invalid chip select %u (max %zu)\n",
-			__func__, ch->ch_id, chip_select, ARRAY_SIZE(lstp_spi_cs_map) - 1);
+		dev_err(&ch->usb->intf->dev, "OBMF SPI channel %d invalid chip select %u (max %zu)\n",
+			ch->ch_id, chip_select, ARRAY_SIZE(lstp_spi_cs_map) - 1);
 		return;
 	}
 	cs_bits = lstp_spi_cs_map[chip_select];
@@ -325,7 +325,7 @@ static void lstp_spi_set_cs(struct spi_device *spi, bool state)
 			   ch->tx_buf, sizeof(tx_pkt->hdr) + sizeof(*spi_req), NULL,
 			   LSTP_USB_REQUEST_TIMEOUT_MS);
 	if (ret) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: Could not send CS state (%d)\n", __func__,
+		dev_err(&ch->usb->intf->dev, "OBMF SPI channel %d could not send CS state (%d)\n",
 			ch->ch_id, ret);
 	}
 
@@ -393,7 +393,7 @@ int lstp_spi_init(struct lstp_channel *ch)
 	ch0_resp = (union lstp_ch0_resp_payload *)rx_pkt->payload;
 	ch->ch_type = ch0_resp->read.ch_type;
 	if (ch0_resp->read.ch_name[0] == '\0') {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: Invalid SPI controller name\n", __func__,
+		dev_err(&ch->usb->intf->dev, "OBMF SPI channel %d has an invalid controller name\n",
 			ch->ch_id);
 		return -EINVAL;
 	}
@@ -422,7 +422,7 @@ int lstp_spi_init(struct lstp_channel *ch)
 	priv->requested_speed_hz = 0; /* No speed requested yet */
 	ch->priv = priv;
 
-	dev_info(&ch->usb->intf->dev, "%s: ch_%d: Initialized\n", __func__, ch->ch_id);
+	dev_info(&ch->usb->intf->dev, "OBMF SPI channel %d initialized\n", ch->ch_id);
 	return 0;
 }
 
@@ -449,8 +449,8 @@ int lstp_spi_start(struct lstp_channel *ch)
 	u32 actual_speed_hz;
 
 	if (!priv || !priv->ctrl) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: SPI controller not initialized\n",
-			__func__, ch->ch_id);
+		dev_err(&ch->usb->intf->dev, "OBMF SPI channel %d controller not initialized\n",
+			ch->ch_id);
 		return -EINVAL;
 	}
 
@@ -466,23 +466,23 @@ int lstp_spi_start(struct lstp_channel *ch)
 	ret = lstp_spi_set_speed(ch, LSTP_SPI_DEFAULT_SPEED_HZ, &actual_speed_hz);
 	if (ret) {
 		dev_warn(&ch->usb->intf->dev,
-			 "%s: ch_%d: Could not set initial SPI speed (%d), continuing anyway\n",
-			 __func__, ch->ch_id, ret);
+			 "OBMF SPI channel %d could not set initial SPI speed (%d), continuing anyway\n",
+			 ch->ch_id, ret);
 		/* Continue with registration even if speed setting fails */
 	} else {
-		dev_info(&ch->usb->intf->dev, "%s: ch_%d: Initial SPI speed set to %u Hz\n",
-			 __func__, ch->ch_id, actual_speed_hz);
+		dev_info(&ch->usb->intf->dev, "OBMF SPI channel %d initial SPI speed set to %u Hz\n",
+			 ch->ch_id, actual_speed_hz);
 	}
 
 	ret = devm_spi_register_controller(&ch->usb->intf->dev, ctrl);
 	if (ret) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: Could not register SPI controller (%d)\n",
-			__func__, ch->ch_id, ret);
+		dev_err(&ch->usb->intf->dev, "OBMF SPI channel %d could not register SPI controller (%d)\n",
+			ch->ch_id, ret);
 		return ret;
 	}
 
 	ch->child_dev = &ctrl->dev;
 
-	dev_info(&ch->usb->intf->dev, "%s: ch_%d: Started\n", __func__, ch->ch_id);
+	dev_info(&ch->usb->intf->dev, "OBMF SPI channel %d started\n", ch->ch_id);
 	return 0;
 }

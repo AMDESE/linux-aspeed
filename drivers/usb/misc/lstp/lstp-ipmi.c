@@ -188,8 +188,8 @@ static ssize_t lstp_ipmi_write(struct file *file, const char __user *buf, size_t
 			   ch->tx_buf, sizeof(tx_pkt->hdr) + msg.header.len, NULL,
 			   LSTP_USB_REQUEST_TIMEOUT_MS);
 	if (ret) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: Could not forward response (%zd)\n",
-			__func__, ch->ch_id, ret);
+		dev_err(&ch->usb->intf->dev, "OBMF IPMI channel %d could not forward response (%zd)\n",
+			ch->ch_id, ret);
 	}
 
 	mutex_unlock(&ch->tx_mutex);
@@ -331,8 +331,8 @@ static void lstp_ipmi_irq_callback(struct lstp_channel *ch)
 	int retval = 0;
 
 	if (rx_len < IPMI_MIN_MSG_LEN || rx_len > IPMI_LSTP_PAYLOAD_MAX) {
-		dev_warn(&ch->usb->intf->dev, "%s: ch_%d: Invalid IPMI request length %u\n",
-			 __func__, ch->ch_id, rx_len);
+		dev_warn(&ch->usb->intf->dev, "OBMF IPMI channel %d invalid request length %u\n",
+			 ch->ch_id, rx_len);
 		return;
 	}
 
@@ -456,7 +456,7 @@ int lstp_ipmi_init(struct lstp_channel *ch)
 			return ret;
 
 		ctx->miscdev.name =
-			devm_kasprintf(&ch->usb->intf->dev, GFP_KERNEL, "ipmi-lstp%d", dev_id);
+			devm_kasprintf(&ch->usb->intf->dev, GFP_KERNEL, "ipmi-obmf%d", dev_id);
 	}
 	if (!ctx->miscdev.name)
 		return -ENOMEM;
@@ -472,7 +472,7 @@ int lstp_ipmi_init(struct lstp_channel *ch)
 
 	ch->irq_callback = lstp_ipmi_irq_callback;
 
-	dev_info(&ch->usb->intf->dev, "%s: ch_%d: Initialized\n", __func__, ch->ch_id);
+	dev_info(&ch->usb->intf->dev, "OBMF IPMI channel %d initialized\n", ch->ch_id);
 	return 0;
 }
 
@@ -494,15 +494,15 @@ int lstp_ipmi_start(struct lstp_channel *ch)
 	int ret;
 
 	if (!ctx) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: IPMI context not initialized\n", __func__,
+		dev_err(&ch->usb->intf->dev, "OBMF IPMI channel %d context not initialized\n",
 			ch->ch_id);
 		return -EINVAL;
 	}
 
 	ret = misc_register(&ctx->miscdev);
 	if (ret) {
-		dev_err(&ch->usb->intf->dev, "%s: ch_%d: Could not register miscdevice (%d)\n",
-			__func__, ch->ch_id, ret);
+		dev_err(&ch->usb->intf->dev, "OBMF IPMI channel %d could not register miscdevice (%d)\n",
+			ch->ch_id, ret);
 		return ret;
 	}
 
@@ -517,6 +517,6 @@ int lstp_ipmi_start(struct lstp_channel *ch)
 
 	ch->child_dev = ctx->miscdev.this_device;
 
-	dev_info(&ch->usb->intf->dev, "%s: ch_%d: Started\n", __func__, ch->ch_id);
+	dev_info(&ch->usb->intf->dev, "OBMF IPMI channel %d started\n", ch->ch_id);
 	return 0;
 }
