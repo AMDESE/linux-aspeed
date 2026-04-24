@@ -47,8 +47,12 @@
 #define I3C_I2C_MSG_XFER_SIZE		0x2
 
 /* DIMM temp */
-#define DIMM_BASE_ID          (0x80)
 #define DIMM_TEMP_OFFSET      (21)
+// Default SP7-SP8 number of DIMMs per SOC is 16
+// the following default DIMM ID for each SOC DIMM Ch is from SP7 Product specification
+#define MAX_DIMM_COUNT        (16)
+// Default DIMM IDs for 1 DPC
+uint32_t dimm_id[MAX_DIMM_COUNT]={0x80,0x81,0x82,0x83,0x84,0x85,0x86,0x87,0x88,0x89,0x8A,0x8B,0x8C,0x8D,0x8E,0x8F};
 
 /* to hold the data.in, and data.out fields of for
  * i3c_transfer to work when the MIPI driver is in
@@ -123,8 +127,13 @@ static int sbrmi_read(struct device *dev, enum hwmon_sensor_types type,
 		msg.data_out.mb_out[RD_WR_DATA_INDEX] = rmi_dev->pwr_limit_max;
 		break;
 	case hwmon_temp_input:
+		if (channel >= MAX_DIMM_COUNT) {
+			pr_err("SBRMI:hwmon_temp_input: Error Ch %d is >= Max %d\n", channel, MAX_DIMM_COUNT);
+			ret = -EINVAL;
+			goto out;
+		}
 		msg.cmd = SBRMI_READ_DIMM_THERMAL_SENSOR;
-		msg.data_in.mb_in[RD_WR_DATA_INDEX] = (DIMM_BASE_ID + channel);
+		msg.data_in.mb_in[RD_WR_DATA_INDEX] = dimm_id[channel];
 		ret = rmi_mailbox_xfer(rmi_dev, &msg);
 		if (ret < 0)
 		{
@@ -137,6 +146,7 @@ static int sbrmi_read(struct device *dev, enum hwmon_sensor_types type,
 
 	default:
 		ret = -EINVAL;
+		goto out;
 	}
 	if (!ret)
 	{
@@ -162,7 +172,7 @@ static int sbrmi_read(struct device *dev, enum hwmon_sensor_types type,
 			//*val= (tmp * 1000);
 		}
 	}
-
+out:
 	mutex_unlock(&rmi_dev->lock);
 	return ret;
 }
@@ -708,6 +718,13 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 		dev_info(dev, "SBRMI: PID = 0x%llx, static address zero, skip the device\n",
 				i3cdev->desc->info.pid);
 	}
+
+	// Read DIMM ID
+	ret = of_property_read_u32_array(dev->of_node, "dimm-ids", dimm_id, MAX_DIMM_COUNT);
+	if (ret) {
+		dev_info(dev, "SBRMI: Cannot read DIMM IDs, set them to default\n");
+	}
+	dev_info(dev, "SBRMI: DIMM ID[0] = %d\n", dimm_id[0]);
 
 	hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbrmi_%s",
 					sbrmi_addr_to_label(rmi_dev->dev_static_addr));
