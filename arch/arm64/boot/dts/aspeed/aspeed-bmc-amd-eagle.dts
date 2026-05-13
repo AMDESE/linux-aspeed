@@ -9,9 +9,6 @@
 #include <dt-bindings/i2c/i2c.h>
 #include <dt-bindings/i3c/i3c.h>
 
-#define PCIE0_EP 1      // 1: EP, 0: RC
-#define PCIE1_EP 1      // 1: EP, 0: RC
-
 / {
 	model = "AMD Eagle VRB";
 	compatible = "amd,eagle-bmc", "aspeed,ast2700";
@@ -38,7 +35,35 @@
 		#size-cells = <2>;
 		ranges;
 
-		#include "ast2700-reserved-mem.dtsi"
+		mcu_fw: mcu-firmware@42fe00000 {
+			reg = <0x4 0x2fe00000 0x0 0x200000>;
+			no-map;
+		};
+
+		atf: trusted-firmware-a@430000000 {
+			reg = <0x4 0x30000000 0x0 0x80000>;
+			no-map;
+		};
+
+		optee_core: optee-core@430080000 {
+			reg = <0x4 0x30080000 0x0 0x1000000>;
+			no-map;
+		};
+
+		bmc_dev0_memory: bmc_dev0_memory@423800000 {
+			reg = <0x4 0x23800000 0x0 0x100000>;
+			no-map;
+		};
+
+		vbios_base0: vbios-base0@431bb0000 {
+			reg = <0x4 0x31bb0000 0x0 0x10000>;
+			no-map;
+		};
+
+		vbios_base1: vbios-base1@431bc0000 {
+			reg = <0x4 0x31bc0000 0x0 0x10000>;
+			no-map;
+		};
 
 		video_engine_memory0: video0 {
 			size = <0x0 0x04000000>;
@@ -46,6 +71,29 @@
 			compatible = "shared-dma-pool";
 			reusable;
 		};
+
+		pcc_memory: pccbuffer {
+			reg = <0x4 0xE0000000 0x00001000>; /* 4K */
+			no-map;
+		};
+
+		xdma_memory0: xdma0 {
+			size = <0x0 0x01000000>;
+			alignment = <0x0 0x01000000>;
+			compatible = "shared-dma-pool";
+			no-map;
+		};
+
+		espi0_mmbi_memory: espi0-mmbi-memory@424000000 {
+			reg = <0x4 0x24000000 0x0 0x4000000>;
+			no-map;
+		};
+
+		mctp0_reserved: mctp0_reserved@431080000 {
+			reg = <0x4 0x31080000 0x0 0x10000>;
+			compatible = "shared-dma-pool";
+			no-map;
+                };
 	};
 
 	aliases {
@@ -111,19 +159,18 @@
 
 &mac0 {
 	status = "okay";
-	phy-mode = "rgmii-id";
+	phy-mode = "rgmii";
 	phy-handle = <&ethphy0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_rgmii0_default &pinctrl_rgmii0_driving>;
 };
 
 &mac1 {
-	status = "okay";
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_rmii1_default>;
-	clock-names = "MACCLK", "RCLK";
-	phy-mode = "rmii";
-	use-ncsi;
+        status = "okay";
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_rmii1_default>;
+        clock-names = "MACCLK", "RCLK";
+        use-ncsi;
 };
 
 &fmc {
@@ -497,8 +544,8 @@
 				reg = <0x71>;
 				#address-cells = <1>;
 				#size-cells = <0>;
-				ginger_z_pcie_conn1_i2c: i2c@0 {
-					reg = <0>;
+				ginger_z_pcie_conn1_i2c: i2c@2 {
+					reg = <2>;
 					#address-cells = <1>;
 					#size-cells = <0>;
 					i2cswitch@76 {
@@ -825,32 +872,6 @@
 	i3c-scl-hz = <12500000>;
 	i2c-scl-hz = <1000000>;
 	mctp-controller;
-
-	sbtsi_p0_sp8: sbtsi@0,2240000011A {
-		reg = <0x0 0x224 0x0000011A>;
-		assigned-address = <0x4c>;
-	};
-
-	sbrmi_p0_sp8: sbrmi@0,2240000111A {
-		reg = <0x0 0x224 0x0000111A>;
-		assigned-address = <0x3c>;
-	};
-};
-
-/ {
-	/* Alert_L associated with socket 0 */
-	alertl_sock0 {
-		compatible = "apml-alertl";
-		status = "okay";
-		socket-num = /bits/ 8 <0>;
-		gpios = <&ltpi0_gpio 20 GPIO_ACTIVE_LOW>;
-	};
-
-	scoob_p0_sp8: scoob@0,2240000211A {
-		reg = <0x0 0x224 0x0000211A>;
-		mrl = <69>;
-		mwl = <69>;
-	};
 };
 
 #define JESD300_SPD_I3C_MODE(bus, index, addr) \
@@ -950,12 +971,12 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 		/*48-55*/ "","","","","","","","",
 		/*56-63*/ "","","","","","","","",
 		/*64-71*/ "","","","","","","","",
-		/*72-79*/ "","","","P0_MGMT_ALERT_STRAP_SEL","","","","",
+		/*72-79*/ "","","","","","","","",
 		/*80-87*/ "","","","","","","","",
 		/*88-95*/ "","","","","","","","",
 		/*96-103*/ "","","","","","","","",
 		/*104-111*/ "","","MGMT_MON_INTR_CHASSIS_L","","","HPM_STBY_EN","","",
-		/*112-119*/ "","","","","","P0_MGMT_ASSERT_SPI_BOOT_TYPE","","",
+		/*112-119*/ "","","","","","","","",
 		/*120-127*/ "","","","","","","","",
 		/*128-135*/ "P0_MGMT_MON_RST_BTN_L","P0_MGMT_ASSERT_RST_BTN_L","P0_MGMT_MON_PWR_BTN_L",
 			"P0_MGMT_ASSERT_PWR_BTN_L","","",
@@ -996,7 +1017,14 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 };
 
 &lpc0_pcc {
-	pcc-ports = <0x80>;
+	port-addr = <0x80>;
+	dma-mode;
+	A2600-15;
+	memory-region = <&pcc_memory>;
+	rec-mode = <0x1>;
+	port-addr-hbits-select = <0x1>;
+	port-addr-xbits = <0x3>;
+
 	status = "okay";
 };
 
@@ -1063,7 +1091,7 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 &emmc {
 	status = "okay";
 	bus-width = <4>;
-	pinctrl-0 = <&pinctrl_emmc_default>;
+	pinctrl-0 = <&pinctrl_emmc_default &pinctrl_emmcg8_default>;
 	non-removable;
 	max-frequency = <200000000>;
 };
