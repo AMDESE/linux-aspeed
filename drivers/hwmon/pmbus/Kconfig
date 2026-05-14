@@ -608,4 +608,17 @@ config SENSORS_FAN251030
 	  be called fan251015,fan251030.
 
 
+config SENSORS_FS1606A
+        tristate "TDK FS1606A Digital µPOL"
+        depends on I2C
+        help
+          If you say yes here you get hardware monitoring support for the
+          TDK FS1606A digital micro point-of-load (µPOL) power module.
+
+          The device provides input voltage (PVIN), output voltage (VOUT),
+          output current (IOUT), and temperature measurements via I2C.
+
+          This driver can also be built as a module. If so, the module will
+          be called fs1606a.
+
 endif # PMBUS
