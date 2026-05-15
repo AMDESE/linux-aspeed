@@ -441,6 +441,12 @@
 		reg = <0x0 0x224 0x0000111A>;
 		assigned-address = <0x3c>;
 	};
+
+	scoob_p0_sp8: scoob@0,2240000211A {
+		reg = <0x0 0x224 0x0000211A>;
+		mrl = <69>;
+		mwl = <69>;
+	};
 };
 
 #define JESD300_SPD_I3C_MODE(bus, index, addr) \
