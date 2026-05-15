@@ -497,8 +497,8 @@
 				reg = <0x71>;
 				#address-cells = <1>;
 				#size-cells = <0>;
-				ginger_z_pcie_conn1_i2c: i2c@2 {
-					reg = <2>;
+				ginger_z_pcie_conn1_i2c: i2c@0 {
+					reg = <0>;
 					#address-cells = <1>;
 					#size-cells = <0>;
 					i2cswitch@76 {
@@ -834,6 +834,12 @@
 		status = "okay";
 		socket-num = /bits/ 8 <0>;
 		gpios = <&ltpi0_gpio 20 GPIO_ACTIVE_LOW>;
+	};
+
+	scoob_p0_sp8: scoob@0,2240000211A {
+		reg = <0x0 0x224 0x0000211A>;
+		mrl = <69>;
+		mwl = <69>;
 	};
 };
 
