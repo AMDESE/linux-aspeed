@@ -51,7 +51,7 @@ struct imx3102 {
 };
 
 static ssize_t i3c_mux_imx3102_query(struct file *filp, struct kobject *kobj,
-				     struct bin_attribute *attr, char *buf,
+				     const struct bin_attribute *attr, char *buf,
 				     loff_t pos, size_t count)
 {
 	struct imx3102 *imx3102;
@@ -77,7 +77,7 @@ static ssize_t i3c_mux_imx3102_query(struct file *filp, struct kobject *kobj,
 /* write whatever value to imx3102-mux to release the ownership */
 static ssize_t i3c_mux_imx3102_release_chan(struct file *filp,
 					    struct kobject *kobj,
-					    struct bin_attribute *attr,
+					    const struct bin_attribute *attr,
 					    char *buf, loff_t pos, size_t count)
 {
 	struct imx3102 *imx3102;
@@ -108,7 +108,7 @@ out:
 
 static ssize_t i3c_mux_imx3102_bus_reinit(struct file *filp,
 					  struct kobject *kobj,
-					  struct bin_attribute *attr, char *buf,
+					  const struct bin_attribute *attr, char *buf,
 					  loff_t pos, size_t count)
 {
 	struct imx3102 *imx3102;

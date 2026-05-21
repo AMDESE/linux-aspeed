@@ -745,7 +745,7 @@ static int calc_i2c_clk(struct dw_i3c_master *master, unsigned long fscl,
 		hcnt_min = DIV_ROUND_UP(I3C_BUS_I2C_STD_THIGH_MIN_NS +
 						I3C_BUS_I2C_STD_TR_MAX_NS,
 					core_period);
-	} else if (fscl <= I3C_BUS_I2C_FM_SCL_RATE) {
+	} else if (fscl <= I3C_BUS_I2C_FM_SCL_MAX_RATE) {
 		lcnt_min = DIV_ROUND_UP(I3C_BUS_I2C_FM_TLOW_MIN_NS +
 						I3C_BUS_I2C_FM_TF_MAX_NS,
 					core_period);
@@ -816,7 +816,7 @@ static int dw_i3c_clk_cfg(struct dw_i3c_master *master)
 	} else if (master->base.bus.context == I3C_BUS_CONTEXT_JESD403) {
 		u16 hcnt_fmp, lcnt_fmp;
 
-		calc_i2c_clk(master, I3C_BUS_I2C_FM_PLUS_SCL_RATE, &hcnt_fmp,
+		calc_i2c_clk(master, I3C_BUS_I2C_FM_PLUS_SCL_MAX_RATE, &hcnt_fmp,
 			     &lcnt_fmp);
 		hcnt = min_t(u8, hcnt_fmp, FIELD_MAX(SCL_I3C_TIMING_HCNT));
 		lcnt = min_t(u8, lcnt_fmp, FIELD_MAX(SCL_I3C_TIMING_LCNT));
@@ -841,7 +841,7 @@ static int dw_i2c_clk_cfg(struct dw_i3c_master *master)
 	core_rate = master->timing.core_rate;
 	core_period = master->timing.core_period;
 
-	calc_i2c_clk(master, I3C_BUS_I2C_FM_PLUS_SCL_RATE, &hcnt, &lcnt);
+	calc_i2c_clk(master, I3C_BUS_I2C_FM_PLUS_SCL_MAX_RATE, &hcnt, &lcnt);
 	scl_timing = FIELD_PREP(SCL_I2C_FMP_TIMING_HCNT, hcnt) |
 		     FIELD_PREP(SCL_I2C_FMP_TIMING_LCNT, lcnt);
 	writel(scl_timing, master->regs + SCL_I2C_FMP_TIMING);
@@ -1756,7 +1756,7 @@ static void dw_i3c_common_detach_i3c_dev(struct i3c_dev_desc *dev)
 }
 
 static int dw_i3c_master_i2c_xfers(struct i2c_dev_desc *dev,
-				   const struct i2c_msg *i2c_xfers,
+				   struct i2c_msg *i2c_xfers,
 				   int i2c_nxfers)
 {
 	struct dw_i3c_i2c_dev_data *data = i2c_dev_get_master_data(dev);
@@ -2652,7 +2652,7 @@ MODULE_DEVICE_TABLE(of, dw_i3c_master_of_match);
 
 static struct platform_driver dw_i3c_driver = {
 	.probe = dw_i3c_probe,
-	.remove_new = dw_i3c_remove,
+	.remove = dw_i3c_remove,
 	.driver = {
 		.name = "dw-i3c-master",
 		.of_match_table = dw_i3c_master_of_match,

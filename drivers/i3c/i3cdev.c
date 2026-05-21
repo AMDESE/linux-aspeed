@@ -14,6 +14,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
+#include <linux/ida.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
@@ -38,7 +39,7 @@ static struct i3cdev_data *get_free_i3cdev(struct i3c_device *i3c)
 	struct i3cdev_data *i3cdev;
 	int id;
 
-	id = ida_simple_get(&i3cdev_ida, 0, I3C_MINORS, GFP_KERNEL);
+	id = ida_alloc_range(&i3cdev_ida, 0, I3C_MINORS - 1, GFP_KERNEL);
 	if (id < 0) {
 		pr_err("i3cdev: no minor number available!\n");
 		return ERR_PTR(id);
@@ -46,7 +47,7 @@ static struct i3cdev_data *get_free_i3cdev(struct i3c_device *i3c)
 
 	i3cdev = kzalloc(sizeof(*i3cdev), GFP_KERNEL);
 	if (!i3cdev) {
-		ida_simple_remove(&i3cdev_ida, id);
+		ida_free(&i3cdev_ida, id);
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -346,7 +347,7 @@ static int i3cdev_detach(struct device *dev, void *dummy)
 	device_destroy(i3cdev_class, MKDEV(MAJOR(i3cdev_number), i3cdev->id));
 	mutex_unlock(&i3cdev->xfer_lock);
 
-	ida_simple_remove(&i3cdev_ida, i3cdev->id);
+	ida_free(&i3cdev_ida, i3cdev->id);
 	put_i3cdev(i3cdev);
 
 	pr_debug("i3cdev: device [%s] unregistered\n", dev_name(&i3c->dev));

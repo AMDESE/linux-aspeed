@@ -1406,7 +1406,7 @@ MODULE_DEVICE_TABLE(of, i3c_hci_of_match);
 
 static struct platform_driver i3c_hci_driver = {
 	.probe = i3c_hci_probe,
-	.remove_new = i3c_hci_remove,
+	.remove = i3c_hci_remove,
 	.driver = {
 		.name = "mipi-i3c-hci",
 		.of_match_table = of_match_ptr(i3c_hci_of_match),

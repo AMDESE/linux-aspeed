@@ -56,6 +56,7 @@ struct dw_i3c_master {
 	u32 i2c_fm_timing;
 	u32 i2c_fmp_timing;
 	u32 quirks;
+	bool ibi_capable;
 	/*
 	 * Per-device hardware data, used to manage the device address table
 	 * (DAT)
