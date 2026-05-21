@@ -57,6 +57,11 @@
 			no-map;
 		};
 
+		bmc_dev1_memory: bmc_dev1_memory@423900000 {
+			reg = <0x4 0x23900000 0x0 0x100000>;
+			no-map;
+		};
+
 		vbios_base0: vbios-base0@431bb0000 {
 			reg = <0x4 0x31bb0000 0x0 0x10000>;
 			no-map;
@@ -1335,6 +1340,11 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 &bmc_dev0 {
 	status = "okay";
 	memory-region = <&bmc_dev0_memory>;
+};
+
+&bmc_dev1 {
+	status = "okay";
+	memory-region = <&bmc_dev1_memory>;
 };
 
 &emmc_controller {
