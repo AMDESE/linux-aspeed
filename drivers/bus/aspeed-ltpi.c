@@ -162,15 +162,13 @@ static int aspeed_ltpi_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int aspeed_ltpi_remove(struct platform_device *pdev)
+static void aspeed_ltpi_remove(struct platform_device *pdev)
 {
 	struct aspeed_ltpi_priv *priv;
 
 	priv = platform_get_drvdata(pdev);
 	reset_control_assert(priv->ltpi_rst);
 	clk_disable_unprepare(priv->ltpi_clk);
-
-	return 0;
 }
 
 static const struct of_device_id aspeed_ltpi_of_match[] = {
