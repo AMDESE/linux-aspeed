@@ -14,7 +14,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
-#include <linux/ida.h>
+#include <linux/idr.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
