@@ -379,13 +379,13 @@
 			p1v8_aux@9{
 				// P1V8_AUX
 				// TDK:FS1606
-				compatible = "pmbus";
+				compatible = "tdk,fs1606a";
 				reg = <0x9>;
 			};
 			p1v0_aux@0A{
 				// P0V85_AUX
 				// TDK:FS1606
-				compatible = "pmbus";
+				compatible = "tdk,fs1606a";
 				reg = <0x0A>;
 			};
 		};
