@@ -334,12 +334,14 @@
 			};
 			p1v8aux@09 {
 				//P1V8_AUX VRM
-				compatible = "pmbus";
+				// TDK:FS1606
+				compatible = "tdk,fs1606a";
 				reg = <0x09>;
 			};
 			p0v85aux@0A {
 				//P0V85_AUX VRM
-				compatible = "pmbus";
+				// TDK:FS1606
+				compatible = "tdk,fs1606a";
 				reg = <0x0A>;
 			};
 		};
