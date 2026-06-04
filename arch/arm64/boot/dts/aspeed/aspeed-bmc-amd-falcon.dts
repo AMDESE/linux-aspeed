@@ -510,7 +510,7 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	oob-dma-mode;
 	flash-dma-mode;
 	flash-edaf-mode = <0>;
-	flash-edaf-tgt-addr = <0x1 0x80000000>;
+	flash-edaf-tgt-addr = <&edaf0>;
 	flash-edaf-size = <0x0 0x2000000>;
 };
 
