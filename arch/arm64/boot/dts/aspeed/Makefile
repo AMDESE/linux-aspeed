@@ -11,3 +11,4 @@ dtb-$(CONFIG_ARCH_ASPEED) += \
 	aspeed-bmc-amd-nigeria.dtb \
 	aspeed-bmc-amd-nigerias3.dtb \
 	aspeed-bmc-amd-seagull.dtb \
+	aspeed-bmc-amd-arthur.dtb \
