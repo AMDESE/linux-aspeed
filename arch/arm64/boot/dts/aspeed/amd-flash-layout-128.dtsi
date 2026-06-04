@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0+
-// Align with Aspeed ast2700 128MB NOR layout (see aspeed-evb-flash-layout-128.dtsi).
+// AST2700 128MB NOR — must match OpenBMC meta-amd/meta-sp7/conf/machine/sp7.conf
+// (FLASH_*_OFFSET KB). Do not revert to 2MB u-boot / 0x1220000 rofs (breaks initramfs).
+// After DTS cherry-picks: scripts/check-amd-sp7-flash-layout.sh
 
 partitions {
 	compatible = "fixed-partitions";
