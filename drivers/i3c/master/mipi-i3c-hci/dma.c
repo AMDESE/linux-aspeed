@@ -14,6 +14,7 @@
 #include <linux/errno.h>
 #include <linux/i3c/master.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/mutex.h>
 
 #include "hci.h"
@@ -356,6 +357,12 @@ static int hci_dma_init(struct i3c_hci *hci)
 		rh_reg_write(INTR_SIGNAL_ENABLE, regval);
 
 ring_ready:
+		/*
+		 * HCI spec does not define RING_OPERATION1 reset values; ensure
+		 * ring pointers start at zero (required on some controllers).
+		 */
+		rh_reg_write(RING_OPERATION1, 0);
+
 		rh_reg_write(RING_CONTROL, RING_CTRL_ENABLE |
 					   RING_CTRL_RUN_STOP);
 	}
@@ -494,9 +501,20 @@ static bool hci_dma_dequeue_xfer(struct i3c_hci *hci,
 
 	ring_status = rh_reg_read(RING_STATUS);
 	if (ring_status & RING_STATUS_RUNNING) {
+		int ret;
+
 		reinit_completion(&rh->op_done);
 		rh_reg_write(RING_CONTROL, RING_CTRL_ENABLE | RING_CTRL_ABORT);
-		wait_for_completion_timeout(&rh->op_done, HZ);
+		if (!wait_for_completion_timeout(&rh->op_done, HZ)) {
+			ret = readl_poll_timeout(rh->regs + RH_RING_STATUS,
+						 ring_status,
+						 !(ring_status & RING_STATUS_RUNNING),
+						 10, 100000);
+			if (ret)
+				dev_dbg(&hci->master.dev,
+					"ring abort: INTR_RING_OP not seen, polled status %#x\n",
+					ring_status);
+		}
 		ring_status = rh_reg_read(RING_STATUS);
 		if (ring_status & RING_STATUS_RUNNING) {
 			dev_crit(&hci->master.dev, "unable to abort the ring\n");
@@ -896,9 +914,14 @@ static bool hci_dma_irq_handler(struct i3c_hci *hci, unsigned int mask)
 			complete(&rh->op_done);
 
 		if (status & INTR_TRANSFER_ABORT) {
+			u32 ring_status;
+
 			dev_notice_ratelimited(&hci->master.dev,
 				"ring %d: Transfer Aborted\n", i);
 			mipi_i3c_hci_resume(hci);
+			ring_status = rh_reg_read(RING_STATUS);
+			if (!(ring_status & RING_STATUS_RUNNING))
+				complete(&rh->op_done);
 		}
 		if (status & INTR_WARN_INS_STOP_MODE)
 			dev_warn_ratelimited(&hci->master.dev,
