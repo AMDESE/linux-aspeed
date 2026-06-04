@@ -4,6 +4,7 @@
  * Author: Ryan Chen <ryan_chen@aspeedtech.com>
  */
 
+#include <linux/auxiliary_bus.h>
 #include <linux/clk-provider.h>
 #include <linux/io.h>
 #include <linux/mod_devicetable.h>
@@ -11,7 +12,6 @@
 #include <linux/slab.h>
 #include <linux/units.h>
 
-#include <soc/aspeed/reset-aspeed.h>
 #include <dt-bindings/clock/aspeed,ast2700-scu.h>
 
 #define REVISION_ID		GENMASK(23, 16)
@@ -168,6 +168,7 @@ struct ast2700_clk_data {
 	const struct ast2700_clk_info *clk_info;
 	unsigned int nr_clks;
 	const int scu;
+	const char *mod_name;
 };
 
 struct ast2700_clk_ctrl {
@@ -1136,6 +1137,7 @@ static int ast2700_soc_clk_probe(struct platform_device *pdev)
 	const struct ast2700_clk_data *clk_data;
 	struct clk_hw_onecell_data *clk_hw_data;
 	struct ast2700_clk_ctrl *clk_ctrl;
+	struct auxiliary_device *adev;
 	struct device *dev = &pdev->dev;
 	u32 uart_clk_source = 0;
 	void __iomem *clk_base;
@@ -1290,25 +1292,33 @@ static int ast2700_soc_clk_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	return aspeed_reset_controller_register(dev, clk_base, reset_name);
+	adev = __devm_auxiliary_device_create(dev, clk_data->mod_name, reset_name,
+					      (__force void *)clk_base, 0);
+	if (!adev)
+		return -ENODEV;
+
+	return 0;
 }
 
 static const struct ast2700_clk_data ast2700_clk0_data = {
 	.scu = 0,
 	.clk_info = ast2700_scu0_clk_info,
 	.nr_clks  = ARRAY_SIZE(ast2700_scu0_clk_info),
+	.mod_name = "clk_ast2700",
 };
 
 static const struct ast2700_clk_data ast2700_clk1_data = {
 	.scu = 1,
 	.clk_info = ast2700_scu1_clk_info,
 	.nr_clks  = ARRAY_SIZE(ast2700_scu1_clk_info),
+	.mod_name = "clk_ast2700",
 };
 
 static const struct ast2700_clk_data ast2755_clk1_data = {
-	.scu = 2,
+	.scu = 1,
 	.clk_info = ast2755_scu1_clk_info,
 	.nr_clks = ARRAY_SIZE(ast2755_scu1_clk_info),
+	.mod_name = "clk_ast2705",
 };
 
 static const struct of_device_id ast2700_scu_match[] = {
