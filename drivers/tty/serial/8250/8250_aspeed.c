@@ -155,8 +155,9 @@ static void ast8250_dma_start_tx(struct uart_port *port)
 		if (!count)
 			break;
 
-		count = min(count, CIRC_CNT_TO_END(tx_rb->head, tx_rb->tail,
-						   dma->tx_rbsz));
+		count = min_t(unsigned int, count,
+			      (unsigned int)CIRC_CNT_TO_END(tx_rb->head, tx_rb->tail,
+							    dma->tx_rbsz));
 		count = min_t(unsigned int, count, kfifo_len(&tport->xmit_fifo));
 		c = kfifo_out(&tport->xmit_fifo, tx_rb->buf + tx_rb->head, count);
 		if (!c)
