@@ -127,12 +127,12 @@
 };
 
 &mac1 {
-        status = "okay";
-        pinctrl-names = "default";
-        pinctrl-0 = <&pinctrl_rmii1_default>;
-        clock-names = "MACCLK", "RCLK";
-        use-ncsi;
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_rmii1_default>;
+	clock-names = "MACCLK", "RCLK";
 	phy-mode = "rmii";
+	use-ncsi;
 };
 
 &fmc {
@@ -908,25 +908,13 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 
 /* Post code capture for P0 */
 &lpc0_pcc {
-	port-addr = <0x80>;
-	dma-mode;
-	A2600-15;
-	rec-mode = <0x1>;
-	port-addr-hbits-select = <0x1>;
-	port-addr-xbits = <0x3>;
-
+	pcc-ports = <0x80>;
 	status = "okay";
 };
 
 /* Post code capture for P1 */
 &lpc1_pcc {
-	port-addr = <0x80>;
-	dma-mode;
-	A2600-15;
-	rec-mode = <0x1>;
-	port-addr-hbits-select = <0x1>;
-	port-addr-xbits = <0x3>;
-
+	pcc-ports = <0x80>;
 	status = "okay";
 };
 
@@ -1036,7 +1024,7 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 &emmc {
 	status = "okay";
 	bus-width = <4>;
-	pinctrl-0 = <&pinctrl_emmc_default &pinctrl_emmcg8_default>;
+	pinctrl-0 = <&pinctrl_emmc_default>;
 	non-removable;
 	max-frequency = <200000000>;
 };
