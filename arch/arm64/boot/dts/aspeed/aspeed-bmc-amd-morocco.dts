@@ -1182,11 +1182,19 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	sirq-polarity = <0>;
 };
 
+&uphy2a {
+	status = "okay";
+};
+
 &uphy3a {
 	status = "okay";
 };
 
 &uphy3b {
+	status = "okay";
+};
+
+&vhuba1 {
 	status = "okay";
 };
 
