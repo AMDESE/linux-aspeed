@@ -425,6 +425,8 @@ struct ast_vhub {
 	/* Hub itself can signal remote wakeup */
 	bool				wakeup_en : 1;
 
+	u8				current_config;
+
 	/* Force full speed only */
 	bool				force_usb1 : 1;
 

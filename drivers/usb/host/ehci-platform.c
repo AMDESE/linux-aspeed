@@ -19,6 +19,7 @@
  * Copyright 1999 Gregory P. Smith
  */
 #include <linux/acpi.h>
+#include <linux/bitfield.h>
 #include <linux/clk.h>
 #include <linux/dma-mapping.h>
 #include <linux/err.h>
@@ -43,6 +44,23 @@
 #define hcd_to_ehci_priv(h) ((struct ehci_platform_priv *)hcd_to_ehci(h)->priv)
 
 #define BCM_USB_FIFO_THRESHOLD	0x00800040
+
+/* ASPEED EHCI84: Controller Fine-tune Register */
+#define AST_EHCI_FINE_TUNE_REG		0x84
+#define AST_TXFIFO_THRESHOLD_MASK	GENMASK(7, 6)
+#define AST_TXFIFO_THRESHOLD		FIELD_PREP(AST_TXFIFO_THRESHOLD_MASK, 0x2)
+
+/* ASPEED EHCI88: Frame Timing Adjustment Register */
+#define AST_EHCI_FRAME_TIMING_REG	0x88
+#define AST_PRE_EOF1_MASK		GENMASK(21, 12)
+#define AST_PRE_EOF2_MASK		GENMASK(31, 22)
+#define AST_PRE_EOF1(x)			FIELD_PREP(AST_PRE_EOF1_MASK, (x))
+#define AST_PRE_EOF2(x)			FIELD_PREP(AST_PRE_EOF2_MASK, (x))
+#define AST_PRE_EOF1_VAL		0x100
+#define AST_WORKAROUND_MPS		0x40
+#define AST_EOF1_EOF2_TIMING \
+	(AST_PRE_EOF1(AST_PRE_EOF1_VAL) | \
+	 AST_PRE_EOF2(AST_PRE_EOF1_VAL + AST_WORKAROUND_MPS))
 
 struct ehci_platform_priv {
 	struct clk *clks[EHCI_MAX_CLKS];
@@ -241,7 +259,9 @@ static int ehci_platform_probe(struct platform_device *dev)
 	struct usb_ehci_pdata *pdata = dev_get_platdata(&dev->dev);
 	struct ehci_platform_priv *priv;
 	struct ehci_hcd *ehci;
+	const struct of_device_id *match;
 	int err, irq, clk = 0;
+	bool dma_mask_64;
 
 	if (usb_disabled())
 		return -ENODEV;
@@ -253,8 +273,13 @@ static int ehci_platform_probe(struct platform_device *dev)
 	if (!pdata)
 		pdata = &ehci_platform_defaults;
 
+	dma_mask_64 = pdata->dma_mask_64;
+	match = of_match_device(dev->dev.driver->of_match_table, &dev->dev);
+	if (match && match->data)
+		dma_mask_64 = true;
+
 	err = dma_coerce_mask_and_coherent(&dev->dev,
-		pdata->dma_mask_64 ? DMA_BIT_MASK(64) : DMA_BIT_MASK(32));
+		dma_mask_64 ? DMA_BIT_MASK(64) : DMA_BIT_MASK(32));
 	if (err) {
 		dev_err(&dev->dev, "Error: DMA mask configuration failed\n");
 		return err;
@@ -298,7 +323,9 @@ static int ehci_platform_probe(struct platform_device *dev)
 		if (of_device_is_compatible(dev->dev.of_node,
 					    "aspeed,ast2500-ehci") ||
 		    of_device_is_compatible(dev->dev.of_node,
-					    "aspeed,ast2600-ehci"))
+					    "aspeed,ast2600-ehci") ||
+		    of_device_is_compatible(dev->dev.of_node,
+					    "aspeed,ast2700-ehci"))
 			ehci->is_aspeed = 1;
 
 		if (soc_device_match(quirk_poll_match))
@@ -373,6 +400,17 @@ static int ehci_platform_probe(struct platform_device *dev)
 	err = usb_add_hcd(hcd, irq, IRQF_SHARED);
 	if (err)
 		goto err_power;
+
+	if (ehci->is_aspeed) {
+		void __iomem *regs = hcd->regs;
+		u32 val;
+
+		val = readl(regs + AST_EHCI_FINE_TUNE_REG);
+		val &= ~AST_TXFIFO_THRESHOLD_MASK;
+		val |= AST_TXFIFO_THRESHOLD;
+		writel(val, regs + AST_EHCI_FINE_TUNE_REG);
+		writel(AST_EOF1_EOF2_TIMING, regs + AST_EHCI_FRAME_TIMING_REG);
+	}
 
 	device_wakeup_enable(hcd->self.controller);
 	device_enable_async_suspend(hcd->self.controller);
@@ -485,6 +523,7 @@ static const struct of_device_id vt8500_ehci_ids[] = {
 	{ .compatible = "wm,prizm-ehci", },
 	{ .compatible = "generic-ehci", },
 	{ .compatible = "cavium,octeon-6335-ehci", },
+	{ .compatible = "aspeed,ast2700-ehci", .data = (void *)1 },
 	{}
 };
 MODULE_DEVICE_TABLE(of, vt8500_ehci_ids);
