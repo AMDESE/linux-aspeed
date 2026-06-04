@@ -427,16 +427,11 @@
 	perif-dma-mode;
 	oob-dma-mode;
 	flash-dma-mode;
+	flash-edaf-tgt-addr = <&edaf0>;
 };
 
 &lpc0_pcc {
-	port-addr = <0x80>;
-	dma-mode;
-	A2600-15;
-	rec-mode = <0x1>;
-	port-addr-hbits-select = <0x1>;
-	port-addr-xbits = <0x3>;
-
+	pcc-ports = <0x80>;
 	status = "okay";
 };
 
