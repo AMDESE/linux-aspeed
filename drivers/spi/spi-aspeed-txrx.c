@@ -277,14 +277,14 @@ static int aspeed_spi_setup(struct spi_device *spi)
 	struct aspeed_spi_host *host =
 		(struct aspeed_spi_host *)spi_controller_get_devdata(spi->controller);
 	struct device *dev = host->dev;
+	u8 cs = spi_get_chipselect(spi, 0);
 	u32 clk_div;
-	void __iomem *ctrl_reg = host->ctrl_reg + SPI_CE0_CTRL +
-				 spi->chip_select * 4;
+	void __iomem *ctrl_reg = host->ctrl_reg + SPI_CE0_CTRL + cs * 4;
 	u32 unsupport_mode = (u32)(~(SPI_MODE_0 | SPI_RX_DUAL | SPI_TX_DUAL |
 				     SPI_RX_QUAD | SPI_TX_QUAD | SPI_LSB_FIRST));
 
 	dev_dbg(dev, "cs: %d, mode: %d, max_speed: %d, bits_per_word: %d\n",
-		spi->chip_select, spi->mode,
+		cs, spi->mode,
 		spi->max_speed_hz, spi->bits_per_word);
 
 	if (spi->mode & unsupport_mode) {
@@ -292,7 +292,7 @@ static int aspeed_spi_setup(struct spi_device *spi)
 		return -EINVAL;
 	}
 
-	host->ctrl_val[spi->chip_select] = SPI_CE_INACTIVE | SPI_CMD_USER_MODE;
+	host->ctrl_val[cs] = SPI_CE_INACTIVE | SPI_CMD_USER_MODE;
 
 	if (spi->max_speed_hz) {
 		clk_div = host->info->get_clk_div(host, spi->max_speed_hz);
@@ -301,15 +301,14 @@ static int aspeed_spi_setup(struct spi_device *spi)
 		clk_div = ~(host->info->hclk_mask);
 	}
 
-	host->ctrl_val[spi->chip_select] |= clk_div;
+	host->ctrl_val[cs] |= clk_div;
 
 	if (spi->mode & SPI_LSB_FIRST)
-		host->ctrl_val[spi->chip_select] |= SPI_LSB_FIRST_CTRL;
+		host->ctrl_val[cs] |= SPI_LSB_FIRST_CTRL;
 
-	writel(host->ctrl_val[spi->chip_select], ctrl_reg);
+	writel(host->ctrl_val[cs], ctrl_reg);
 
-	dev_info(dev, "cs: %d, ctrl_val: 0x%08x\n",
-		 spi->chip_select, host->ctrl_val[spi->chip_select]);
+	dev_info(dev, "cs: %d, ctrl_val: 0x%08x\n", cs, host->ctrl_val[cs]);
 
 	return 0;
 }
@@ -318,9 +317,9 @@ static void aspeed_spi_start_user(struct spi_device *spi)
 {
 	struct aspeed_spi_host *host =
 		(struct aspeed_spi_host *)spi_controller_get_devdata(spi->controller);
-	u32 ctrl_val = host->ctrl_val[spi->chip_select];
-	void __iomem *ctrl_reg = host->ctrl_reg + SPI_CE0_CTRL +
-				 spi->chip_select * 4;
+	u8 cs = spi_get_chipselect(spi, 0);
+	u32 ctrl_val = host->ctrl_val[cs];
+	void __iomem *ctrl_reg = host->ctrl_reg + SPI_CE0_CTRL + cs * 4;
 
 	ctrl_val |= SPI_CE_INACTIVE;
 	writel(ctrl_val, ctrl_reg);
@@ -333,9 +332,9 @@ static void aspeed_spi_stop_user(struct spi_device *spi)
 {
 	struct aspeed_spi_host *host =
 		(struct aspeed_spi_host *)spi_controller_get_devdata(spi->controller);
-	u32 ctrl_val = host->ctrl_val[spi->chip_select] | SPI_CE_INACTIVE;
-	void __iomem *ctrl_reg = host->ctrl_reg + SPI_CE0_CTRL +
-				 spi->chip_select * 4;
+	u8 cs = spi_get_chipselect(spi, 0);
+	u32 ctrl_val = host->ctrl_val[cs] | SPI_CE_INACTIVE;
+	void __iomem *ctrl_reg = host->ctrl_reg + SPI_CE0_CTRL + cs * 4;
 
 	writel(ctrl_val, ctrl_reg);
 }
@@ -357,7 +356,7 @@ static int aspeed_spi_transfer(struct spi_controller *ctlr,
 			       struct spi_message *msg)
 {
 	struct aspeed_spi_host *host =
-		(struct aspeed_spi_host *)spi_master_get_devdata(ctlr);
+		(struct aspeed_spi_host *)spi_controller_get_devdata(ctlr);
 	struct device *dev = host->dev;
 	struct spi_device *spi = msg->spi;
 	struct spi_transfer *xfer;
@@ -371,7 +370,7 @@ static int aspeed_spi_transfer(struct spi_controller *ctlr,
 	if (host->cs_change == 0)
 		aspeed_spi_start_user(spi);
 
-	cs = spi->chip_select;
+	cs = spi_get_chipselect(spi, 0);
 	ctrl_reg = host->ctrl_reg + SPI_CE0_CTRL + cs * 4;
 	ctrl_val = readl(ctrl_reg);
 
@@ -450,7 +449,7 @@ static int aspeed_spi_probe(struct platform_device *pdev)
 	struct reset_control *rst;
 	int err = 0;
 
-	ctrl = devm_spi_alloc_master(dev, sizeof(struct aspeed_spi_host));
+	ctrl = devm_spi_alloc_host(dev, sizeof(struct aspeed_spi_host));
 	if (!ctrl) {
 		dev_err(dev, "No memory for spi controller\n");
 		return -ENOMEM;
