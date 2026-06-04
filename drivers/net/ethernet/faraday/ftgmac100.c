@@ -2011,20 +2011,9 @@ static int ftgmac100_probe(struct platform_device *pdev)
 	}
 
 	if (priv->is_aspeed) {
-		struct reset_control *rst;
-
 		err = ftgmac100_setup_clk(priv);
 		if (err)
 			goto err_phy_connect;
-
-		rst = devm_reset_control_get_optional(priv->dev, NULL);
-		if (IS_ERR(rst))
-			goto err_register_netdev;
-
-		priv->rst = rst;
-		err = reset_control_assert(priv->rst);
-		mdelay(10);
-		err = reset_control_deassert(priv->rst);
 
 		/* Disable ast2600 problematic HW arbitration */
 		if (of_device_is_compatible(np, "aspeed,ast2600-mac") ||

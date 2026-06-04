@@ -16,6 +16,9 @@
 #include "ext_caps.h"
 #include "xfer_mode_rate.h"
 
+#ifdef CONFIG_ARCH_ASPEED
+#define ASPEED_PHY_REGS_OFFSET		0xE00
+#endif
 
 /* Extended Capability Header */
 #define CAP_HEADER_LENGTH		GENMASK(23, 8)
@@ -209,6 +212,19 @@ static int hci_extcap_vendor_NXP(struct i3c_hci *hci, void __iomem *base)
 	return 0;
 }
 
+static int hci_extcap_vendor_ASPEED(struct i3c_hci *hci, void __iomem *base)
+{
+	u32 regs_offset;
+
+	regs_offset = readl(base + 1 * 4);
+	dev_info(&hci->master.dev, "INHOUSE control at offset %#x\n", regs_offset);
+	hci->INHOUSE_regs = hci->base_regs + regs_offset;
+	regs_offset = readl(base + 2 * 4);
+	dev_info(&hci->master.dev, "PHY control at offset %#x\n", regs_offset);
+	hci->PHY_regs = hci->base_regs + regs_offset;
+	return 0;
+}
+
 struct hci_ext_cap_vendor_specific {
 	u32 vendor;
 	u8  cap;
@@ -223,6 +239,7 @@ struct hci_ext_cap_vendor_specific {
 
 static const struct hci_ext_cap_vendor_specific vendor_ext_caps[] = {
 	EXT_CAP_VENDOR(NXP, 0xc0, 0x20),
+	EXT_CAP_VENDOR(ASPEED, 0xc0, 0x3),
 };
 
 static int hci_extcap_vendor_specific(struct i3c_hci *hci, void __iomem *base,
@@ -262,6 +279,9 @@ int i3c_hci_parse_ext_caps(struct i3c_hci *hci)
 	u32 cap_header, cap_id, cap_length;
 	const struct hci_ext_caps *cap_entry;
 	int i, err = 0;
+#ifdef CONFIG_ARCH_ASPEED
+	u32 offset;
+#endif
 
 	if (!curr_cap)
 		return 0;
@@ -274,6 +294,26 @@ int i3c_hci_parse_ext_caps(struct i3c_hci *hci)
 			cap_id, cap_length);
 		if (!cap_id || !cap_length)
 			break;
+#ifdef CONFIG_ARCH_ASPEED
+		/*
+		 * AST2700 A0: EXTCAP offset points at in-house registers; first
+		 * dword reads as cap_id=0 cap_length=36 (invalid). Treat as A0.
+		 */
+		if (cap_id == 0 && cap_length != 1) {
+			hci->RHS_regs = NULL;
+			dev_info(&hci->master.dev,
+				 "Clear Ring Headers offset\n");
+			offset = hci->EXTCAPS_regs - hci->base_regs;
+			hci->INHOUSE_regs = hci->EXTCAPS_regs;
+			dev_info(&hci->master.dev,
+				 "INHOUSE control at offset %#x\n", offset);
+			hci->PHY_regs = hci->base_regs + ASPEED_PHY_REGS_OFFSET;
+			dev_info(&hci->master.dev,
+				 "PHY control at offset %#x\n",
+				 ASPEED_PHY_REGS_OFFSET);
+			return 0;
+		}
+#endif
 		if (curr_cap + cap_length * 4 >= end) {
 			dev_err(&hci->master.dev,
 				"ext_cap 0x%02x has size %d (too big)\n",
