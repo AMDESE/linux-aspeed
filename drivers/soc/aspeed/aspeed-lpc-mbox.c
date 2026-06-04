@@ -16,8 +16,6 @@
 
 #define DEVICE_NAME	"aspeed-mbox"
 
-static DEFINE_IDA(aspeed_mbox_ida);
-
 #define ASPEED_MBOX_DR(dr, n)	(dr + (n * 4))
 #define ASPEED_MBOX_STR(str, n)	(str + (n / 8) * 4)
 #define ASPEED_MBOX_BIE(bie, n)	(bie + (n / 8) * 4)
@@ -49,8 +47,7 @@ struct aspeed_mbox_model {
 };
 
 struct aspeed_mbox {
-	int mdev_id;
-	struct miscdevice mdev;
+	struct miscdevice miscdev;
 	struct regmap *map;
 	unsigned int base;
 	wait_queue_head_t queue;
@@ -72,7 +69,7 @@ static u8 aspeed_mbox_inb(struct aspeed_mbox *mbox, int reg)
 	int rc = regmap_read(mbox->map, mbox->base + reg, &val);
 
 	if (rc)
-		dev_err(mbox->mdev.parent, "regmap_read() failed with "
+		dev_err(mbox->miscdev.parent, "regmap_read() failed with "
 			"%d (reg: 0x%08x)\n", rc, reg);
 
 	return val & 0xff;
@@ -83,13 +80,13 @@ static void aspeed_mbox_outb(struct aspeed_mbox *mbox, u8 data, int reg)
 	int rc = regmap_write(mbox->map, mbox->base + reg, data);
 
 	if (rc)
-		dev_err(mbox->mdev.parent, "regmap_write() failed with "
+		dev_err(mbox->miscdev.parent, "regmap_write() failed with "
 			"%d (data: %u reg: 0x%08x)\n", rc, data, reg);
 }
 
 static struct aspeed_mbox *file_mbox(struct file *file)
 {
-	return container_of(file->private_data, struct aspeed_mbox, mdev);
+	return container_of(file->private_data, struct aspeed_mbox, miscdev);
 }
 
 static int aspeed_mbox_open(struct inode *inode, struct file *file)
@@ -335,17 +332,11 @@ static int aspeed_mbox_probe(struct platform_device *pdev)
 	mutex_init(&mbox->mutex);
 	init_waitqueue_head(&mbox->queue);
 
-	mbox->mdev_id = ida_alloc(&aspeed_mbox_ida, GFP_KERNEL);
-	if (mbox->mdev_id < 0) {
-		dev_err(dev, "cannot allocate device ID\n");
-		return mbox->mdev_id;
-	}
-
-	mbox->mdev.minor = MISC_DYNAMIC_MINOR;
-	mbox->mdev.name = devm_kasprintf(dev, GFP_KERNEL, "%s%d", DEVICE_NAME, mbox->mdev_id);
-	mbox->mdev.fops = &aspeed_mbox_fops;
-	mbox->mdev.parent = dev;
-	rc = misc_register(&mbox->mdev);
+	mbox->miscdev.minor = MISC_DYNAMIC_MINOR;
+	mbox->miscdev.name = DEVICE_NAME;
+	mbox->miscdev.fops = &aspeed_mbox_fops;
+	mbox->miscdev.parent = dev;
+	rc = misc_register(&mbox->miscdev);
 	if (rc) {
 		dev_err(dev, "Unable to register device\n");
 		return rc;
@@ -354,33 +345,21 @@ static int aspeed_mbox_probe(struct platform_device *pdev)
 	rc = aspeed_mbox_config_irq(mbox, pdev);
 	if (rc) {
 		dev_err(dev, "Failed to configure IRQ\n");
-		misc_deregister(&mbox->mdev);
+		misc_deregister(&mbox->miscdev);
 		return rc;
 	}
 
 	return 0;
 }
 
-static int aspeed_mbox_remove(struct platform_device *pdev)
+static void aspeed_mbox_remove(struct platform_device *pdev)
 {
 	struct aspeed_mbox *mbox = dev_get_drvdata(&pdev->dev);
 
-	misc_deregister(&mbox->mdev);
-
-	return 0;
+	misc_deregister(&mbox->miscdev);
 }
 
 static const struct aspeed_mbox_model ast2400_model = {
-	.dr_num = 16,
-	.dr	= 0x0,
-	.str = 0x40,
-	.bcr = 0x48,
-	.hcr = 0x4c,
-	.bie = 0x50,
-	.hie = 0x58,
-};
-
-static const struct aspeed_mbox_model ast2500_model = {
 	.dr_num = 16,
 	.dr	= 0x0,
 	.str = 0x40,
@@ -400,25 +379,13 @@ static const struct aspeed_mbox_model ast2600_model = {
 	.hie = 0xb0,
 };
 
-static const struct aspeed_mbox_model ast2700_model = {
-	.dr_num = 32,
-	.dr	= 0x0,
-	.str = 0x80,
-	.bcr = 0x90,
-	.hcr = 0x94,
-	.bie = 0xa0,
-	.hie = 0xb0,
-};
-
 static const struct of_device_id aspeed_mbox_match[] = {
 	{ .compatible = "aspeed,ast2400-mbox",
 	  .data = &ast2400_model },
 	{ .compatible = "aspeed,ast2500-mbox",
-	  .data = &ast2500_model },
+	  .data = &ast2400_model },
 	{ .compatible = "aspeed,ast2600-mbox",
 	  .data = &ast2600_model },
-	{ .compatible = "aspeed,ast2700-mbox",
-	  .data = &ast2700_model },
 	{ },
 };
 

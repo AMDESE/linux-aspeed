@@ -7,6 +7,35 @@ menu "ASPEED SoC drivers"
 config ASPEED_BMC_DEV
 	tristate "ASPEED BMC Device"
 
+config ASPEED_HOST_BMC_DEV
+	tristate "ASPEED Host BMC Device"
+
+config ASPEED_LPC_CTRL
+	tristate "ASPEED LPC firmware cycle control"
+	select REGMAP
+	select MFD_SYSCON
+	default ARCH_ASPEED
+	help
+	  Control LPC firmware cycle mappings through ioctl()s. The driver
+	  also provides a read/write interface to a BMC ram region where the
+	  host LPC read/write region can be buffered.
+
+config ASPEED_LPC_SNOOP
+	tristate "ASPEED LPC snoop support"
+	select REGMAP
+	select MFD_SYSCON
+	default ARCH_ASPEED
+	help
+	  Provides a driver to control the LPC snoop interface which
+	  allows the BMC to listen on and save the data written by
+	  the host to an arbitrary LPC I/O port.
+
+config ASPEED_SSP
+	tristate "ASPEED SSP loader"
+	default n
+	help
+	  Driver for loading secondary-service-processor binary
+
 config ASPEED_UART_ROUTING
 	tristate "ASPEED uart routing control"
 	select REGMAP
@@ -17,21 +46,58 @@ config ASPEED_UART_ROUTING
 	  users to perform runtime configuration of the RX muxes among
 	  the UART controllers and I/O pins.
 
+config ASPEED_LPC_MAILBOX
+	tristate "ASPEED LPC mailbox support"
+	select REGMAP
+	select MFD_SYSCON
+	default ARCH_ASPEED
+	help
+	  Provides a driver to control the LPC mailbox which possesses
+	  up to 32 data registers for the communication between the Host
+	  and the BMC over LPC.
+
+config ASPEED_P2A_CTRL
+	tristate "ASPEED P2A (VGA MMIO to BMC) bridge control"
+	select REGMAP
+	select MFD_SYSCON
+	default ARCH_ASPEED
+	help
+	  Control ASPEED P2A VGA MMIO to BMC mappings through ioctl()s.  The
+	  driver also provides an interface for userspace mappings to a
+	  pre-defined region.
+
 config ASPEED_SOCINFO
 	bool "ASPEED SoC Information driver"
-	default ARCH_ASPEED
 	select SOC_BUS
 	default ARCH_ASPEED
 	help
 	  Say yes to support decoding of ASPEED BMC information.
 
-config AST2700_ESPI
-	tristate "ASPEED AST2700 eSPI slave driver"
+config ASPEED_SBC
+	bool "ASPEED Secure Boot Controller driver"
+	default MACH_ASPEED_G6
 	help
-	  Enable driver support for Aspeed AST2700 eSPI engine. The eSPI engine
-	  plays as a slave device in BMC to communicate with the Host over
-	  the eSPI interface. The four eSPI channels, namely peripheral,
-	  virtual wire, out-of-band, and flash are supported.
+	  Say yes to provide information about the secure boot controller in
+	  debugfs.
+
+config ASPEED_XDMA
+	tristate "ASPEED XDMA Engine Driver"
+	select REGMAP
+	select MFD_SYSCON
+	depends on HAS_DMA
+	help
+	  Enables support for the XDMA Engine found on the ASPEED BMC
+	  SoCs. The XDMA engine can perform PCIe DMA operations between the BMC
+	  and a host processor. The driver provides ioctl() interface to reset
+	  and initialize engine.
+
+config ASPEED_LPC_PCC
+	tristate "Aspeed Post Code Capture support"
+	depends on ARCH_ASPEED && REGMAP && MFD_SYSCON
+	help
+	  Provides a driver to control the LPC PCC interface,
+	  allowing the BMC to snoop data bytes written by the
+	  the host to an arbitrary LPC I/O port.
 
 config ASPEED_UDMA
 	tristate "Aspeed UDMA Engine Driver"
@@ -41,15 +107,52 @@ config ASPEED_UDMA
 	  SOCs. The UDMA engine can perform UART DMA operations between the memory
 	  buffer and the UART/VUART devices.
 
-config ASPEED_XDMA
-        tristate "ASPEED XDMA Engine Driver"
-        select REGMAP
-        select MFD_SYSCON
-        depends on HAS_DMA
-        help
-          Enable support for the XDMA Engine found on the ASPEED BMC
-          SoCs. The XDMA engine can perform PCIe DMA operations between the BMC
-          and a host processor.
+config ASPEED_DISP_INTF
+	bool "ASPEED Display Interface driver"
+	select REGMAP
+	select MFD_SYSCON
+	default ARCH_ASPEED
+	help
+	  Say yes to support control the display interface of ASPEED BMC.
+
+config ASPEED_MBOX
+	bool "Enable support for the ASPEED MBOX driver"
+	depends on ARCH_ASPEED
+	help
+	  Enable support for the ASPEED MBOX driver. This driver
+	  provides a mailbox client to the ASPEED BMC SoC IPC.
+
+config ASPEED_MCTP
+	tristate "Aspeed MCTP Controller support"
+	depends on REGMAP && MFD_SYSCON
+	help
+	  Enable support for Aspeed MCTP Controller.
+	  The MCTP controller allows the BMC to communicate with devices on
+	  the host PCIe network.
+
+config ASPEED_OTP
+	tristate
+	help
+	  Enable driver support for Aspeed OTP driver. Each bit in One
+	  Time Prgrammable (OTP) memory is capable to be programmed once.
+	  The OTP driver performs basic read/program operations of
+	  OTP memory.
+
+config AST2600_OTP
+	tristate "AST2600 OTP Driver"
+	select ASPEED_OTP
+	depends on ARCH_ASPEED
+	help
+	  Enable driver support for Aspeed AST2600 OTP driver.
+
+config AST2700_OTP
+	tristate "AST2700 OTP Driver"
+	select ASPEED_OTP
+	depends on ARCH_ASPEED
+	help
+	  Enable driver support for Aspeed AST2700 OTP driver.
+
+source "drivers/soc/aspeed/espi/Kconfig"
 
 endmenu
 
