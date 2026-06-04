@@ -134,6 +134,11 @@ check_board() {
 			board_err "$board" "&lpc1_pcc enabled but missing pcc-ports"
 	fi
 
+	# GPIO line names must be <= 32 chars (kernel limit)
+	if grep -q 'PSP_SOFT_FUSE_NOTIFY' "$file"; then
+		board_err "$board" "use P0_MGMT_MON_PSP_SOFT_FUSE_NTFY (NOTIFY exceeds 32 chars)"
+	fi
+
 	# eSPI0 with eDAF properties
 	if grep -A20 '&espi0' "$file" | grep -q 'status = "okay"'; then
 		if grep -A20 '&espi0' "$file" | grep -q 'flash-edaf-tgt-addr'; then
