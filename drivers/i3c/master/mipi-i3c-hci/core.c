@@ -19,6 +19,7 @@
 #include <linux/io.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/platform_device.h>
 #include <dt-bindings/i3c/i3c.h>
 
@@ -1334,6 +1335,7 @@ static int i3c_hci_probe(struct platform_device *pdev)
 		return PTR_ERR(hci->base_regs);
 
 	platform_set_drvdata(pdev, hci);
+	mutex_init(&hci->control_mutex);
 	/* temporary for dev_printk's, to be replaced in i3c_master_register */
 	hci->master.dev.init_name = dev_name(&pdev->dev);
 
