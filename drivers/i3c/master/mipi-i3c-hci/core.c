@@ -19,6 +19,7 @@
 #include <linux/io.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
 #include <dt-bindings/i3c/i3c.h>
@@ -124,6 +125,166 @@
 #define DEV_CTX_BASE_LO			0x60
 #define DEV_CTX_BASE_HI			0x64
 
+#ifdef CONFIG_ARCH_ASPEED
+
+static bool i3c_device_power = false;
+module_param(i3c_device_power, bool, 0644);
+MODULE_PARM_DESC(i3c_device_power, "I3C device power status");
+
+static u32 aspeed_i3c_get_sdr_phy_reg(struct i3c_hci *hci)
+{
+	struct i3c_bus *bus = i3c_master_get_bus(&hci->master);
+
+	if (bus->scl_rate.i3c > 8000000)
+		return PHY_I3C_SDR0_CTRL0;
+	if (bus->scl_rate.i3c > 6000000)
+		return PHY_I3C_SDR1_CTRL0;
+	if (bus->scl_rate.i3c > 4000000)
+		return PHY_I3C_SDR2_CTRL0;
+	if (bus->scl_rate.i3c > 2000000)
+		return PHY_I3C_SDR3_CTRL0;
+	return PHY_I3C_SDR4_CTRL0;
+}
+
+static void aspeed_i3c_phy_init(struct i3c_hci *hci)
+{
+	u16 hcnt, lcnt;
+	unsigned long core_rate, core_period;
+
+	core_rate = clk_get_rate(hci->clk);
+	core_period = DIV_ROUND_UP(1000000000, core_rate);
+
+	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_CAS_NS, core_period) - 1;
+	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_SU_STO_NS, core_period) - 1;
+	ast_phy_write(PHY_I2C_FM_CTRL0, FIELD_PREP(PHY_I2C_FM_CTRL0_CAS, hcnt) |
+				      FIELD_PREP(PHY_I2C_FM_CTRL0_SU_STO, lcnt));
+
+	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_SCL_H_NS, core_period) - 1;
+	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_SCL_L_NS, core_period) - 1;
+	ast_phy_write(PHY_I2C_FM_CTRL1, FIELD_PREP(PHY_I2C_FM_CTRL1_SCL_H, hcnt) |
+				      FIELD_PREP(PHY_I2C_FM_CTRL1_SCL_L, lcnt));
+	ast_phy_write(PHY_I2C_FM_CTRL2, FIELD_PREP(PHY_I2C_FM_CTRL2_ACK_H, hcnt) |
+				      FIELD_PREP(PHY_I2C_FM_CTRL2_ACK_L, hcnt));
+	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_HD_DAT, core_period) - 1;
+	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_AHD_DAT, core_period) - 1;
+	ast_phy_write(PHY_I2C_FM_CTRL3, FIELD_PREP(PHY_I2C_FM_CTRL3_HD_DAT, hcnt) |
+				      FIELD_PREP(PHY_I2C_FM_CTRL3_AHD_DAT, lcnt));
+
+	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_CAS_NS, core_period) - 1;
+	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SU_STO_NS, core_period) - 1;
+	ast_phy_write(PHY_I2C_FMP_CTRL0, FIELD_PREP(PHY_I2C_FMP_CTRL0_CAS, hcnt) |
+				      FIELD_PREP(PHY_I2C_FMP_CTRL0_SU_STO, lcnt));
+
+	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SCL_H_NS, core_period) - 1;
+	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SCL_L_NS, core_period) - 1;
+	ast_phy_write(PHY_I2C_FMP_CTRL1, FIELD_PREP(PHY_I2C_FMP_CTRL1_SCL_H, hcnt) |
+				      FIELD_PREP(PHY_I2C_FMP_CTRL1_SCL_L, lcnt));
+	ast_phy_write(PHY_I2C_FMP_CTRL2, FIELD_PREP(PHY_I2C_FMP_CTRL2_ACK_H, hcnt) |
+				      FIELD_PREP(PHY_I2C_FMP_CTRL2_ACK_L, hcnt));
+	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_HD_DAT, core_period) - 1;
+	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_AHD_DAT, core_period) - 1;
+	ast_phy_write(PHY_I2C_FMP_CTRL3, FIELD_PREP(PHY_I2C_FMP_CTRL3_HD_DAT, hcnt) |
+				      FIELD_PREP(PHY_I2C_FMP_CTRL3_AHD_DAT, lcnt));
+
+	ast_phy_write(PHY_PULLUP_EN, 0x0);
+}
+
+static void aspeed_i3c_of_populate_bus_timing(struct i3c_hci *hci,
+					      struct device_node *np)
+{
+	u16 hcnt, lcnt;
+	unsigned long core_rate, core_period;
+	u32 val, pp_high = 0, pp_low = 0, od_high = 0, od_low = 0;
+	u32 thd_dat = 0, internal_pu = 0;
+	u32 ctrl0, ctrl1, ctrl2;
+	u32 sdr_ctrl0_reg = aspeed_i3c_get_sdr_phy_reg(hci);
+
+	core_rate = clk_get_rate(hci->clk);
+	core_period = DIV_ROUND_UP(1000000000, core_rate);
+
+	if (!i3c_device_power) {
+		hci->master.bus.scl_rate.i3c = 1000000;
+		dev_info(&hci->master.dev, "Updated clock to 1Mhz");
+	}
+
+	dev_info(&hci->master.dev, "core rate = %ld core period = %ld ns",
+		 core_rate, core_period);
+
+	if (!of_property_read_u32(np, "i3c-pp-scl-hi-period-ns", &val))
+		pp_high = val;
+	if (!of_property_read_u32(np, "i3c-pp-scl-lo-period-ns", &val))
+		pp_low = val;
+	if (!of_property_read_u32(np, "i3c-od-scl-hi-period-ns", &val))
+		od_high = val;
+	if (!of_property_read_u32(np, "i3c-od-scl-lo-period-ns", &val))
+		od_low = val;
+	if (!of_property_read_u32(np, "sda-tx-hold-ns", &val))
+		thd_dat = val;
+	if (!of_property_read_u32(np, "internal-pullup", &val))
+		internal_pu = val;
+
+	if (pp_high && pp_low) {
+		hcnt = DIV_ROUND_CLOSEST(pp_high, core_period) - 1;
+		lcnt = DIV_ROUND_CLOSEST(pp_low, core_period) - 1;
+	} else if (hci->master.bus.mode == I3C_BUS_MODE_PURE) {
+		hcnt = (DIV_ROUND_UP(core_rate, hci->master.bus.scl_rate.i3c) >> 1) - 1;
+		lcnt = DIV_ROUND_UP(core_rate, hci->master.bus.scl_rate.i3c) - hcnt;
+	} else {
+		hcnt = DIV_ROUND_UP(I3C_BUS_THIGH_MIXED_MAX_NS, core_period) - 1;
+		lcnt = DIV_ROUND_UP(core_rate, hci->master.bus.scl_rate.i3c) - hcnt;
+	}
+	ctrl0 = FIELD_PREP(PHY_I3C_SDR0_CTRL0_SCL_H, hcnt) |
+		FIELD_PREP(PHY_I3C_SDR0_CTRL0_SCL_L, lcnt);
+	ast_phy_write(sdr_ctrl0_reg + PHY_I3C_CTRL0_OFFSET, ctrl0);
+	ast_phy_write(PHY_I3C_SDR0_CTRL0, ctrl0);
+	ast_phy_write(PHY_I3C_DDR_CTRL0, ctrl0);
+	ctrl1 = FIELD_PREP(PHY_I3C_SDR0_CTRL1_TBIT_H, hcnt) |
+		FIELD_PREP(PHY_I3C_SDR0_CTRL1_TBIT_L, lcnt);
+	ast_phy_write(sdr_ctrl0_reg + PHY_I3C_CTRL1_OFFSET, ctrl1);
+	ast_phy_write(PHY_I3C_SDR0_CTRL1, ctrl1);
+	ast_phy_write(PHY_I3C_DDR_CTRL1, ctrl1);
+
+	if (od_high && od_low) {
+		hcnt = DIV_ROUND_CLOSEST(od_high, core_period) - 1;
+		lcnt = DIV_ROUND_CLOSEST(od_low, core_period) - 1;
+	} else {
+		hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SCL_H_NS, core_period) - 1;
+		lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SCL_L_NS, core_period) - 1;
+	}
+	ast_phy_write(PHY_I3C_OD_CTRL1, FIELD_PREP(PHY_I3C_OD_CTRL1_SCL_H, hcnt) |
+				      FIELD_PREP(PHY_I3C_OD_CTRL1_SCL_L, lcnt));
+	ast_phy_write(PHY_I3C_OD_CTRL2, FIELD_PREP(PHY_I3C_OD_CTRL2_ACK_H, hcnt) |
+				      FIELD_PREP(PHY_I3C_OD_CTRL2_ACK_L, hcnt));
+
+	if (thd_dat) {
+		hcnt = DIV_ROUND_CLOSEST(thd_dat, core_period) - 1;
+		lcnt = hcnt;
+	} else {
+		hcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_HD_DAT, core_period) - 1;
+		lcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_AHD_DAT, core_period) - 1;
+	}
+	ctrl2 = FIELD_PREP(PHY_I3C_SDR0_CTRL2_HD_PP, hcnt) |
+		FIELD_PREP(PHY_I3C_SDR0_CTRL2_TBIT_HD_PP, lcnt);
+	ast_phy_write(sdr_ctrl0_reg + PHY_I3C_CTRL2_OFFSET, ctrl2);
+	ast_phy_write(PHY_I3C_SDR0_CTRL2, ctrl2);
+	ast_phy_write(PHY_I3C_DDR_CTRL2, ctrl2);
+
+	ast_phy_write(PHY_I3C_OD_CTRL3, FIELD_PREP(PHY_I3C_OD_CTRL3_HD_DAT, hcnt) |
+				      FIELD_PREP(PHY_I3C_OD_CTRL3_AHD_DAT, lcnt));
+
+	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_CAS_NS, core_period) - 1;
+	lcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_CBP_NS, core_period) - 1;
+	ast_phy_write(PHY_I3C_OD_CTRL0, FIELD_PREP(PHY_I3C_OD_CTRL0_CAS, hcnt) |
+				      FIELD_PREP(PHY_I3C_OD_CTRL0_CBP, lcnt));
+	if (internal_pu)
+		ast_phy_write(PHY_SW_FORCE_CTRL,
+			      PHY_SW_FORCE_CTRL_SCL_PU_EN |
+			      PHY_SW_FORCE_CTRL_SDA_PU_EN |
+			      FIELD_PREP(PHY_SW_FORCE_CTRL_SCL_PU_VAL, internal_pu) |
+			      FIELD_PREP(PHY_SW_FORCE_CTRL_SDA_PU_VAL, internal_pu));
+}
+#endif
+
 static inline struct i3c_hci *to_i3c_hci(struct i3c_master_controller *m)
 {
 	return container_of(m, struct i3c_hci, master);
@@ -143,6 +304,8 @@ static int i3c_hci_bus_init(struct i3c_master_controller *m)
 			  ASPEED_I3C_CTRL_INIT |
 				  FIELD_PREP(ASPEED_I3C_CTRL_INIT_MODE,
 					     INIT_MST_MODE));
+	aspeed_i3c_phy_init(hci);
+	aspeed_i3c_of_populate_bus_timing(hci, m->dev.of_node);
 #endif
 
 	if (hci->cmd == &mipi_i3c_hci_cmd_v1) {
@@ -189,6 +352,10 @@ static void i3c_hci_bus_cleanup(struct i3c_master_controller *m)
 
 	DBG("");
 
+#ifdef CONFIG_ARCH_ASPEED
+	if (hci->EXTCAPS_regs == hci->INHOUSE_regs)
+		ast_inhouse_write(ASPEED_I3C_CTRL, 0x2400);
+#endif
 	reg_clear(HC_CONTROL, HC_CONTROL_BUS_ENABLE);
 	synchronize_irq(platform_get_irq(pdev, 0));
 	hci->io->cleanup(hci);
@@ -297,6 +464,14 @@ static int i3c_hci_send_ccc_cmd(struct i3c_master_controller *m,
 	DBG("cmd=%#x rnw=%d dbp=%d db=%#x ndests=%d data[0].len=%d", ccc->id,
 	    ccc->rnw, ccc->dbp, ccc->db, ccc->ndests,
 	    ccc->dests[0].payload.len);
+
+#ifdef CONFIG_ARCH_ASPEED
+	if (!i3c_device_power) {
+		dev_info(&hci->master.dev,
+			 "User requested to skip CCC commands\n");
+		return 0;
+	}
+#endif
 
 	xfer = hci_alloc_xfer(nxfers);
 	if (!xfer)
@@ -1190,130 +1365,6 @@ static int i3c_hci_init(struct i3c_hci *hci)
 	return 0;
 }
 
-#ifdef CONFIG_ARCH_ASPEED
-static int aspeed_i3c_of_populate_bus_timing(struct i3c_hci *hci,
-					     struct device_node *np)
-{
-	u16 hcnt, lcnt;
-	unsigned long core_rate, core_period;
-
-	core_rate = clk_get_rate(hci->clk);
-	/* core_period is in nanosecond */
-	core_period = DIV_ROUND_UP(1000000000, core_rate);
-
-	dev_info(&hci->master.dev, "core rate = %ld core period = %ld ns",
-		 core_rate, core_period);
-
-	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_CAS_NS, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_SU_STO_NS, core_period) - 1;
-	ast_phy_write(PHY_I2C_FM_CTRL0,
-		      FIELD_PREP(PHY_I2C_FM_CTRL0_CAS, hcnt) |
-			      FIELD_PREP(PHY_I2C_FM_CTRL0_SU_STO, lcnt));
-
-	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_SCL_H_NS, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_SCL_L_NS, core_period) - 1;
-	ast_phy_write(PHY_I2C_FM_CTRL1,
-		      FIELD_PREP(PHY_I2C_FM_CTRL1_SCL_H, hcnt) |
-			      FIELD_PREP(PHY_I2C_FM_CTRL1_SCL_L, lcnt));
-	ast_phy_write(PHY_I2C_FM_CTRL2,
-		      FIELD_PREP(PHY_I2C_FM_CTRL2_ACK_H, hcnt) |
-			      FIELD_PREP(PHY_I2C_FM_CTRL2_ACK_L, hcnt));
-	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_HD_DAT, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_AHD_DAT, core_period) - 1;
-	ast_phy_write(PHY_I2C_FM_CTRL3,
-		      FIELD_PREP(PHY_I2C_FM_CTRL3_HD_DAT, hcnt) |
-			      FIELD_PREP(PHY_I2C_FM_CTRL3_AHD_DAT, lcnt));
-
-	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_CAS_NS, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SU_STO_NS, core_period) - 1;
-	ast_phy_write(PHY_I2C_FMP_CTRL0,
-		      FIELD_PREP(PHY_I2C_FMP_CTRL0_CAS, hcnt) |
-			      FIELD_PREP(PHY_I2C_FMP_CTRL0_SU_STO, lcnt));
-
-	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SCL_H_NS, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SCL_L_NS, core_period) - 1;
-	ast_phy_write(PHY_I2C_FMP_CTRL1,
-		      FIELD_PREP(PHY_I2C_FMP_CTRL1_SCL_H, hcnt) |
-			      FIELD_PREP(PHY_I2C_FMP_CTRL1_SCL_L, lcnt));
-	ast_phy_write(PHY_I2C_FMP_CTRL2,
-		      FIELD_PREP(PHY_I2C_FMP_CTRL2_ACK_H, hcnt) |
-			      FIELD_PREP(PHY_I2C_FMP_CTRL2_ACK_L, hcnt));
-	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_HD_DAT, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_AHD_DAT, core_period) - 1;
-	ast_phy_write(PHY_I2C_FMP_CTRL3,
-		      FIELD_PREP(PHY_I2C_FMP_CTRL3_HD_DAT, hcnt) |
-			      FIELD_PREP(PHY_I2C_FMP_CTRL3_AHD_DAT, lcnt));
-
-	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_CAS_NS, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_SU_STO_NS, core_period) - 1;
-	ast_phy_write(PHY_I3C_OD_CTRL0,
-		      FIELD_PREP(PHY_I3C_OD_CTRL0_CAS, hcnt) |
-			      FIELD_PREP(PHY_I3C_OD_CTRL0_SU_STO, lcnt));
-
-	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_SCL_H_NS, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_SCL_L_NS, core_period) - 1;
-	ast_phy_write(PHY_I3C_OD_CTRL1,
-		      FIELD_PREP(PHY_I3C_OD_CTRL1_SCL_H, hcnt) |
-			      FIELD_PREP(PHY_I3C_OD_CTRL1_SCL_L, lcnt));
-	ast_phy_write(PHY_I3C_OD_CTRL2,
-		      FIELD_PREP(PHY_I3C_OD_CTRL2_ACK_H, hcnt) |
-			      FIELD_PREP(PHY_I3C_OD_CTRL2_ACK_L, hcnt));
-	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_HD_DAT, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_AHD_DAT, core_period) - 1;
-	ast_phy_write(PHY_I3C_OD_CTRL3,
-		      FIELD_PREP(PHY_I3C_OD_CTRL3_HD_DAT, hcnt) |
-			      FIELD_PREP(PHY_I3C_OD_CTRL3_AHD_DAT, lcnt));
-
-	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_SDR0_DEFAULT_SCL_H_NS, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I3C_SDR0_DEFAULT_SCL_L_NS, core_period) - 1;
-	ast_phy_write(PHY_I3C_SDR0_CTRL0,
-		      FIELD_PREP(PHY_I3C_SDR0_CTRL0_SCL_H, hcnt) |
-			      FIELD_PREP(PHY_I3C_SDR0_CTRL0_SCL_L, lcnt));
-	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_SDR0_DEFAULT_TBIT_H_NS, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I3C_SDR0_DEFAULT_TBIT_L_NS, core_period) - 1;
-	ast_phy_write(PHY_I3C_SDR0_CTRL1,
-		      FIELD_PREP(PHY_I3C_SDR0_CTRL1_TBIT_H, hcnt) |
-			      FIELD_PREP(PHY_I3C_SDR0_CTRL1_TBIT_L, lcnt));
-	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_SDR0_DEFAULT_HD_PP_NS, core_period) -
-	       1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I3C_SDR0_DEFAULT_TBIT_HD_PP_NS,
-				 core_period) -
-	       1;
-	ast_phy_write(PHY_I3C_SDR0_CTRL2,
-		      FIELD_PREP(PHY_I3C_SDR0_CTRL2_HD_PP, hcnt) |
-			      FIELD_PREP(PHY_I3C_SDR0_CTRL2_TBIT_HD_PP, lcnt));
-
-	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_DDR_DEFAULT_SCL_H_NS, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I3C_DDR_DEFAULT_SCL_L_NS, core_period) - 1;
-	ast_phy_write(PHY_I3C_DDR_CTRL0,
-		      FIELD_PREP(PHY_I3C_DDR_CTRL0_SCL_H, hcnt) |
-			      FIELD_PREP(PHY_I3C_DDR_CTRL0_SCL_L, lcnt));
-	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_DDR_DEFAULT_TBIT_H_NS, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I3C_DDR_DEFAULT_TBIT_L_NS, core_period) - 1;
-	ast_phy_write(PHY_I3C_DDR_CTRL1,
-		      FIELD_PREP(PHY_I3C_DDR_CTRL1_TBIT_H, hcnt) |
-			      FIELD_PREP(PHY_I3C_DDR_CTRL1_TBIT_L, lcnt));
-	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_DDR_DEFAULT_HD_PP_NS, core_period) -
-	       1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I3C_DDR_DEFAULT_TBIT_HD_PP_NS,
-				 core_period) -
-	       1;
-	ast_phy_write(PHY_I3C_DDR_CTRL2,
-		      FIELD_PREP(PHY_I3C_DDR_CTRL2_HD_PP, hcnt) |
-			      FIELD_PREP(PHY_I3C_DDR_CTRL2_TBIT_HD_PP, lcnt));
-
-	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_SR_P_DEFAULT_HD_NS, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I3C_SR_P_DEFAULT_SCL_L_NS, core_period) - 1;
-	ast_phy_write(PHY_I3C_SR_P_PREPARE_CTRL,
-		      FIELD_PREP(PHY_I3C_SR_P_PREPARE_CTRL_HD, hcnt) |
-			      FIELD_PREP(PHY_I3C_SR_P_PREPARE_CTRL_SCL_L,
-					 lcnt));
-	ast_phy_write(PHY_PULLUP_EN, 0x0);
-
-	return 0;
-}
-#endif
-
 static void i3c_hci_hj_work(struct work_struct *work)
 {
 	struct i3c_hci *hci;
@@ -1345,7 +1396,6 @@ static int i3c_hci_probe(struct platform_device *pdev)
 			"missing or invalid reset controller device tree entry");
 		return PTR_ERR(hci->rst);
 	}
-	reset_control_assert(hci->rst);
 	reset_control_deassert(hci->rst);
 
 	hci->dma_rst = devm_reset_control_get_shared_by_index(&pdev->dev, 1);
@@ -1369,12 +1419,6 @@ static int i3c_hci_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-#ifdef CONFIG_ARCH_ASPEED
-	ret = aspeed_i3c_of_populate_bus_timing(hci, pdev->dev.of_node);
-	if (ret)
-		return ret;
-#endif
-
 	irq = platform_get_irq(pdev, 0);
 	ret = devm_request_irq(&pdev->dev, irq, i3c_aspeed_irq_handler,
 			       0, NULL, hci);
@@ -1396,7 +1440,7 @@ static void i3c_hci_remove(struct platform_device *pdev)
 {
 	struct i3c_hci *hci = platform_get_drvdata(pdev);
 
-	i3c_master_unregister(&hci->master);
+	i3c_unregister(&hci->master);
 }
 
 static const __maybe_unused struct of_device_id i3c_hci_of_match[] = {
