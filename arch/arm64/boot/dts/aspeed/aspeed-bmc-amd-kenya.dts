@@ -667,6 +667,12 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	status = "okay";
 };
 
+&uart9 {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+	status = "okay";
+};
+
 &uart13 {
 	/delete-property/ pinctrl-names;
 	/delete-property/ pinctrl-0;
@@ -682,7 +688,15 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	sirq-polarity = <0>;
 };
 
+&uphy2a {
+	status = "okay";
+};
+
 &uphy3a {
+	status = "okay";
+};
+
+&vhuba1 {
 	status = "okay";
 };
 
