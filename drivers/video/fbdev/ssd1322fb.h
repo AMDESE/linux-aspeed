@@ -48,6 +48,7 @@
 #include <linux/fb.h>
 #include <linux/module.h>
 #include <linux/delay.h>
+#include <linux/vmalloc.h>
 
 // return values
 #define SSD1322_SUCCESS 0
