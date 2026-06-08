@@ -128,15 +128,18 @@ static int ltpi_gpio_set_value(struct gpio_chip *gc, unsigned int offset,
 	return 0;
 }
 
-static void aspeed_ltpi_gpio_set(struct gpio_chip *gc, unsigned int offset,
+static int aspeed_ltpi_gpio_set(struct gpio_chip *gc, unsigned int offset,
 				 int val)
 {
 	struct aspeed_ltpi_gpio *gpio = gpiochip_get_data(gc);
 	unsigned long flags;
+	int rc;
 
 	raw_spin_lock_irqsave(&gpio->lock, flags);
-	ltpi_gpio_set_value(gc, offset, val);
+	rc = ltpi_gpio_set_value(gc, offset, val);
 	raw_spin_unlock_irqrestore(&gpio->lock, flags);
+
+	return rc;
 }
 
 static int aspeed_ltpi_gpio_dir_in(struct gpio_chip *gc, unsigned int offset)
