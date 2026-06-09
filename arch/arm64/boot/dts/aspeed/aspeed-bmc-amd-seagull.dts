@@ -293,7 +293,7 @@
 			};
 			p0vdd33s5run@08 {
 				//P0_VDD_33_S5_RUN
-				compatible = "pmbus";
+				compatible = "tdk,fs1604";
 				reg = <0x08>;
 			};
 			p0vdd18s5run@47 {
@@ -329,7 +329,7 @@
 			};
 			p5vs5@0B {
 				//P5V_S5 VRM
-				compatible = "pmbus";
+				compatible = "tdk,fs1006";
 				reg = <0x0B>;
 			};
 			p1v8aux@09 {
@@ -419,23 +419,23 @@
 			#size-cells = <0>;
 
 			p1core0run@40 {
-				//P0_VDD_CORE_0_RUN
+				//P1_VDD_CORE_0_RUN
 				compatible = "raa229639";
 				reg = <0x40>;
 			};
 			p1core1run@41 {
-				//P0_VDD_CORE_1_RUN
+				//P1_VDD_CORE_1_RUN
 				compatible = "raa229639";
 				reg = <0x41>;
 			};
 			p1vddvddiorun@42 {
-				//P0_VDD_VDDIO_RUN
+				//P1_VDD_VDDIO_RUN
 				compatible = "raa229641";
 				reg = <0x42>;
 			};
 			p1vdd33s5run@08 {
-				//P0_VDD_33_S5_RUN
-				compatible = "pmbus";
+				//P1_VDD_33_S5_RUN
+				compatible = "tdk,fs1604";
 				reg = <0x08>;
 			};
 			p1vdd18s5run@47 {
