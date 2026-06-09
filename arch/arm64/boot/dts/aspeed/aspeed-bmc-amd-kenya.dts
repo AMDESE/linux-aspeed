@@ -592,6 +592,17 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
                 output-high;
                 line-name = "SEL_P0_SEC_I2C_ROT_BMC";
         };
+
+	espi_default {
+		gpio-hog;
+		gpios = <10 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "espiboot_pin_default";
+	};
+};
+
+&sgpios {
+	status = "okay";
 };
 
 &ltpi0 {
@@ -664,6 +675,12 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 
 &lpc0_pcc {
 	pcc-ports = <0x80>;
+	status = "okay";
+};
+
+&uart3 {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
 	status = "okay";
 };
 

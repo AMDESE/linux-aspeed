@@ -820,6 +820,10 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
         };
 };
 
+&sgpios {
+	status = "okay";
+};
+
 &ltpi0 {
 	status = "okay";
 };
