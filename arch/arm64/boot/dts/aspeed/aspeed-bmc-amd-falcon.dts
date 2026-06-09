@@ -326,7 +326,7 @@
 				// 0B in EVT2
 				// P5V_S5
 				// TDK:FS1006
-				compatible = "pmbus";
+				compatible = "tdk,fs1006";
 				reg = <0x0B>;
 			};
 			p1v8_aux@9{
