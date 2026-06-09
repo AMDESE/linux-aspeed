@@ -48,6 +48,13 @@
 			reusable;
 		};
 	};
+
+	aliases {
+		i2c104 = &fan_pdb;
+		i2c200 = &picpwr_fan_0;
+		i2c203 = &churro_fans_0_0;
+		i2c204 = &churro_fans_0_1;
+	};
 };
 
 &mdio0 {
@@ -216,6 +223,95 @@
 	hpmeeprom@50 {
 		compatible = "microchip,24lc256", "atmel,24c256";
 		reg = <0x50>;
+	};
+
+	i2cswitch@70 {
+		compatible = "nxp,pca9548";
+		reg = <0x70>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		fan_pdb: i2c@6 {
+			reg = <6>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			i2cswitch@71 {
+				compatible = "nxp,pca9546";
+				reg = <0x71>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				picpwr_fan_0: i2c@0 {
+					reg = <0>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+					i2cswitch@76 {
+						compatible = "nxp,pca9546";
+						reg = <0x76>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+
+						churro_fans_0_0: i2c@0 {
+							reg = <0>;
+							#address-cells = <1>;
+							#size-cells = <0>;
+
+							emc2305@4d {
+								compatible = "smsc,emc2305";
+								reg = <0x4d>;
+								#cooling-cells = <0x02>;
+
+								fan@0 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+								fan@1 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+								fan@2 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+								fan@3 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+								fan@4 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+							};
+						};
+
+						churro_fans_0_1: i2c@1 {
+							reg = <1>;
+							#address-cells = <1>;
+							#size-cells = <0>;
+
+							emc2305@4d {
+								compatible = "smsc,emc2305";
+								reg = <0x4d>;
+								#cooling-cells = <0x02>;
+
+								fan@0 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+								fan@1 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+								fan@2 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+							};
+						};
+					};
+				};
+			};
+		};
 	};
 };
 
