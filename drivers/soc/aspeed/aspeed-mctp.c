@@ -18,6 +18,7 @@
 #include <linux/mutex.h>
 #include <linux/netdevice.h>
 #include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/pci.h>
 #include <linux/poll.h>
 #include <linux/ptr_ring.h>
@@ -2700,7 +2701,7 @@ static int aspeed_mctp_register_netdev(struct aspeed_mctp *priv, int id)
 	dev->priv = priv;
 	spin_lock_init(&priv->netdev_lock);
 
-	rc = mctp_register_netdev(ndev, NULL);
+	rc = mctp_register_netdev(ndev, NULL, MCTP_PHYS_BINDING_PCIE_VDM);
 
 	if (rc < 0) {
 		dev_err(priv->dev, "%s:%d register netdev %s failed %d\n",
@@ -2850,7 +2851,7 @@ out:
 	return ret;
 }
 
-static int aspeed_mctp_remove(struct platform_device *pdev)
+static void aspeed_mctp_remove(struct platform_device *pdev)
 {
 	struct aspeed_mctp *priv = platform_get_drvdata(pdev);
 
@@ -2867,8 +2868,6 @@ static int aspeed_mctp_remove(struct platform_device *pdev)
 	aspeed_mctp_dma_fini(priv);
 
 	aspeed_mctp_drv_fini(priv);
-
-	return 0;
 }
 
 static const struct aspeed_mctp_match_data ast2500_mctp_match_data = {
