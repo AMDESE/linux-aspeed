@@ -74,4 +74,5 @@ lan966x-pci-objs		+= lan966x_pci.dtbo.o
 obj-$(CONFIG_MCHP_LAN966X_PCI)	+= lan966x-pci.o
 obj-y				+= keba/
 obj-y				+= amd-sbi/
+obj-$(or $(CONFIG_APML_SBRMI),$(CONFIG_APML_SBTSI))	+= amd-apml/
 obj-$(CONFIG_MISC_RP1)		+= rp1/

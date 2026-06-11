@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# AMD APML BMC interface drivers
+#
+
+config APML_COMMON
+    tristate "AMD APML common device registration framework"
+    default n
+    help
+      Enable support for the AMD APML (Advanced Platform Management Link)
+      common device registration framework. This module provides a centralized
+      registry where APML devices (SBRMI and SBTSI) can register themselves
+      for discovery by other APML subsystems.
+
+      This framework enables the Alert_L driver to safely discover and access
+      registered APML devices for alert processing across multiple sockets.
+
+config APML_SBRMI
+    tristate "Emulated SB-RMI interface driver over i3c bus"
+    depends on I3C && !SENSORS_SBRMI
+    depends on APML_COMMON
+    select REGMAP_I3C if I3C
+    help
+      If you say yes here you get support for emulated RMI
+      interface on AMD SoCs with APML interface connected to a BMC device.
+
+      This driver can also be built as a module. If so, the module will
+      be called apml_sbrmi.
+
+config APML_SBTSI
+    tristate "Emulated SB-TSI interface driver over i3c bus"
+    depends on I3C && !SENSORS_SBTSI
+    depends on APML_COMMON
+    select REGMAP_I3C if I3C
+    help
+      If you say yes here you get support for emulated TSI
+      interface on AMD SoCs with APML interface connected to a BMC device.
+
+      This driver can also be built as a module. If so, the module will
+      be called apml_sbtsi.
+
+config APML_ALERTL
+    tristate "Emulated apml alertl interface driver over i3c bus"
+    depends on (APML_SBRMI || APML_SBTSI) && APML_COMMON
+    default n
+    help
+      This driver provides support for AMD APML Alert_L interface,
+      enabling alert notification from AMD SoCs to a BMC (Baseboard
+      Management Controller) over I2C/I3C bus.
+
+      The driver monitors RAS and thermal events by handling alerts
+      from SBRMI and SBTSI devices, and reports these events to userspace
+      via uevents. Device configuration is managed via device tree bindings.
+
+      This driver can also be built as a module. If so, the module will
+      be called apml_alertl.ko.
