@@ -20,7 +20,8 @@
 #include <net/sock.h>
 
 struct mctp_dump_cb {
-	unsigned long ifindex;
+	int h;
+	int idx;
 	size_t a_idx;
 };
 
@@ -114,10 +115,12 @@ static int mctp_dump_addrinfo(struct sk_buff *skb, struct netlink_callback *cb)
 {
 	struct mctp_dump_cb *mcb = (void *)cb->ctx;
 	struct net *net = sock_net(skb->sk);
+	struct hlist_head *head;
 	struct net_device *dev;
 	struct ifaddrmsg *hdr;
 	struct mctp_dev *mdev;
 	int ifindex = 0, rc;
+	int idx = 0;
 
 	/* Filter by ifindex if a header is provided */
 	hdr = nlmsg_payload(cb->nlh, sizeof(*hdr));
@@ -130,20 +133,38 @@ static int mctp_dump_addrinfo(struct sk_buff *skb, struct netlink_callback *cb)
 		}
 	}
 
+	/* Walk the netdev index hash directly (rather than
+	 * for_each_netdev_dump()) so that a buffer-full mid-dump is resumed
+	 * from the exact device/address index. This avoids the I3C receive
+	 * loop seen when the dump restarts on partial fills.
+	 */
 	rcu_read_lock();
-	for_each_netdev_dump(net, dev, mcb->ifindex) {
-		if (ifindex && ifindex != dev->ifindex)
-			continue;
-		mdev = __mctp_dev_get(dev);
-		if (!mdev)
-			continue;
-		rc = mctp_dump_dev_addrinfo(mdev, skb, cb);
-		mctp_dev_put(mdev);
-		if (rc < 0)
-			break;
-		mcb->a_idx = 0;
+	for (; mcb->h < NETDEV_HASHENTRIES; mcb->h++, mcb->idx = 0) {
+		idx = 0;
+		head = &net->dev_index_head[mcb->h];
+		hlist_for_each_entry_rcu(dev, head, index_hlist) {
+			if (idx >= mcb->idx &&
+			    (ifindex == 0 || ifindex == dev->ifindex)) {
+				mdev = __mctp_dev_get(dev);
+				if (mdev) {
+					rc = mctp_dump_dev_addrinfo(mdev,
+								    skb, cb);
+					mctp_dev_put(mdev);
+					/* Error indicates a full buffer; this
+					 * callback will get retried.
+					 */
+					if (rc < 0)
+						goto out;
+				}
+			}
+			idx++;
+			/* reset for next iteration */
+			mcb->a_idx = 0;
+		}
 	}
+out:
 	rcu_read_unlock();
+	mcb->idx = idx;
 
 	return skb->len;
 }
