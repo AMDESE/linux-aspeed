@@ -430,6 +430,11 @@ void mipi_i3c_hci_pio_reset(struct i3c_hci *hci)
 		  RX_FIFO_RST | TX_FIFO_RST | RESP_QUEUE_RST | CMD_QUEUE_RST);
 }
 
+void mipi_i3c_hci_pio_ibi_reset(struct i3c_hci *hci)
+{
+	reg_write(RESET_CONTROL, IBI_QUEUE_RST);
+}
+
 /* located here rather than dct.c because needed bits are in core reg space */
 void mipi_i3c_hci_dct_index_reset(struct i3c_hci *hci)
 {
