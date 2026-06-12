@@ -1540,6 +1540,27 @@ out:
 	return ret;
 }
 
+static void i3c_master_attach_boardinfo(struct i3c_dev_desc *i3cdev)
+{
+	struct i3c_master_controller *master = i3cdev->common.master;
+	struct i3c_dev_boardinfo *i3cboardinfo;
+	bool attach = false;
+
+	list_for_each_entry(i3cboardinfo, &master->boardinfo.i3c, node) {
+		if ((I3C_PID_MANUF_ID(i3cdev->info.pid) == 0x0 &&
+			i3cdev->info.pid == I3C_PID_RND_VAL(i3cboardinfo->pid)) ||
+			(i3cdev->info.pid == i3cboardinfo->pid)) {
+			attach = true;
+			break;
+		}
+	}
+
+	if (attach) {
+		i3cdev->boardinfo = i3cboardinfo;
+		i3cdev->info.static_addr = i3cboardinfo->static_addr;
+	}
+}
+
 static int i3c_master_retrieve_dev_info(struct i3c_dev_desc *dev)
 {
 	struct i3c_master_controller *master = i3c_dev_get_master(dev);
@@ -1567,6 +1588,8 @@ static int i3c_master_retrieve_dev_info(struct i3c_dev_desc *dev)
 	if (ret)
 		return ret;
 
+	i3c_master_attach_boardinfo(dev);
+
 	if (dev->info.bcr & I3C_BCR_MAX_DATA_SPEED_LIM) {
 		ret = i3c_master_getmxds_locked(master, &dev->info);
 		if (ret)
@@ -1588,6 +1611,33 @@ static int i3c_master_retrieve_dev_info(struct i3c_dev_desc *dev)
 		i3c_master_setmrl_locked(master, &dev->info, 128, 128);
 		i3c_master_setmwl_locked(master, &dev->info, 128);
 	}
+
+	if (dev->boardinfo && dev->boardinfo->mrl) {
+		/*
+		 * Broadcast DISEC issued in the beginning of the DAA process
+		 * failed leaving the SIR bit in the target devices set. This is
+		 * making the target devices ready to send the IBI as and when
+		 * the required conditions are met.
+		 *
+		 * MPIO triggers an IBI to send the MCTP discovery notify message
+		 * soon after it receives the SETMRL command.  An IBI for this target
+		 * is not expected until the BMC clears the REG_TARGET_IBI_REJECT bit
+		 * in the DAT for this device. If an IBI is received, without this bit
+		 * getting cleared, the Controller (in hardware) will send DISEC CCC
+		 * to the target asking it to disable the event generation.
+		 *
+		 * ENEC CCC is sent when the MCTP/I3C binding driver is probed/attached.
+		 * That time REG_TARGET_IBI_REJECT is cleared in the DAT table, and
+		 * ENEC CCC to the device is sent. From this point onwards, MPIO FW
+		 * can start sending the IBI.
+		 */
+		i3c_master_disec_locked(master, dev->info.dyn_addr, 1);
+		i3c_master_setmrl_locked(master, &dev->info,
+				dev->boardinfo->mrl, dev->info.max_ibi_len);
+	}
+
+	if (dev->boardinfo && dev->boardinfo->mwl)
+		i3c_master_setmwl_locked(master, &dev->info, dev->boardinfo->mwl);
 
 	i3c_master_getmrl_locked(master, &dev->info);
 	i3c_master_getmwl_locked(master, &dev->info);
@@ -2309,21 +2359,6 @@ static void i3c_master_bus_cleanup(struct i3c_master_controller *master)
 	i3c_master_detach_free_devs(master);
 }
 
-static void i3c_master_attach_boardinfo(struct i3c_dev_desc *i3cdev)
-{
-	struct i3c_master_controller *master = i3cdev->common.master;
-	struct i3c_dev_boardinfo *i3cboardinfo;
-
-	list_for_each_entry(i3cboardinfo, &master->boardinfo.i3c, node) {
-		if (i3cdev->info.pid != i3cboardinfo->pid)
-			continue;
-
-		i3cdev->boardinfo = i3cboardinfo;
-		i3cdev->info.static_addr = i3cboardinfo->static_addr;
-		return;
-	}
-}
-
 static struct i3c_dev_desc *
 i3c_master_search_i3c_dev_duplicate(struct i3c_dev_desc *refdev)
 {
@@ -2378,8 +2413,6 @@ int i3c_master_add_i3c_dev_locked(struct i3c_master_controller *master,
 	ret = i3c_master_retrieve_dev_info(newdev);
 	if (ret)
 		goto err_detach_dev;
-
-	i3c_master_attach_boardinfo(newdev);
 
 	olddev = i3c_master_search_i3c_dev_duplicate(newdev);
 	if (olddev) {
@@ -2552,6 +2585,8 @@ of_i3c_master_add_i3c_boardinfo(struct i3c_master_controller *master,
 	u32 init_dyn_addr = 0;
 	u8 bcr = 0;
 	u8 dcr = 0;
+	u32 mrl = 0;
+	u32 mwl = 0;
 
 	boardinfo = devm_kzalloc(dev, sizeof(*boardinfo), GFP_KERNEL);
 	if (!boardinfo)
@@ -2594,6 +2629,12 @@ of_i3c_master_add_i3c_boardinfo(struct i3c_master_controller *master,
 
 	if (!of_property_read_u8(node, "bcr", &bcr))
 		boardinfo->bcr = bcr;
+
+	if (!of_property_read_u32(node, "mrl", &mrl))
+		boardinfo->mrl = (u16)mrl;
+
+	if (!of_property_read_u32(node, "mwl", &mwl))
+		boardinfo->mwl = (u16)mwl;
 
 	boardinfo->init_dyn_addr = init_dyn_addr;
 	boardinfo->of_node = of_node_get(node);
