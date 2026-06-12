@@ -180,8 +180,6 @@ static irqreturn_t aspeed_pcc_dma_isr(int irq, void *arg)
 	struct kfifo *fifo = &pcc->fifo;
 
 	spin_lock(&pcc->lock);
-	regmap_write_bits(pcc->regmap, PCCR2, PCCR2_INT_STATUS_DMA_DONE, PCCR2_INT_STATUS_DMA_DONE);
-
 	regmap_read(pcc->regmap, PCCR6, &reg);
 	wptr = (reg & PCCR6_DMA_CUR_ADDR) - (pcc->dma.addr & PCCR6_DMA_CUR_ADDR);
 	rptr = pcc->dma.rptr;
@@ -198,6 +196,8 @@ static irqreturn_t aspeed_pcc_dma_isr(int irq, void *arg)
 	}
 
 	pcc->dma.rptr = wptr;
+
+	regmap_write_bits(pcc->regmap, PCCR2, PCCR2_INT_STATUS_DMA_DONE, PCCR2_INT_STATUS_DMA_DONE);
 	spin_unlock(&pcc->lock);
 
 	wake_up_interruptible(&pcc->wq);
