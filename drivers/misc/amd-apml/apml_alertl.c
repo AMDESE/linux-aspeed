@@ -45,18 +45,31 @@ static int send_uevent(u8 address, u8 bus_num, u32 alert_src,
 		       u64 pid, struct device *dev)
 {
 	char *alert_source[NUM_ENVP];
+	int ret = 0;
+	int i;
 
-	alert_source[ENVP_SRC_INDX] = devm_kasprintf(dev, GFP_KERNEL, "SOURCE=0x%08x", alert_src);
-	alert_source[ENVP_BUS_NUM_INDX] = devm_kasprintf(dev, GFP_KERNEL, "BUS_NUM=%u", bus_num);
-	alert_source[ENVP_PID_INDX] = devm_kasprintf(dev, GFP_KERNEL, "PID=0x%016llx", pid);
-	alert_source[ENVP_ADDR_INDX] = devm_kasprintf(dev, GFP_KERNEL, "ADDRESS=0x%02x", address);
+	alert_source[ENVP_SRC_INDX] = kasprintf(GFP_KERNEL, "SOURCE=0x%08x", alert_src);
+	alert_source[ENVP_BUS_NUM_INDX] = kasprintf(GFP_KERNEL, "BUS_NUM=%u", bus_num);
+	alert_source[ENVP_PID_INDX] = kasprintf(GFP_KERNEL, "PID=0x%016llx", pid);
+	alert_source[ENVP_ADDR_INDX] = kasprintf(GFP_KERNEL, "ADDRESS=0x%02x", address);
 	alert_source[NUM_ENVP - 1] = NULL;
+
+	for (i = 0; i < NUM_ENVP - 1; i++) {
+		if (!alert_source[i]) {
+			ret = -ENOMEM;
+			goto out_free;
+		}
+	}
 
 	dev_dbg(dev, "Sending uevent: Addr:0x%x Src:0x%08x\n bus:%d pid: 0x%llx\n",
 		 address, alert_src, bus_num, pid);
 	kobject_uevent_env(&dev->kobj, KOBJ_CHANGE, alert_source);
 
-	return 0;
+out_free:
+	for (i = 0; i < NUM_ENVP - 1; i++)
+		kfree(alert_source[i]);
+
+	return ret;
 }
 
 static int handle_rmi_device_alert(struct apml_device_node *device_node, struct device *dev)
