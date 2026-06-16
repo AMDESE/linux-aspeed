@@ -827,6 +827,16 @@
 	mctp-controller;
 };
 
+/ {
+	/* Alert_L associated with socket 0 */
+	alertl_sock0 {
+		compatible = "apml-alertl";
+		status = "okay";
+		socket-num = /bits/ 8 <0>;
+		gpios = <&ltpi0_gpio 20 GPIO_ACTIVE_LOW>;
+	};
+};
+
 #ifdef I3C_HUB
 
 #define JESD300_SPD_I3C_MODE(bus, index, addr) \
