@@ -285,6 +285,7 @@
 	i2cswitch@70 {
 		compatible = "nxp,pca9548";
 		reg = <0x70>;
+		i2c-mux-idle-disconnect;
 		#address-cells = <1>;
 		#size-cells = <0>;
 
