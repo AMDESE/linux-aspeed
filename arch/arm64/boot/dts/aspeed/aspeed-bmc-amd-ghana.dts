@@ -287,6 +287,30 @@
 		compatible = "microchip,24lc256","atmel,24c256";
 		reg = <0x50>;
 	};
+
+	i2cswitch@71 {
+		compatible = "nxp,pca9548";
+		reg = <0x71>;
+		i2c-mux-idle-disconnect;
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+
+	i2cswitch@72 {
+		compatible = "nxp,pca9546";
+		reg = <0x72>;
+		i2c-mux-idle-disconnect;
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+
+	i2cswitch@74 {
+		compatible = "nxp,pca9546";
+		reg = <0x74>;
+		i2c-mux-idle-disconnect;
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
 };
 
 &i2c9 {
