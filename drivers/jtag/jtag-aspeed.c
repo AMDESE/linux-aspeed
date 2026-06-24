@@ -543,14 +543,20 @@ static int aspeed_jtag_isr_wait(struct aspeed_jtag *aspeed_jtag, u32 bit)
 
 static int aspeed_jtag_wait_shift_complete(struct aspeed_jtag *aspeed_jtag)
 {
+	long Lres = 0;
 	int res = 0;
 	u32 status = 0;
 	u32 iterations = 0;
 
 	if (!aspeed_jtag->irq) {
-		res = wait_event_interruptible(aspeed_jtag->jtag_wq,
-					       aspeed_jtag->flag &
-						       ASPEED_JTAG_INTCTRL_SHCPL_IRQ_STAT);
+		Lres = wait_event_interruptible_timeout(aspeed_jtag->jtag_wq,
+						aspeed_jtag->flag &
+						ASPEED_JTAG_INTCTRL_SHCPL_IRQ_STAT,
+						(long)msecs_to_jiffies(1000));
+		if (Lres == 0) {
+			dev_err(aspeed_jtag->dev,
+				"aspeed_jtag_wait_shift_complete: timeout after 1 sec \n");
+		}
 		aspeed_jtag->flag &= ~ASPEED_JTAG_INTCTRL_SHCPL_IRQ_STAT;
 	} else {
 		while ((status & ASPEED_JTAG_INTCTRL_SHCPL_IRQ_STAT) == 0) {
