@@ -186,7 +186,7 @@ store_pwm(struct device *dev, struct device_attribute *attr,
 	nct7362_write_value(client, NCT7362_REG_PWM(index), tmpVal & 0xFF);
 
 	//add for setting GPIOx H->L when set pwm in the first time
-	if(data->bmc_set_pwm == 0)
+	if(data->bmc_set_pwm == 0 && data->fan_sel_gpio < 18)
 	{
 		u8 reg_value=0;
 		u8 gpio = (u8)data->fan_sel_gpio;
@@ -370,6 +370,21 @@ static void nct7362_init_client(struct i2c_client *client,u32 gpio)
 		nct7362_write_value(client, NCT7362_REG_GPIO_10_13_CONFIG, 0xA9);
 		nct7362_write_value(client, NCT7362_REG_GPIO_14_17_CONFIG, 0x6A);
 	}
+	else if(gpio == 0xFF)
+	{
+		// Pump controller default (fan_sel_gpio omitted in DTS):
+		// PWM0 (PUMP1/P0) + PWM3 (PUMP2/P1); tach on GPIO01,02,04,05; rest GPIO
+		// 2-bit pin encoding: 00=GPIO, 01=PWM output, 10=FANIN
+		nct7362_write_value(client, NCT7362_REG_WDT_CONFIG, 0x00);
+		nct7362_write_value(client, NCT7362_REG_PWM_CTRL1,   0x09); // PWM0 (bit0) + PWM3 (bit3)
+		nct7362_write_value(client, NCT7362_REG_PWM_CTRL2,   0x00); // no PWM8/PWM15
+		nct7362_write_value(client, NCT7362_REG_FANIN_CTRL1, 0x00); // GPIO08-15 unconnected, keep as GPIO
+		nct7362_write_value(client, NCT7362_REG_FANIN_CTRL2, 0x36); // FANIN9(GPIO01),10(GPIO02),12(GPIO04),13(GPIO05)
+		nct7362_write_value(client, NCT7362_REG_GPIO_00_03_CONFIG, 0x69); // [01][10][10][01] PWM,FANIN,FANIN,PWM
+		nct7362_write_value(client, NCT7362_REG_GPIO_04_07_CONFIG, 0x0A); // [00][00][10][10] GPIO,GPIO,FANIN,FANIN
+		nct7362_write_value(client, NCT7362_REG_GPIO_10_13_CONFIG, 0x00); // all GPIO (unconnected)
+		nct7362_write_value(client, NCT7362_REG_GPIO_14_17_CONFIG, 0x00); // all GPIO (unconnected)
+	}
 }
 
 static int __init nct7362d_find(int addr, struct i2c_client *client, struct i2c_board_info *info)
@@ -434,6 +449,11 @@ static int nct736x_init(struct i2c_client *client,u32 gpio)
 		// Set Default PWM8, PWM15 to 50%
 		nct7362_write_value(client, NCT7362_REG_PWM(8), NCT7362_REG_PWM_DEFAULT_VALUE);
 		nct7362_write_value(client, NCT7362_REG_PWM(15), NCT7362_REG_PWM_DEFAULT_VALUE);
+	}
+	if (gpio==0xFF)
+	{
+		// Set Default PWM3 to 50% (PUMP2/P1 node)
+		nct7362_write_value(client, NCT7362_REG_PWM(3), NCT7362_REG_PWM_DEFAULT_VALUE);
 	}
 	return 0;
 }

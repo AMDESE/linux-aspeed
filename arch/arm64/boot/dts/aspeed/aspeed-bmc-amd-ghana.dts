@@ -436,7 +436,7 @@
 			nct7363@20 {
 				compatible = "nct,nct7363";
 				reg = <0x20>;
-				fan_sel_gpio = <3>;
+				fan_sel_gpio = <255>; /* pump profile: PWM0=PUMP1/P0, PWM3=PUMP2/P1, tach on GPIO01/02/04/05 */
 			};
 		};
 	};
