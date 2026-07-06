@@ -257,70 +257,82 @@
 };
 
 &i2c12 {
-	// Net name i2c2 (SCM_I2C_SDA<2>) - FAN/LM75/ADC
+    // Net name i2c2 (SCM_I2C_SDA<2>) //fan
 	status = "okay";
 	clock-frequency = <400000>;
 
 	i2cswitch@70 {
-		compatible = "nxp,pca9548";
+		compatible = "nxp,pca9546";
 		reg = <0x70>;
 		#address-cells = <1>;
 		#size-cells = <0>;
-		i2c-mux-idle-disconnect;
 
-		P0_conn_012_cpu: i2c@0 {
-			reg = <0>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		P0_conn_345_cpu: i2c@1 {
-			reg = <1>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		P0_conn_012_mgmt: i2c@2 {
-			reg = <2>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		P0_conn_345_mgmt: i2c@3 {
-			reg = <3>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		fan_pdb: i2c@4 {
-			reg = <4>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-			i2cswitch@71 {
+		fan_pdb: i2c@6 {
+			reg = <6>;
+			i2cswitch@75 {
 				compatible = "nxp,pca9546";
-				reg = <0x71>;
-				#address-cells = <1>;
-				#size-cells = <0>;
+				reg = <0x75>;
 
 				picpwr_fan_0: i2c@0 {
 					reg = <0>;
-					#address-cells = <1>;
-					#size-cells = <0>;
+
+					emc2305@4d {
+						compatible = "smsc,emc2305";
+						reg = <0x4d>;
+
+						fan@0 {
+							min-rpm = /bits/ 16 <1000>;
+							max-rpm = /bits/ 16 <16000>;
+						};
+
+						fan@1 {
+							min-rpm = /bits/ 16 <1000>;
+							max-rpm = /bits/ 16 <16000>;
+						};
+
+						fan@2 {
+							min-rpm = /bits/ 16 <1000>;
+							max-rpm = /bits/ 16 <16000>;
+						};
+
+						fan@3 {
+							min-rpm = /bits/ 16 <1000>;
+							max-rpm = /bits/ 16 <16000>;
+						};
+
+						fan@4 {
+							min-rpm = /bits/ 16 <1000>;
+							max-rpm = /bits/ 16 <16000>;
+						};
+					};
+				};
+
+				picpwr_fan_1: i2c@1 {
+					reg = <1>;
+
+					emc2305@4d {
+						compatible = "smsc,emc2305";
+						reg = <0x4d>;
+
+						fan@1 {
+							min-rpm = /bits/ 16 <1000>;
+							max-rpm = /bits/ 16 <16000>;
+						};
+					};
+				};
+
+				churro_fan_1: i2c@2 {
+					reg = <2>;
 					i2cswitch@76 {
 						compatible = "nxp,pca9546";
 						reg = <0x76>;
-						#address-cells = <1>;
-						#size-cells = <0>;
 
 						churro_fans_0_0: i2c@0 {
 							reg = <0>;
-							#address-cells = <1>;
-							#size-cells = <0>;
 
 							emc2305@4d {
 								compatible = "smsc,emc2305";
 								reg = <0x4d>;
-								#cooling-cells = <0x02>;
 
 								fan@0 {
 									min-rpm = /bits/ 16 <1000>;
@@ -335,6 +347,10 @@
 									max-rpm = /bits/ 16 <16000>;
 								};
 								fan@3 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+								fan@4 {
 									min-rpm = /bits/ 16 <1000>;
 									max-rpm = /bits/ 16 <16000>;
 								};
@@ -343,13 +359,10 @@
 
 						churro_fans_0_1: i2c@1 {
 							reg = <1>;
-							#address-cells = <1>;
-							#size-cells = <0>;
 
 							emc2305@4d {
 								compatible = "smsc,emc2305";
 								reg = <0x4d>;
-								#cooling-cells = <0x02>;
 
 								fan@0 {
 									min-rpm = /bits/ 16 <1000>;
@@ -363,63 +376,11 @@
 									min-rpm = /bits/ 16 <1000>;
 									max-rpm = /bits/ 16 <16000>;
 								};
-								fan@3 {
-									min-rpm = /bits/ 16 <1000>;
-									max-rpm = /bits/ 16 <16000>;
-								};
 							};
-						};
-
-						churro_id: i2c@2 {
-							reg = <2>;
-							#address-cells = <1>;
-							#size-cells = <0>;
-						};
-
-						churro_mcu: i2c@3 {
-							reg = <3>;
-							#address-cells = <1>;
-							#size-cells = <0>;
 						};
 					};
 				};
-
-				picpwr_fan_1: i2c@1 {
-					reg = <1>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-				};
-
-				picpwr_pdb: i2c@2 {
-					reg = <2>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-				};
-
-				NC_7: i2c@3 {
-					reg = <3>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-				};
 			};
-		};
-
-		P0_pcp: i2c@5 {
-			reg = <5>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_5: i2c@6 {
-			reg = <6>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		NC_6: i2c@7 {
-			reg = <7>;
-			#address-cells = <1>;
-			#size-cells = <0>;
 		};
 	};
 };
