@@ -1219,6 +1219,20 @@ static int hidg_bind(struct usb_configuration *c, struct usb_function *f)
 	hidg_hs_out_ep_desc.wMaxPacketSize = cpu_to_le16(hidg->report_length);
 	hidg_fs_out_ep_desc.wMaxPacketSize = cpu_to_le16(hidg->report_length);
 	/*
+	 * Override the endpoint polling interval when the user configured one
+	 * via configfs ("interval"). When unset, keep the descriptor defaults.
+	 * A larger interval reduces host interrupt-endpoint polling, which
+	 * lets the PCIe/xHCI path idle (improves host DF C-state residency).
+	 */
+	if (hidg->interval_user_set) {
+		hidg_ss_in_ep_desc.bInterval = hidg->interval;
+		hidg_hs_in_ep_desc.bInterval = hidg->interval;
+		hidg_fs_in_ep_desc.bInterval = hidg->interval;
+		hidg_ss_out_ep_desc.bInterval = hidg->interval;
+		hidg_hs_out_ep_desc.bInterval = hidg->interval;
+		hidg_fs_out_ep_desc.bInterval = hidg->interval;
+	}
+	/*
 	 * We can use hidg_desc struct here but we should not relay
 	 * that its content won't change after returning from this function.
 	 */
@@ -1386,6 +1400,46 @@ F_HID_OPT(protocol, 8, 255);
 F_HID_OPT(no_out_endpoint, 8, 1);
 F_HID_OPT(report_length, 16, 65535);
 
+static ssize_t f_hid_opts_interval_show(struct config_item *item, char *page)
+{
+	struct f_hid_opts *opts = to_f_hid_opts(item);
+	int result;
+
+	mutex_lock(&opts->lock);
+	result = sprintf(page, "%d\n", opts->interval);
+	mutex_unlock(&opts->lock);
+
+	return result;
+}
+
+static ssize_t f_hid_opts_interval_store(struct config_item *item,
+					 const char *page, size_t len)
+{
+	struct f_hid_opts *opts = to_f_hid_opts(item);
+	int ret;
+	u8 num;
+
+	mutex_lock(&opts->lock);
+	if (opts->refcnt) {
+		ret = -EBUSY;
+		goto end;
+	}
+
+	ret = kstrtou8(page, 0, &num);
+	if (ret)
+		goto end;
+
+	opts->interval = num;
+	opts->interval_user_set = true;
+	ret = len;
+
+end:
+	mutex_unlock(&opts->lock);
+	return ret;
+}
+
+CONFIGFS_ATTR(f_hid_opts_, interval);
+
 static ssize_t f_hid_opts_report_desc_show(struct config_item *item, char *page)
 {
 	struct f_hid_opts *opts = to_f_hid_opts(item);
@@ -1545,6 +1599,10 @@ static struct usb_function_instance *hidg_alloc_inst(void)
 
 	opts->func_inst.free_func_inst = hidg_free_inst;
 	ret = &opts->func_inst;
+
+	/* Default matches the legacy hard-coded HS/SS bInterval (4). */
+	opts->interval = 4;
+	opts->interval_user_set = false;
 
 	mutex_lock(&hidg_ida_lock);
 
