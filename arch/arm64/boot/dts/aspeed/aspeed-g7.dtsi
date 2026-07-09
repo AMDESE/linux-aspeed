@@ -1518,6 +1518,7 @@
 			#size-cells = <1>;
 			#clock-cells = <1>;
 			#reset-cells = <1>;
+			uart-clk-source = <0xfff>; /* bit[x]: 0 uxclk, 1 huxclk */
 
 			assigned-clocks = <&syscon1 SCU1_CLK_MACHCLK>,
 					  <&syscon1 SCU1_CLK_RGMII>,
