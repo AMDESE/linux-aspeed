@@ -1441,6 +1441,7 @@
 			#size-cells = <2>;
 			#clock-cells = <1>;
 			#reset-cells = <1>;
+			uart-clk-source = <0xff0>; /* bit[x]: 0 uxclk, 1 huxclk */
 
 			scu_ic2: interrupt-controller@100 {
 				#interrupt-cells = <1>;
