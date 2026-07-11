@@ -568,38 +568,6 @@
 		socket-num = /bits/ 8 <1>;
 		gpios = <&ltpi0_gpio 104 GPIO_ACTIVE_LOW>;
 	};
-
-	/* RMI SP8 2P */
-	sbrmi_p1_sp8: sbrmi@0,2240100111A {
-		reg = <0x0 0x224 0x0100111A>;
-		assigned-address = <0x38>;
-	};
-
-	/* SCOOB SP8 2P */
-	scoob_2p_p1_sp8: scoob@0,2240100211A {
-		reg = <0x0 0x224 0x0100211A>;
-		mrl = <69>;
-		mwl = <69>;
-	};
-
-	/* TSI SP8 2x1P */
-	sbtsi_2x1p_p1_sp8: sbtsi@0,2240000011A {
-		reg = <0x0 0x224 0x0000011A>;
-		assigned-address = <0x48>;
-	};
-
-	/* RMI SP8 2x1P */
-	sbrmi_2x1p_p1_sp8: sbrmi@0,2240000111A {
-		reg = <0x0 0x224 0x0000111A>;
-		assigned-address = <0x38>;
-	};
-
-	/* SCOOB SP8 2x1P */
-	scoob_2x1p_p1_sp8: scoob@0,2240000211A {
-		reg = <0x0 0x224 0x0000211A>;
-		mrl = <69>;
-		mwl = <69>;
-	};
 };
 
 #define JESD300_SPD_I3C_MODE(bus, index, addr) \
