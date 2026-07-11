@@ -800,24 +800,6 @@
 	i3c-scl-hz = <12500000>;
 	i2c-scl-hz = <1000000>;
 	mctp-controller;
-};
-
-/ {
-	/* Alert_L associated with socket 0 */
-	alertl_sock0 {
-		compatible = "apml-alertl";
-		status = "okay";
-		socket-num = /bits/ 8 <0>;
-		gpios = <&ltpi0_gpio 20 GPIO_ACTIVE_LOW>;
-	};
-
-	/* Alert_L associated with socket 1 */
-	alertl_sock1 {
-		compatible = "apml-alertl";
-		status = "okay";
-		socket-num = /bits/ 8 <1>;
-		gpios = <&ltpi0_gpio 104 GPIO_ACTIVE_LOW>;
-	};
 
 	/* TSI SP8 2P */
 	sbtsi_p1_sp8: sbtsi@0,2240100011A {
@@ -856,6 +838,24 @@
 		reg = <0x0 0x224 0x0000211A>;
 		mrl = <69>;
 		mwl = <69>;
+	};
+};
+
+/ {
+	/* Alert_L associated with socket 0 */
+	alertl_sock0 {
+		compatible = "apml-alertl";
+		status = "okay";
+		socket-num = /bits/ 8 <0>;
+		gpios = <&ltpi0_gpio 20 GPIO_ACTIVE_LOW>;
+	};
+
+	/* Alert_L associated with socket 1 */
+	alertl_sock1 {
+		compatible = "apml-alertl";
+		status = "okay";
+		socket-num = /bits/ 8 <1>;
+		gpios = <&ltpi0_gpio 104 GPIO_ACTIVE_LOW>;
 	};
 };
 
