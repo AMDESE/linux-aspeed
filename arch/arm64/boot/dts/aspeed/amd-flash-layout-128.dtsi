@@ -19,12 +19,12 @@ partitions {
 	};
 
 	kernel@420000 {
-		reg = <0x420000 0x900000>; // 9MB
+		reg = <0x420000 0x1000000>; // 16MB
 		label = "kernel";
 	};
 
-	rofs@d20000 {
-		reg = <0xd20000 0x52E0000>; // 82.875MB
+	rofs@1420000 {
+		reg = <0x1420000 0x4BE0000>; // 75.875MB
 		label = "rofs";
 	};
 
