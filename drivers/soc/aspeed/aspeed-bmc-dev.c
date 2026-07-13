@@ -175,8 +175,9 @@ static ssize_t aspeed_ast2600_queue_rx(struct file *filp, struct kobject *kobj,
 	int ret;
 
 	ret = wait_event_interruptible(queue->rx_wait,
+				       ((readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS) & HOST2BMC_ENABLE_INTB) &&
 				       !(readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS) &
-				       ((index == QUEUE1) ? HOST2BMC_Q1_EMPTY : HOST2BMC_Q2_EMPTY)));
+				       ((index == QUEUE1) ? HOST2BMC_Q1_EMPTY : HOST2BMC_Q2_EMPTY))));
 	if (ret)
 		return -EINTR;
 
@@ -185,7 +186,7 @@ static ssize_t aspeed_ast2600_queue_rx(struct file *filp, struct kobject *kobj,
 
 	regmap_read(bmc_device->scu, ASPEED_SCU04, &scu_id);
 	if (scu_id == AST2600A3_SCU04) {
-		writel(BMC2HOST_INT_STS_DOORBELL | BMC2HOST_ENABLE_INTB,
+		writel(BMC2HOST_INT_STS_DOORBELL,
 		       bmc_device->reg_base + ASPEED_BMC_BMC2HOST_STS);
 	} else {
 		//A0 : BIT(12) A1 : BIT(15)
@@ -247,15 +248,16 @@ static ssize_t aspeed_ast2700_queue_rx(struct file *filp, struct kobject *kobj,
 	int ret;
 
 	ret = wait_event_interruptible(queue->rx_wait,
+				       ((readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS) & HOST2BMC_ENABLE_INTB) &&
 				       !(readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS) &
-				       ((index == QUEUE1) ? HOST2BMC_Q1_EMPTY : HOST2BMC_Q2_EMPTY)));
+				       ((index == QUEUE1) ? HOST2BMC_Q1_EMPTY : HOST2BMC_Q2_EMPTY))));
 	if (ret)
 		return -EINTR;
 
 	data[0] = readl(bmc_device->reg_base +
 			((index == QUEUE1) ? ASPEED_BMC_HOST2BMC_Q1 : ASPEED_BMC_HOST2BMC_Q2));
 
-	writel(BMC2HOST_INT_STS_DOORBELL | BMC2HOST_ENABLE_INTB,
+	writel(BMC2HOST_INT_STS_DOORBELL,
 	       bmc_device->reg_base + ASPEED_BMC_BMC2HOST_STS);
 
 	return sizeof(u32);
@@ -313,7 +315,13 @@ static irqreturn_t aspeed_bmc_dev_isr(int irq, void *dev_id)
 		writel(HOST2BMC_INT_STS_DOORBELL, bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS);
 
 	if (host2bmc_q_sts & HOST2BMC_ENABLE_INTB)
+	{
 		writel(HOST2BMC_ENABLE_INTB, bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS);
+		if (!(host2bmc_q_sts & HOST2BMC_Q1_EMPTY))
+			wake_up_interruptible(&bmc_device->queue[QUEUE1].rx_wait);
+		if (!(host2bmc_q_sts & HOST2BMC_Q2_EMPTY))
+			wake_up_interruptible(&bmc_device->queue[QUEUE2].rx_wait);
+	}
 
 	if (host2bmc_q_sts & HOST2BMC_Q1_FULL)
 		dev_info(bmc_device->dev, "Q1 Full\n");
@@ -324,14 +332,8 @@ static irqreturn_t aspeed_bmc_dev_isr(int irq, void *dev_id)
 	if (!(readl(bmc_device->reg_base + ASPEED_BMC_BMC2HOST_STS) & BMC2HOST_Q1_FULL))
 		wake_up_interruptible(&bmc_device->queue[QUEUE1].tx_wait);
 
-	if (!(readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS) & HOST2BMC_Q1_EMPTY))
-		wake_up_interruptible(&bmc_device->queue[QUEUE1].rx_wait);
-
 	if (!(readl(bmc_device->reg_base + ASPEED_BMC_BMC2HOST_STS) & BMC2HOST_Q2_FULL))
 		wake_up_interruptible(&bmc_device->queue[QUEUE2].tx_wait);
-
-	if (!(readl(bmc_device->reg_base + ASPEED_BMC_HOST2BMC_STS) & HOST2BMC_Q2_EMPTY))
-		wake_up_interruptible(&bmc_device->queue[QUEUE2].rx_wait);
 
 	return IRQ_HANDLED;
 }
