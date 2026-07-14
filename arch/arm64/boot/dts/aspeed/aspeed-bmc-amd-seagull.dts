@@ -348,7 +348,7 @@
 			};
 			p0vdd33s5run@08 {
 				//P0_VDD_33_S5_RUN
-				compatible = "tdk,fs1604";
+				compatible = "tdk,fs1006";
 				reg = <0x08>;
 			};
 			p0vdd18s5run@47 {
@@ -490,7 +490,7 @@
 			};
 			p1vdd33s5run@08 {
 				//P1_VDD_33_S5_RUN
-				compatible = "tdk,fs1604";
+				compatible = "tdk,fs1006";
 				reg = <0x08>;
 			};
 			p1vdd18s5run@47 {
