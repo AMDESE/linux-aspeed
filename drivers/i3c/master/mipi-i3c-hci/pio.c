@@ -1023,18 +1023,25 @@ static bool hci_pio_prep_new_ibi(struct i3c_hci *hci, struct hci_pio_data *pio)
 	DBG("status = %#x", ibi_status);
 	ibi_addr = FIELD_GET(IBI_TARGET_ADDR, ibi_status);
 	ibi_rnw = FIELD_GET(IBI_TARGET_RNW, ibi_status);
+	/*
+	 * 0x00 is a reserved I3C address and can never be an assigned
+	 * dynamic address; a status entry decoding to addr 0 is a spurious
+	 * descriptor, not a real IBI/HJ/CR. Drop it before classification.
+	 */
+	if (ibi_addr == 0)
+		return false;
 	if (IBI_TYPE_HJ(ibi_addr, ibi_rnw)) {
 		queue_work(hci->master.wq, &hci->hj_work);
 		return false;
 	} else if (IBI_TYPE_CR(ibi_addr, ibi_rnw)) {
-		dev_info(&hci->master.dev,
-			 "get control role requeset from %02lx\n",
+		dev_info_ratelimited(&hci->master.dev,
+			 "get control role requeset from %#lx\n",
 			 FIELD_GET(IBI_TARGET_ADDR, ibi_status));
 		return false;
 	} else {
 		ibi->addr = FIELD_GET(IBI_TARGET_ADDR, ibi_status);
 		if (ibi_status & IBI_ERROR) {
-			dev_err(&hci->master.dev, "IBI error from %#x\n", ibi->addr);
+			dev_err_ratelimited(&hci->master.dev, "IBI error from %#x\n", ibi->addr);
 			return false;
 		}
 	}
@@ -1045,7 +1052,7 @@ static bool hci_pio_prep_new_ibi(struct i3c_hci *hci, struct hci_pio_data *pio)
 
 	dev = i3c_hci_addr_to_dev(hci, ibi->addr);
 	if (!dev) {
-		dev_err(&hci->master.dev,
+		dev_err_ratelimited(&hci->master.dev,
 			"IBI for unknown device %#x\n", ibi->addr);
 		return true;
 	}
@@ -1055,14 +1062,14 @@ static bool hci_pio_prep_new_ibi(struct i3c_hci *hci, struct hci_pio_data *pio)
 	ibi->max_len = dev_ibi->max_len;
 
 	if (ibi->seg_len > ibi->max_len) {
-		dev_err(&hci->master.dev, "IBI payload too big (%d > %d)\n",
+		dev_err_ratelimited(&hci->master.dev, "IBI payload too big (%d > %d)\n",
 			ibi->seg_len, ibi->max_len);
 		return true;
 	}
 
 	ibi->slot = i3c_generic_ibi_get_free_slot(dev_ibi->pool);
 	if (!ibi->slot) {
-		dev_err(&hci->master.dev, "no free slot for IBI\n");
+		dev_err_ratelimited(&hci->master.dev, "no free slot for IBI\n");
 	} else {
 		ibi->slot->len = 0;
 		ibi->data_ptr = ibi->slot->data;
