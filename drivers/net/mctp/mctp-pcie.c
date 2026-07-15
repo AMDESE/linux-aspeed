@@ -118,8 +118,8 @@ static int mctp_netdev_header_create(struct sk_buff *skb, struct net_device *dev
 	hdr->code = 0x7F;
 
 	/*
-	 * set the target as Bridge bdf 0/0/0.
-	 * Bridge can route the MCTP requests based on the MCTP EID mapping
+	 * Set the target to MPIO Virtual Bridge with fixed BDF 0/0/0.
+	 * Bridge can route MCTP requests based on MCTP EID mapping.
 	 */
 	memset(hdr->target, 0, sizeof(hdr->target));
 
