@@ -809,16 +809,25 @@ static void hci_dma_process_ibi(struct i3c_hci *hci, struct hci_rh_data *rh)
 	deq_ptr %= rh->ibi_status_entries;
 	if (!hci->master.target) {
 		if (ibi_status_error) {
-			dev_err(&hci->master.dev, "IBI error from %#x\n",
+			dev_err_ratelimited(&hci->master.dev, "IBI error from %#x\n",
 				ibi_addr);
 			goto done;
 		}
+		/*
+		 * 0x00 is a reserved I3C address and can never be an assigned
+		 * dynamic address, so a status entry decoding to addr 0 is a
+		 * spurious/empty descriptor, not a real IBI/HJ/CR. Drop it
+		 * before classificatio so it cannot be misread as a CR (or
+		 * fall through to the "unknown device" path).
+		 */
+		if (ibi_addr == 0)
+			goto done;
 		if (IBI_TYPE_HJ(ibi_addr, ibi_rnw)) {
 			queue_work(hci->master.wq, &hci->hj_work);
 			goto done;
 		} else if (IBI_TYPE_CR(ibi_addr, ibi_rnw)) {
-			dev_info(&hci->master.dev,
-				 "get control role requeset from %02x\n",
+			dev_info_ratelimited(&hci->master.dev,
+				 "get control role requeset from %#x\n",
 				 ibi_addr);
 			goto done;
 		}
@@ -826,7 +835,7 @@ static void hci_dma_process_ibi(struct i3c_hci *hci, struct hci_rh_data *rh)
 		/* determine who this is for */
 		dev = i3c_hci_addr_to_dev(hci, ibi_addr);
 		if (!dev || dev == hci->master.this) {
-			dev_err(&hci->master.dev,
+			dev_err_ratelimited(&hci->master.dev,
 				"IBI for unknown device %#x\n", ibi_addr);
 			goto done;
 		}
@@ -840,7 +849,7 @@ static void hci_dma_process_ibi(struct i3c_hci *hci, struct hci_rh_data *rh)
 			goto done;
 		}
 		if (ibi_size > dev_ibi->max_len) {
-			dev_err(&hci->master.dev,
+			dev_err_ratelimited(&hci->master.dev,
 				"IBI payload too big (%d > %d)\n", ibi_size,
 				dev_ibi->max_len);
 			goto done;
@@ -858,7 +867,7 @@ static void hci_dma_process_ibi(struct i3c_hci *hci, struct hci_rh_data *rh)
 		 */
 		slot = i3c_generic_ibi_get_free_slot(dev_ibi->pool);
 		if (!slot) {
-			dev_err(&hci->master.dev, "no free slot for IBI\n");
+			dev_err_ratelimited(&hci->master.dev, "no free slot for IBI\n");
 			goto done;
 		}
 	}
