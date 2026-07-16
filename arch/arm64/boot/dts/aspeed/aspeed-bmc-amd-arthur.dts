@@ -50,12 +50,16 @@
 	};
 
 	aliases {
-		i2c100 = &arthur_local_fans_0;
-		i2c101 = &arthur_local_fans_1;
-		i2c102 = &arthur_fan_board_ch2;
-		i2c103 = &arthur_fan_board_ch3;
-		i2c104 = &arthur_fan_board_ch2;
-		i2c105 = &arthur_fan_board_ch3;
+		/* SCM_I2C<2> top-level mux@70 channels */
+		i2c100 = &P0_conn_012_cpu;
+		i2c101 = &P0_conn_345_cpu;
+		i2c102 = &P0_conn_012_mgmt;
+		i2c103 = &P0_conn_345_mgmt;
+		i2c104 = &fan_pdb;
+		i2c105 = &P0_pcp;
+		i2c106 = &NC_ch4;
+		i2c107 = &NC_6;
+		/* SCM_I2C<2> fan path under fan_pdb */
 		i2c200 = &arthur_local_fans_0;
 		i2c201 = &arthur_local_fans_1;
 		i2c202 = &arthur_fan_board_ch2;
@@ -66,6 +70,19 @@
 		i2c207 = &arthur_2u_ctrl1;
 		i2c208 = &churro_fans_1_0;
 		i2c209 = &churro_fans_1_1;
+		/* SCM_I2C<0> mux channels */
+		i2c116 = &P0_id;
+		i2c117 = &P0_clk;
+		i2c118 = &P0_vr;
+		i2c119 = &NC_1;
+		i2c120 = &brd_vr;
+		i2c121 = &temp;
+		i2c122 = &NC_fan0;
+		i2c123 = &NC_fan1;
+		i2c124 = &therm;
+		i2c125 = &adc_pdb;
+		i2c126 = &NC_2;
+		i2c127 = &adc_brd;
 	};
 };
 
@@ -235,12 +252,231 @@
 };
 
 &i2c8 {
+	// Net name SCM_I2C<0>
 	status = "okay";
 	clock-frequency = <400000>;
 
 	hpmeeprom@50 {
 		compatible = "microchip,24lc256", "atmel,24c256";
 		reg = <0x50>;
+	};
+
+	i2cswitch@70 {
+		compatible = "nxp,pca9546";
+		reg = <0x70>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
+
+		P0_id: i2c@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			p0brdid@53 {
+				compatible = "microchip,24lc256", "atmel,24c256";
+				reg = <0x53>;
+			};
+		};
+
+		P0_clk: i2c@1 {
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			clkgen@09 {
+				compatible = "renesas,rc21008";
+				reg = <0x09>;
+			};
+			clkmux_p1p2@6c {
+				compatible = "renesas,rc19208";
+				reg = <0x6c>;
+			};
+			clkmux_p0p4@6d {
+				compatible = "renesas,rc19208";
+				reg = <0x6d>;
+			};
+			clkmux_g1g2p5@6f {
+				compatible = "renesas,rc19208";
+				reg = <0x6f>;
+			};
+		};
+
+		P0_vr: i2c@2 {
+			reg = <2>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			vddcore0@40 {
+				// MAX20916 P0_VDD_CORE_0_RUN / P0_VDD_MEM_RUN
+				compatible = "pmbus";
+				reg = <0x40>;
+			};
+			vddcore1@41 {
+				// MAX20916 P0_VDD_CORE_1_RUN / P0_VDD_SOC_RUN
+				compatible = "pmbus";
+				reg = <0x41>;
+			};
+			vddvddio@42 {
+				// MAX20908 P0_VDD_VDDIO_RUN
+				compatible = "pmbus";
+				reg = <0x42>;
+			};
+			vddio05mem0@43 {
+				// MPQ82D00 P0_VDD_VDDIO_05_MEM0_RUN
+				compatible = "pmbus";
+				reg = <0x43>;
+			};
+			vddio05mem1@44 {
+				// MPQ82D00 P0_VDD_VDDIO_05_MEM1_RUN
+				compatible = "pmbus";
+				reg = <0x44>;
+			};
+			vdd33s5@46 {
+				// MPQ82D00 P0_VDD_33_S5_RUN
+				compatible = "pmbus";
+				reg = <0x46>;
+			};
+			vdd18s5@47 {
+				// TDA38740 P0_VDD_18_S5_RUN
+				compatible = "pmbus";
+				reg = <0x47>;
+			};
+		};
+
+		NC_1: i2c@3 {
+			reg = <3>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+	};
+
+	i2cswitch@71 {
+		compatible = "nxp,pca9548";
+		reg = <0x71>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
+
+		brd_vr: i2c@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			vdd5dual@45 {
+				// MPQ82D00 VDD_5_DUAL
+				compatible = "pmbus";
+				reg = <0x45>;
+			};
+			socamm_n@48 {
+				compatible = "pmbus";
+				reg = <0x48>;
+			};
+			socamm_e@49 {
+				compatible = "pmbus";
+				reg = <0x49>;
+			};
+			socamm_w@4a {
+				compatible = "pmbus";
+				reg = <0x4a>;
+			};
+			socamm_s@4b {
+				compatible = "pmbus";
+				reg = <0x4b>;
+			};
+			vdd33dual@4c {
+				// TDA38740 VDD_33_DUAL
+				compatible = "pmbus";
+				reg = <0x4c>;
+			};
+		};
+
+		temp: i2c@1 {
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			lm75@48 {
+				compatible = "national,lm75";
+				reg = <0x48>;
+			};
+			lm75@49 {
+				compatible = "national,lm75";
+				reg = <0x49>;
+			};
+			lm75@4a {
+				compatible = "national,lm75";
+				reg = <0x4a>;
+			};
+			lm75@4b {
+				compatible = "national,lm75";
+				reg = <0x4b>;
+			};
+			lm75@4c {
+				compatible = "national,lm75";
+				reg = <0x4c>;
+			};
+		};
+
+		NC_fan0: i2c@2 {
+			reg = <2>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			/* Arthur: fans moved to SCM_I2C<2> */
+		};
+
+		NC_fan1: i2c@3 {
+			reg = <3>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		therm: i2c@4 {
+			reg = <4>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			emc1438@4e {
+				compatible = "smsc,emc1403";
+				reg = <0x4e>;
+			};
+			emc1438@4f {
+				compatible = "smsc,emc1403";
+				reg = <0x4f>;
+			};
+		};
+
+		adc_pdb: i2c@5 {
+			reg = <5>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			pdb_vmon@54 {
+				compatible = "ti,adc121";
+				reg = <0x54>;
+			};
+			pdb_imon@55 {
+				compatible = "ti,adc121";
+				reg = <0x55>;
+			};
+		};
+
+		NC_2: i2c@6 {
+			reg = <6>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		adc_brd: i2c@7 {
+			reg = <7>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			brd_adc@48 {
+				compatible = "ti,tla2024";
+				reg = <0x48>;
+			};
+		};
 	};
 };
 
@@ -272,7 +508,43 @@
 		#size-cells = <0>;
 		i2c-mux-idle-disconnect;
 
-		i2c@6 {
+		P0_conn_012_cpu: i2c@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		P0_conn_345_cpu: i2c@1 {
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		P0_conn_012_mgmt: i2c@2 {
+			reg = <2>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		P0_conn_345_mgmt: i2c@3 {
+			reg = <3>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		NC_ch4: i2c@4 {
+			reg = <4>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		P0_pcp: i2c@5 {
+			reg = <5>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		fan_pdb: i2c@6 {
 			reg = <6>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -538,6 +810,12 @@
 			};
 				};
 			};
+		};
+
+		NC_6: i2c@7 {
+			reg = <7>;
+			#address-cells = <1>;
+			#size-cells = <0>;
 		};
 	};
 };
