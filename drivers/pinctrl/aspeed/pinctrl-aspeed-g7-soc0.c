@@ -19,6 +19,8 @@
 #include "pinctrl-aspeed.h"
 #include "../pinctrl-utils.h"
 
+#define SCU200 0x200 /* System Reset Control #1  */
+
 #define SCU400 0x400 /* Multi-function Pin Control #1  */
 #define SCU404 0x404 /* Multi-function Pin Control #2  */
 #define SCU408 0x408 /* Multi-function Pin Control #3  */
@@ -26,14 +28,18 @@
 #define SCU410 0x410 /* USB Multi-function Control Register  */
 #define SCU414 0x414 /* VGA Function Control Register  */
 
-#define SCU480 0x480 /* GPIO18D0 IO Control Register */
-#define SCU484 0x484 /* GPIO18D1 IO Control Register */
-#define SCU488 0x488 /* GPIO18D2 IO Control Register */
-#define SCU48C 0x48c /* GPIO18D3 IO Control Register */
-#define SCU490 0x490 /* GPIO18D4 IO Control Register */
-#define SCU494 0x494 /* GPIO18D5 IO Control Register */
-#define SCU498 0x498 /* GPIO18D6 IO Control Register */
-#define SCU49C 0x49c /* GPIO18D7 IO Control Register */
+#define SCU480 0x480 /* GPIO18A0 IO Control Register */
+#define SCU484 0x484 /* GPIO18A1 IO Control Register */
+#define SCU488 0x488 /* GPIO18A2 IO Control Register */
+#define SCU48C 0x48c /* GPIO18A3 IO Control Register */
+#define SCU490 0x490 /* GPIO18A4 IO Control Register */
+#define SCU494 0x494 /* GPIO18A5 IO Control Register */
+#define SCU498 0x498 /* GPIO18A6 IO Control Register */
+#define SCU49C 0x49c /* GPIO18A7 IO Control Register */
+#define SCU4A0 0x4A0 /* GPIO18B0 IO Control Register */
+#define SCU4A4 0x4A4 /* GPIO18B1 IO Control Register */
+#define SCU4A8 0x4A8 /* GPIO18B2 IO Control Register */
+#define SCU4AC 0x4AC /* GPIO18B3 IO Control Register */
 
 enum {
 	AC14,
@@ -63,6 +69,8 @@ enum {
 	PORTB_U2_PHY,
 	PORTB_U3_PHY,
 	JTAG_PORT,
+	PCIERC0_PERST,
+	PCIERC1_PERST,
 };
 
 GROUP_DECL(EMMCG1, AC14, AE15, AD14);
@@ -132,6 +140,9 @@ GROUP_DECL(USB3B, JTAG_PORT);
 GROUP_DECL(PCIEA, JTAG_PORT);
 GROUP_DECL(PCIEB, JTAG_PORT);
 GROUP_DECL(JTAGM0, JTAG_PORT);
+//PCIE RC PERST
+GROUP_DECL(PCIERC0PERST, PCIERC0_PERST);
+GROUP_DECL(PCIERC1PERST, PCIERC1_PERST);
 
 static struct aspeed_pin_group aspeed_g7_soc0_pingroups[] = {
 	ASPEED_PINCTRL_GROUP(EMMCG1),
@@ -185,6 +196,8 @@ static struct aspeed_pin_group aspeed_g7_soc0_pingroups[] = {
 	ASPEED_PINCTRL_GROUP(PCIEA),
 	ASPEED_PINCTRL_GROUP(PCIEB),
 	ASPEED_PINCTRL_GROUP(JTAGM0),
+	ASPEED_PINCTRL_GROUP(PCIERC0PERST),
+	ASPEED_PINCTRL_GROUP(PCIERC1PERST),
 };
 
 FUNC_DECL_(EMMC, "EMMCG1", "EMMCG4", "EMMCG8", "EMMCWPN", "EMMCCDN");
@@ -202,6 +215,7 @@ FUNC_DECL_(USB2B, "USB2BXHD1", "USB2BXHPD1", "USB2BXH", "USB2BXHP", "USB2BXH2A",
 	   "USB2BD0");
 FUNC_DECL_(JTAG0, "PSP", "SSP", "TSP", "DDR", "USB3A", "USB3B",
 	   "PCIEA", "PCIEB", "JTAGM0");
+FUNC_DECL_(PCIERC, "PCIERC0PERST", "PCIERC1PERST");
 
 static struct aspeed_pin_function aspeed_g7_soc0_funcs[] = {
 	ASPEED_PINCTRL_FUNC(EMMC),
@@ -212,6 +226,7 @@ static struct aspeed_pin_function aspeed_g7_soc0_funcs[] = {
 	ASPEED_PINCTRL_FUNC(USB3B),
 	ASPEED_PINCTRL_FUNC(USB2B),
 	ASPEED_PINCTRL_FUNC(JTAG0),
+	ASPEED_PINCTRL_FUNC(PCIERC),
 };
 
 static const struct pinctrl_pin_desc aspeed_g7_soc0_pins[] = {
@@ -242,6 +257,8 @@ static const struct pinctrl_pin_desc aspeed_g7_soc0_pins[] = {
 	PINCTRL_PIN(PORTB_U3_PHY, "PORTB_U3_PHY"),
 	PINCTRL_PIN(PORTB_U2_PHY, "PORTB_U2_PHY"),
 	PINCTRL_PIN(JTAG_PORT, "JTAG_PORT"),
+	PINCTRL_PIN(PCIERC0_PERST, "PCIERC0_PERST"),
+	PINCTRL_PIN(PCIERC1_PERST, "PCIERC1_PERST"),
 };
 
 FUNCFG_DESCL(AC14, PIN_CFG(EMMCG1, SCU400, BIT_MASK(0), BIT(0)),
@@ -346,6 +363,8 @@ FUNCFG_DESCL(JTAG_PORT, PIN_CFG(PSP, SCU408, GENMASK(12, 5), 0x0 << 5),
 	     PIN_CFG(PCIEA, SCU408, GENMASK(12, 5), 0x46 << 5),
 	     PIN_CFG(PCIEB, SCU408, GENMASK(12, 5), 0x47 << 5),
 	     PIN_CFG(JTAGM0, SCU408, GENMASK(12, 5), 0x8 << 5));
+FUNCFG_DESCL(PCIERC0_PERST, PIN_CFG(PCIERC0PERST, SCU200, BIT_MASK(21), 1 << 21));
+FUNCFG_DESCL(PCIERC1_PERST, PIN_CFG(PCIERC1PERST, SCU200, BIT_MASK(19), 1 << 19));
 
 static const struct aspeed_g7_pincfg pin_cfg[] = {
 	PINCFG_PIN(AC14),	   PINCFG_PIN(AE15),
@@ -361,7 +380,8 @@ static const struct aspeed_g7_pincfg pin_cfg[] = {
 	PINCFG_PIN(PORTA_MODE),	   PINCFG_PIN(PORTB_MODE),
 	PINCFG_PIN(PORTA_U3_PHY),  PINCFG_PIN(PORTA_U2_PHY),
 	PINCFG_PIN(PORTB_U3_PHY),  PINCFG_PIN(PORTB_U2_PHY),
-	PINCFG_PIN(JTAG_PORT),
+	PINCFG_PIN(JTAG_PORT),     PINCFG_PIN(PCIERC0_PERST),
+	PINCFG_PIN(PCIERC1_PERST),
 };
 
 static const struct pinctrl_ops aspeed_g7_soc0_pinctrl_ops = {
@@ -401,6 +421,43 @@ static struct pinctrl_desc aspeed_g7_soc0_pinctrl_desc = {
 	.owner = THIS_MODULE,
 };
 
+static struct aspeed_pin_config aspeed_g7_configs[] = {
+	/* GPIO18A */
+	{ PIN_CONFIG_DRIVE_STRENGTH, { AC14, AC14 }, SCU480, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, { AE15, AE15 }, SCU484, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, { AD14, AD14 }, SCU488, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, { AE14, AE14 }, SCU48C, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, { AF14, AF14 }, SCU490, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, { AB13, AB13 }, SCU494, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, { AB14, AB14 }, SCU498, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, { AF15, AF15 }, SCU49C, GENMASK(3, 0) },
+	/* GPIO18B */
+	{ PIN_CONFIG_DRIVE_STRENGTH, { AF13, AF13 }, SCU4A0, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, { AC13, AC13 }, SCU4A4, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, { AD13, AD13 }, SCU4A8, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, { AE13, AE13 }, SCU4AC, GENMASK(3, 0) },
+};
+
+static const struct aspeed_pin_config_map aspeed_g7_pin_config_map[] = {
+	{ PIN_CONFIG_DRIVE_STRENGTH, 0, 0, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 1, 1, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 2, 2, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 3, 3, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 4, 4, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 5, 5, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 6, 6, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 7, 7, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 8, 8, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 9, 9, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 10, 10, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 11, 11, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 12, 12, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 13, 13, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 14, 14, GENMASK(3, 0) },
+	{ PIN_CONFIG_DRIVE_STRENGTH, 15, 15, GENMASK(3, 0) },
+
+};
+
 static struct aspeed_pinctrl_data aspeed_g7_pinctrl_data = {
 	.pins = aspeed_g7_soc0_pins,
 	.npins = ARRAY_SIZE(aspeed_g7_soc0_pins),
@@ -412,6 +469,10 @@ static struct aspeed_pinctrl_data aspeed_g7_pinctrl_data = {
 		.configs_g7 = pin_cfg,
 		.nconfigs_g7 = ARRAY_SIZE(pin_cfg),
 	},
+	.configs = aspeed_g7_configs,
+	.nconfigs = ARRAY_SIZE(aspeed_g7_configs),
+	.confmaps = aspeed_g7_pin_config_map,
+	.nconfmaps = ARRAY_SIZE(aspeed_g7_pin_config_map),
 };
 
 static int aspeed_g7_soc0_pinctrl_probe(struct platform_device *pdev)
