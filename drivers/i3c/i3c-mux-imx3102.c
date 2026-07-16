@@ -51,8 +51,8 @@ struct imx3102 {
 };
 
 static ssize_t i3c_mux_imx3102_query(struct file *filp, struct kobject *kobj,
-				     const struct bin_attribute *attr, char *buf,
-				     loff_t pos, size_t count)
+				     const struct bin_attribute *attr,
+				     char *buf, loff_t pos, size_t count)
 {
 	struct imx3102 *imx3102;
 	struct device *dev;
@@ -108,8 +108,8 @@ out:
 
 static ssize_t i3c_mux_imx3102_bus_reinit(struct file *filp,
 					  struct kobject *kobj,
-					  const struct bin_attribute *attr, char *buf,
-					  loff_t pos, size_t count)
+					  const struct bin_attribute *attr,
+					  char *buf, loff_t pos, size_t count)
 {
 	struct imx3102 *imx3102;
 	int ret;

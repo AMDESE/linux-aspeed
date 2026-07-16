@@ -274,14 +274,13 @@ static int hci_extcap_vendor_specific(struct i3c_hci *hci, void __iomem *base,
 
 int i3c_hci_parse_ext_caps(struct i3c_hci *hci)
 {
+	u32 offset;
+
 	void __iomem *curr_cap = hci->EXTCAPS_regs;
 	void __iomem *end = curr_cap + 0x1000; /* some arbitrary limit */
 	u32 cap_header, cap_id, cap_length;
 	const struct hci_ext_caps *cap_entry;
 	int i, err = 0;
-#ifdef CONFIG_ARCH_ASPEED
-	u32 offset;
-#endif
 
 	if (!curr_cap)
 		return 0;
@@ -294,12 +293,16 @@ int i3c_hci_parse_ext_caps(struct i3c_hci *hci)
 			cap_id, cap_length);
 		if (!cap_id || !cap_length)
 			break;
-#ifdef CONFIG_ARCH_ASPEED
 		/*
-		 * AST2700 A0: EXTCAP offset points at in-house registers; first
-		 * dword reads as cap_id=0 cap_length=36 (invalid). Treat as A0.
+		 * In AST2700A0 the offset of EXTCAPs will be the in-house register, and the
+		 * reset value of the first double word is 0x2400. According to the rule of
+		 * extcaps parser, the cap_id is 0 and cap_length is 36, which is an invalid
+		 * ext_cap header; when cap_id is 0, the cap_length should be 1. Therefore, we use
+		 * this to identify the A0/A1.
 		 */
 		if (cap_id == 0 && cap_length != 1) {
+			/* AST2700A0 workaround */
+			/* A0 doesn't support DMA mode*/
 			hci->RHS_regs = NULL;
 			dev_info(&hci->master.dev,
 				 "Clear Ring Headers offset\n");
@@ -313,7 +316,6 @@ int i3c_hci_parse_ext_caps(struct i3c_hci *hci)
 				 ASPEED_PHY_REGS_OFFSET);
 			return 0;
 		}
-#endif
 		if (curr_cap + cap_length * 4 >= end) {
 			dev_err(&hci->master.dev,
 				"ext_cap 0x%02x has size %d (too big)\n",

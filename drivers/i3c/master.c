@@ -108,12 +108,14 @@ static struct i3c_master_controller *dev_to_i3cmaster(struct device *dev)
 }
 
 static const struct device_type i3c_device_type;
+static const struct device_type i3c_target_device_type;
 
 static struct i3c_bus *dev_to_i3cbus(struct device *dev)
 {
 	struct i3c_master_controller *master;
 
-	if (dev->type == &i3c_device_type)
+	if (dev->type == &i3c_device_type ||
+	    dev->type == &i3c_target_device_type)
 		return dev_to_i3cdev(dev)->bus;
 
 	master = dev_to_i3cmaster(dev);
@@ -125,7 +127,8 @@ static struct i3c_dev_desc *dev_to_i3cdesc(struct device *dev)
 {
 	struct i3c_master_controller *master;
 
-	if (dev->type == &i3c_device_type)
+	if (dev->type == &i3c_device_type ||
+	    dev->type == &i3c_target_device_type)
 		return dev_to_i3cdev(dev)->desc;
 
 	master = dev_to_i3cmaster(dev);
@@ -143,7 +146,7 @@ static ssize_t bcr_show(struct device *dev,
 
 	i3c_bus_normaluse_lock(bus);
 	desc = dev_to_i3cdesc(dev);
-	ret = sprintf(buf, "0x%02x\n", desc->info.bcr);
+	ret = sysfs_emit(buf, "0x%02x\n", desc->info.bcr);
 	i3c_bus_normaluse_unlock(bus);
 
 	return ret;
@@ -160,7 +163,7 @@ static ssize_t dcr_show(struct device *dev,
 
 	i3c_bus_normaluse_lock(bus);
 	desc = dev_to_i3cdesc(dev);
-	ret = sprintf(buf, "0x%02x\n", desc->info.dcr);
+	ret = sysfs_emit(buf, "0x%02x\n", desc->info.dcr);
 	i3c_bus_normaluse_unlock(bus);
 
 	return ret;
@@ -177,7 +180,7 @@ static ssize_t pid_show(struct device *dev,
 
 	i3c_bus_normaluse_lock(bus);
 	desc = dev_to_i3cdesc(dev);
-	ret = sprintf(buf, "%llx\n", desc->info.pid);
+	ret = sysfs_emit(buf, "%llx\n", desc->info.pid);
 	i3c_bus_normaluse_unlock(bus);
 
 	return ret;
@@ -188,13 +191,19 @@ static ssize_t dynamic_address_show(struct device *dev,
 				    struct device_attribute *da,
 				    char *buf)
 {
+	struct i3c_dev_desc *desc = dev_to_i3cdesc(dev);
+	struct i3c_master_controller *master = i3c_dev_get_master(desc);
 	struct i3c_bus *bus = dev_to_i3cbus(dev);
-	struct i3c_dev_desc *desc;
 	ssize_t ret;
+	u8 dyn_addr;
 
 	i3c_bus_normaluse_lock(bus);
-	desc = dev_to_i3cdesc(dev);
-	ret = sprintf(buf, "%02x\n", desc->info.dyn_addr);
+	if (master->target && master->target_ops->get_dyn_addr)
+		dyn_addr = master->target_ops->get_dyn_addr(master);
+	else
+		dyn_addr = desc->info.dyn_addr;
+
+	ret = sysfs_emit(buf, "%02x\n", dyn_addr);
 	i3c_bus_normaluse_unlock(bus);
 
 	return ret;
@@ -225,15 +234,14 @@ static ssize_t hdrcap_show(struct device *dev,
 		if (!hdrcap_strings[mode])
 			continue;
 
-		ret = sprintf(buf + offset, offset ? " %s" : "%s",
-			      hdrcap_strings[mode]);
+		ret = sysfs_emit_at(buf, offset, offset ? " %s" : "%s", hdrcap_strings[mode]);
 		if (ret < 0)
 			goto out;
 
 		offset += ret;
 	}
 
-	ret = sprintf(buf + offset, "\n");
+	ret = sysfs_emit_at(buf, offset, "\n");
 	if (ret < 0)
 		goto out;
 
@@ -263,21 +271,20 @@ static DEVICE_ATTR_RO(bus_context);
 static ssize_t modalias_show(struct device *dev,
 			     struct device_attribute *da, char *buf)
 {
-	struct i3c_device *i3c = dev_to_i3cdev(dev);
-	struct i3c_device_info devinfo;
+	struct i3c_dev_desc *desc = dev_to_i3cdesc(dev);
+	struct i3c_device_info *devinfo = &desc->info;
 	u16 manuf, part, ext;
 
-	i3c_device_get_info(i3c, &devinfo);
-	manuf = I3C_PID_MANUF_ID(devinfo.pid);
-	part = I3C_PID_PART_ID(devinfo.pid);
-	ext = I3C_PID_EXTRA_INFO(devinfo.pid);
+	manuf = I3C_PID_MANUF_ID(devinfo->pid);
+	part = I3C_PID_PART_ID(devinfo->pid);
+	ext = I3C_PID_EXTRA_INFO(devinfo->pid);
 
-	if (I3C_PID_RND_LOWER_32BITS(devinfo.pid))
-		return sprintf(buf, "i3c:dcr%02Xmanuf%04X", devinfo.dcr,
+	if (I3C_PID_RND_LOWER_32BITS(devinfo->pid))
+		return sysfs_emit(buf, "i3c:dcr %02X manuf %04X\n", devinfo->dcr,
 			       manuf);
 
-	return sprintf(buf, "i3c:dcr%02Xmanuf%04Xpart%04Xext%04X",
-		       devinfo.dcr, manuf, part, ext);
+	return sysfs_emit(buf, "i3c:dcr %02X manuf %04X part %04X ext %04X\n",
+		       devinfo->dcr, manuf, part, ext);
 }
 static DEVICE_ATTR_RO(modalias);
 
@@ -299,6 +306,25 @@ static ssize_t bus_reset_store(struct device *dev, struct device_attribute *da,
 }
 static DEVICE_ATTR_WO(bus_reset);
 
+static ssize_t status_show(struct device *dev,
+			   struct device_attribute *da,
+			   char *buf)
+{
+	struct i3c_dev_desc *desc = dev_to_i3cdesc(dev);
+	struct i3c_bus *bus = dev_to_i3cbus(dev);
+	ssize_t ret;
+
+	i3c_bus_normaluse_lock(bus);
+	ret = i3c_dev_getstatus_locked(desc, &desc->info);
+	if (!ret)
+		ret = sysfs_emit(buf, "%x\n", desc->info.status);
+
+	i3c_bus_normaluse_unlock(bus);
+
+	return ret;
+}
+static DEVICE_ATTR_RO(status);
+
 static struct attribute *i3c_device_attrs[] = {
 	&dev_attr_bcr.attr,
 	&dev_attr_dcr.attr,
@@ -306,6 +332,7 @@ static struct attribute *i3c_device_attrs[] = {
 	&dev_attr_dynamic_address.attr,
 	&dev_attr_hdrcap.attr,
 	&dev_attr_modalias.attr,
+	&dev_attr_status.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(i3c_device);
@@ -336,7 +363,14 @@ static const struct device_type i3c_device_type = {
 	.uevent = i3c_device_uevent,
 };
 
-const struct device_type i3c_target_device_type = {
+static struct attribute *i3c_target_device_attrs[] = {
+	&dev_attr_dynamic_address.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(i3c_target_device);
+
+static const struct device_type i3c_target_device_type = {
+	.groups = i3c_target_device_groups,
 };
 
 static int i3c_device_match(struct device *dev, const struct device_driver *drv)
@@ -576,6 +610,26 @@ static const char * const i3c_bus_mode_strings[] = {
 	[I3C_BUS_MODE_MIXED_SLOW] = "mixed-slow",
 };
 
+/**
+ * i3c_device_publish_event() - publish I3C framework event to all interested
+ *				devices
+ * @master: master used to handle devices
+ * @ev: I3C framework event to publish
+ */
+static void i3c_device_publish_event(struct i3c_master_controller *master,
+				     enum i3c_event ev)
+{
+	struct i3c_dev_desc *i3cdev;
+
+	i3c_bus_for_each_i3cdev(&master->bus, i3cdev) {
+		if (i3cdev->event_cb)
+			i3cdev->event_cb(i3cdev->dev, ev);
+	}
+}
+
+static int i3c_master_rstdaa_locked(struct i3c_master_controller *master,
+				    u8 addr);
+
 static ssize_t mode_show(struct device *dev,
 			 struct device_attribute *da,
 			 char *buf)
@@ -587,9 +641,9 @@ static ssize_t mode_show(struct device *dev,
 	if (i3cbus->mode < 0 ||
 	    i3cbus->mode >= ARRAY_SIZE(i3c_bus_mode_strings) ||
 	    !i3c_bus_mode_strings[i3cbus->mode])
-		ret = sprintf(buf, "unknown\n");
+		ret = sysfs_emit(buf, "unknown\n");
 	else
-		ret = sprintf(buf, "%s\n", i3c_bus_mode_strings[i3cbus->mode]);
+		ret = sysfs_emit(buf, "%s\n", i3c_bus_mode_strings[i3cbus->mode]);
 	i3c_bus_normaluse_unlock(i3cbus);
 
 	return ret;
@@ -604,8 +658,8 @@ static ssize_t current_master_show(struct device *dev,
 	ssize_t ret;
 
 	i3c_bus_normaluse_lock(i3cbus);
-	ret = sprintf(buf, "%d-%llx\n", i3cbus->id,
-		      i3cbus->cur_master->info.pid);
+	ret = sysfs_emit(buf, "%d-%llx\n", i3cbus->id,
+			 i3cbus->cur_master->info.pid);
 	i3c_bus_normaluse_unlock(i3cbus);
 
 	return ret;
@@ -620,7 +674,7 @@ static ssize_t i3c_scl_frequency_show(struct device *dev,
 	ssize_t ret;
 
 	i3c_bus_normaluse_lock(i3cbus);
-	ret = sprintf(buf, "%ld\n", i3cbus->scl_rate.i3c);
+	ret = sysfs_emit(buf, "%ld\n", i3cbus->scl_rate.i3c);
 	i3c_bus_normaluse_unlock(i3cbus);
 
 	return ret;
@@ -635,7 +689,7 @@ static ssize_t i2c_scl_frequency_show(struct device *dev,
 	ssize_t ret;
 
 	i3c_bus_normaluse_lock(i3cbus);
-	ret = sprintf(buf, "%ld\n", i3cbus->scl_rate.i2c);
+	ret = sysfs_emit(buf, "%ld\n", i3cbus->scl_rate.i2c);
 	i3c_bus_normaluse_unlock(i3cbus);
 
 	return ret;
@@ -729,6 +783,57 @@ static ssize_t hotjoin_show(struct device *dev, struct device_attribute *da, cha
 }
 
 static DEVICE_ATTR_RW(hotjoin);
+static ssize_t rescan_store(struct device *dev, struct device_attribute *attr,
+			    const char *buf, size_t count)
+{
+	struct i3c_master_controller *master = dev_to_i3cmaster(dev);
+	struct i3c_bus *bus = i3c_master_get_bus(master);
+	bool res;
+	int ret;
+
+	ret = kstrtobool(buf, &res);
+	if (ret)
+		return ret;
+
+	if (!res)
+		return count;
+
+	i3c_device_publish_event(master, i3c_event_prepare_for_rescan);
+
+	i3c_bus_maintenance_lock(bus);
+
+	ret = i3c_master_disec_locked(master, I3C_BROADCAST_ADDR,
+				      I3C_CCC_EVENT_SIR | I3C_CCC_EVENT_MR |
+				      I3C_CCC_EVENT_HJ);
+	if (ret && ret != I3C_ERROR_M2) {
+		dev_dbg(&master->dev,
+			"Failed to run broadcast DISEC for rescan, ret=%d\n", ret);
+		i3c_bus_maintenance_unlock(bus);
+		return ret;
+	}
+
+	ret = i3c_master_rstdaa_locked(master, I3C_BROADCAST_ADDR);
+	if (ret && ret != I3C_ERROR_M2) {
+		dev_dbg(&master->dev,
+			"Failed to run RSTDAA for rescan, ret=%d\n", ret);
+		i3c_bus_maintenance_unlock(bus);
+		return ret;
+	}
+
+	i3c_bus_maintenance_unlock(bus);
+
+	ret = i3c_master_do_daa(master);
+	if (ret) {
+		dev_dbg(&master->dev, "Failed to run DAA for rescan, ret=%d\n",
+			ret);
+		return ret;
+	}
+
+	i3c_device_publish_event(master, i3c_event_rescan_done);
+
+	return count;
+}
+static DEVICE_ATTR_WO(rescan);
 
 static struct attribute *i3c_masterdev_attrs[] = {
 	&dev_attr_mode.attr,
@@ -743,6 +848,7 @@ static struct attribute *i3c_masterdev_attrs[] = {
 	&dev_attr_hotjoin.attr,
 	&dev_attr_bus_context.attr,
 	&dev_attr_bus_reset.attr,
+	&dev_attr_rescan.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(i3c_masterdev);
@@ -1540,6 +1646,76 @@ out:
 	return ret;
 }
 
+int i3c_dev_dbgaction_wr_locked(struct i3c_dev_desc *dev, struct i3c_device_info *info,
+				u8 *data, u8 len)
+{
+	struct i3c_master_controller *master = i3c_dev_get_master(dev);
+	struct i3c_ccc_cmd_dest dest;
+	struct i3c_ccc_cmd cmd;
+	u8 *data_int;
+	int ret;
+
+	data_int = i3c_ccc_cmd_dest_init(&dest, info->dyn_addr, len);
+	if (!data_int)
+		return -ENOMEM;
+
+	memcpy(data_int, data, len);
+
+	i3c_ccc_cmd_init(&cmd, false, I3C_CCC_DBGACTION(false), &dest, 1, false, 0);
+	ret = i3c_master_send_ccc_cmd_locked(master, &cmd);
+	i3c_ccc_cmd_dest_cleanup(&dest);
+
+	return ret;
+}
+
+int i3c_dev_dbgopcode_wr_locked(struct i3c_dev_desc *dev, struct i3c_device_info *info,
+				u8 *data, u8 len)
+{
+	struct i3c_master_controller *master = i3c_dev_get_master(dev);
+	struct i3c_ccc_cmd_dest dest;
+	struct i3c_ccc_cmd cmd;
+	u8 *data_int;
+	int ret;
+
+	data_int = i3c_ccc_cmd_dest_init(&dest, info->dyn_addr, len);
+	if (!data_int)
+		return -ENOMEM;
+
+	memcpy(data_int, data, len);
+
+	i3c_ccc_cmd_init(&cmd, false, I3C_CCC_DBGOPCODE, &dest, 1, false, 0);
+	ret = i3c_master_send_ccc_cmd_locked(master, &cmd);
+	i3c_ccc_cmd_dest_cleanup(&dest);
+
+	return ret;
+}
+
+int i3c_dev_dbgopcode_rd_locked(struct i3c_dev_desc *dev, struct i3c_device_info *info,
+				u8 *data, u8 len)
+{
+	struct i3c_master_controller *master = i3c_dev_get_master(dev);
+	struct i3c_ccc_cmd_dest dest;
+	struct i3c_ccc_cmd cmd;
+	u8 *data_int;
+	int ret;
+
+	data_int = i3c_ccc_cmd_dest_init(&dest, info->dyn_addr, len);
+	if (!data_int)
+		return -ENOMEM;
+
+	i3c_ccc_cmd_init(&cmd, true, I3C_CCC_DBGOPCODE, &dest, 1, false, 0);
+	ret = i3c_master_send_ccc_cmd_locked(master, &cmd);
+	if (ret)
+		goto out;
+
+	memcpy(data, data_int, len);
+
+out:
+	i3c_ccc_cmd_dest_cleanup(&dest);
+
+	return ret;
+}
+
 static void i3c_master_attach_boardinfo(struct i3c_dev_desc *i3cdev)
 {
 	struct i3c_master_controller *master = i3cdev->common.master;
@@ -1548,8 +1724,8 @@ static void i3c_master_attach_boardinfo(struct i3c_dev_desc *i3cdev)
 
 	list_for_each_entry(i3cboardinfo, &master->boardinfo.i3c, node) {
 		if ((I3C_PID_MANUF_ID(i3cdev->info.pid) == 0x0 &&
-			i3cdev->info.pid == I3C_PID_RND_VAL(i3cboardinfo->pid)) ||
-			(i3cdev->info.pid == i3cboardinfo->pid)) {
+		     i3cdev->info.pid == I3C_PID_RND_VAL(i3cboardinfo->pid)) ||
+		    (i3cdev->info.pid == i3cboardinfo->pid)) {
 			attach = true;
 			break;
 		}
@@ -1633,7 +1809,7 @@ static int i3c_master_retrieve_dev_info(struct i3c_dev_desc *dev)
 		 */
 		i3c_master_disec_locked(master, dev->info.dyn_addr, 1);
 		i3c_master_setmrl_locked(master, &dev->info,
-				dev->boardinfo->mrl, dev->info.max_ibi_len);
+					dev->boardinfo->mrl, dev->info.max_ibi_len);
 	}
 
 	if (dev->boardinfo && dev->boardinfo->mwl)
@@ -1919,8 +2095,15 @@ int i3c_master_do_daa(struct i3c_master_controller *master)
 
 	i3c_bus_maintenance_lock(&master->bus);
 	if (master->bus.context == I3C_BUS_CONTEXT_JESD403) {
-		i3c_master_sethid_locked(master);
-		i3c_master_setaasa_locked(master);
+		/* Save init done flag and clear it to allow send CCC in order to switch SPD JEDEC
+		 * device into I3C mode even after bus was initialized.
+		 */
+		bool init_done = master->init_done;
+
+		master->init_done = false;
+		ret = i3c_master_sethid_locked(master);
+		ret = i3c_master_setaasa_locked(master);
+		master->init_done = init_done;
 	} else {
 		ret = master->ops->do_daa(master);
 	}
@@ -1929,9 +2112,7 @@ int i3c_master_do_daa(struct i3c_master_controller *master)
 	if (ret && ret != I3C_ERROR_M2)
 		return ret;
 
-	i3c_bus_normaluse_lock(&master->bus);
 	i3c_master_register_new_i3c_devs(master);
-	i3c_bus_normaluse_unlock(&master->bus);
 
 	return 0;
 }
@@ -2353,6 +2534,25 @@ err_detach_devs:
 
 static void i3c_master_bus_cleanup(struct i3c_master_controller *master)
 {
+	int ret;
+
+	i3c_bus_maintenance_lock(&master->bus);
+	/* Disable all slave events before starting DAA. */
+	ret = i3c_master_disec_locked(master, I3C_BROADCAST_ADDR,
+				      I3C_CCC_EVENT_SIR | I3C_CCC_EVENT_MR |
+				      I3C_CCC_EVENT_HJ);
+	if (ret && ret != I3C_ERROR_M2)
+		dev_dbg(&master->dev, "failed to send DISEC, ret=%i\n", ret);
+
+	/*
+	 * Reset all dynamic address that may have been assigned before
+	 * (assigned by the bootloader for example).
+	 */
+	ret = i3c_master_rstdaa_locked(master, I3C_BROADCAST_ADDR);
+	if (ret && ret != I3C_ERROR_M2)
+		dev_dbg(&master->dev, "failed to send RSTDAA, ret=%i\n", ret);
+	i3c_bus_maintenance_unlock(&master->bus);
+
 	if (master->ops->bus_cleanup)
 		master->ops->bus_cleanup(master);
 
@@ -2366,7 +2566,9 @@ i3c_master_search_i3c_dev_duplicate(struct i3c_dev_desc *refdev)
 	struct i3c_dev_desc *i3cdev;
 
 	i3c_bus_for_each_i3cdev(&master->bus, i3cdev) {
-		if (i3cdev != refdev && i3cdev->info.pid == refdev->info.pid)
+		/* Skip the I3C dev representing this master. */
+		if (i3cdev != master->this && i3cdev != refdev &&
+		    i3cdev->info.pid == refdev->info.pid)
 			return i3cdev;
 	}
 
@@ -2414,9 +2616,11 @@ int i3c_master_add_i3c_dev_locked(struct i3c_master_controller *master,
 	if (ret)
 		goto err_detach_dev;
 
+
 	olddev = i3c_master_search_i3c_dev_duplicate(newdev);
 	if (olddev) {
 		newdev->dev = olddev->dev;
+		newdev->event_cb = olddev->event_cb;
 		if (newdev->dev)
 			newdev->dev->desc = newdev;
 
@@ -2880,8 +3084,7 @@ static int i3c_master_i2c_adapter_init(struct i3c_master_controller *master)
 	adap->owner = master->dev.parent->driver->owner;
 	adap->algo = &i3c_master_i2c_algo;
 	strscpy(adap->name, dev_name(master->dev.parent), sizeof(adap->name));
-	/* FIXME: Should we allow i3c masters to override these values? */
-	adap->timeout = 1000;
+	adap->timeout = HZ;
 	adap->retries = 3;
 
 	id = of_alias_get_id(master->dev.of_node, "i2c");
@@ -2922,10 +3125,18 @@ static void i3c_master_i2c_adapter_cleanup(struct i3c_master_controller *master)
 static void i3c_master_unregister_i3c_devs(struct i3c_master_controller *master)
 {
 	struct i3c_dev_desc *i3cdev;
+	int ret;
 
 	i3c_bus_for_each_i3cdev(&master->bus, i3cdev) {
 		if (!i3cdev->dev)
 			continue;
+
+		ret = i3c_device_disable_ibi(i3cdev->dev);
+		if (!ret)
+			i3c_device_free_ibi(i3cdev->dev);
+		else
+			dev_warn(i3cdev_to_dev(i3cdev->dev), "Failed to disable IBI, ret = %d",
+				 ret);
 
 		i3cdev->dev->desc = NULL;
 		if (device_is_registered(&i3cdev->dev->dev))
@@ -3212,10 +3423,6 @@ int i3c_master_register(struct i3c_master_controller *master,
 
 	dev_set_name(&master->dev, "i3c-%d", i3cbus->id);
 
-	master->dev.dma_mask = parent->dma_mask;
-	master->dev.coherent_dma_mask = parent->coherent_dma_mask;
-	master->dev.dma_parms = parent->dma_parms;
-
 	ret = of_populate_i3c_bus(master);
 	if (ret)
 		goto err_put_dev;
@@ -3280,9 +3487,7 @@ int i3c_master_register(struct i3c_master_controller *master,
 	 * register I3C devices discovered during the initial DAA.
 	 */
 	master->init_done = true;
-	i3c_bus_normaluse_lock(&master->bus);
 	i3c_master_register_new_i3c_devs(master);
-	i3c_bus_normaluse_unlock(&master->bus);
 
 	return 0;
 
@@ -3489,6 +3694,12 @@ int i3c_target_register(struct i3c_master_controller *master, struct device *par
 	master->dev.coherent_dma_mask = parent->coherent_dma_mask;
 	master->dev.dma_parms = parent->dma_parms;
 
+	master->wq = alloc_workqueue("%s", 0, 0, dev_name(parent));
+	if (!master->wq) {
+		ret = -ENOMEM;
+		goto err_put_device;
+	}
+
 	ret = device_add(&master->dev);
 	if (ret)
 		goto err_put_device;
@@ -3608,11 +3819,16 @@ out:
 	return ret;
 }
 
-int i3c_master_send_hdr_cmds_locked(struct i3c_master_controller *master,
-				    struct i3c_hdr_cmd *cmds, int ncmds)
+int i3c_dev_send_hdr_cmds_locked(struct i3c_dev_desc *dev,
+				 struct i3c_hdr_cmd *cmds, int ncmds)
 {
 	int i;
+	struct i3c_master_controller *master;
 
+	if (!dev)
+		return -ENOENT;
+
+	master = i3c_dev_get_master(dev);
 	if (!cmds || !master || ncmds <= 0)
 		return -EINVAL;
 
@@ -3624,33 +3840,8 @@ int i3c_master_send_hdr_cmds_locked(struct i3c_master_controller *master,
 			return -EOPNOTSUPP;
 	}
 
-	return master->ops->send_hdr_cmds(master, cmds, ncmds);
+	return master->ops->send_hdr_cmds(dev, cmds, ncmds);
 }
-
-/**
- * i3c_master_send_hdr_cmds() - send HDR commands on the I3C bus
- * @master: master used to send frames on the bus
- * @cmds: array of HDR commands
- * @ncmds: number of commands to send
- *
- * Send one or several HDR commands.
- *
- * This function can sleep and thus cannot be called in atomic context.
- *
- * Return: 0 in case of success, a negative error code otherwise.
- */
-int i3c_master_send_hdr_cmds(struct i3c_master_controller *master,
-			     struct i3c_hdr_cmd *cmds, int ncmds)
-{
-	int ret;
-
-	i3c_bus_normaluse_lock(&master->bus);
-	ret = i3c_master_send_hdr_cmds_locked(master, cmds, ncmds);
-	i3c_bus_normaluse_unlock(&master->bus);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(i3c_master_send_hdr_cmds);
 
 int i3c_dev_do_priv_xfers_locked(struct i3c_dev_desc *dev,
 				 struct i3c_priv_xfer *xfers,
@@ -3754,8 +3945,8 @@ int i3c_dev_disable_ibi_locked(struct i3c_dev_desc *dev)
 	ret = master->ops->disable_ibi(dev);
 	if (ret) {
 		dev_info(&master->dev,
-			"%s(): failed for device %d-%llx, ret = %d",
-			__func__, master->bus.id, dev->info.pid, ret);
+			 "%s(): failed for device %d-%llx, ret = %d",
+			 __func__, master->bus.id, dev->info.pid, ret);
 	}
 
 	reinit_completion(&dev->ibi->all_ibis_handled);

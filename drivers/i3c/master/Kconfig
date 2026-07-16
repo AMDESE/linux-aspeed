@@ -52,13 +52,6 @@ config SVC_I3C_MASTER
 	help
 	  Support for Silvaco I3C Dual-Role Master Controller.
 
-config AMD_I3C_MASTER
-       tristate "AMD I3C Master driver"
-       depends on I3C
-       depends on HAS_IOMEM
-       help
-         Support for AMD I3C Master Controller.
-
 config MIPI_I3C_HCI
 	tristate "MIPI I3C Host Controller Interface driver (EXPERIMENTAL)"
 	depends on HAS_IOMEM

@@ -11,16 +11,14 @@
 #include <linux/device.h>
 #include <linux/errno.h>
 #include <linux/clk.h>
+#include <linux/moduleparam.h>
 #include <linux/reset.h>
 #include <linux/i3c/master.h>
 #include <linux/i3c/target.h>
 #include <linux/i3c/device.h>
 #include <linux/interrupt.h>
-#include <linux/io.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
-#include <linux/moduleparam.h>
-#include <linux/mutex.h>
 #include <linux/platform_device.h>
 #include <dt-bindings/i3c/i3c.h>
 
@@ -34,11 +32,6 @@
 /*
  * Host Controller Capabilities and Operation Registers
  */
-
-#define reg_read(r)		readl(hci->base_regs + (r))
-#define reg_write(r, v)		writel(v, hci->base_regs + (r))
-#define reg_set(r, v)		reg_write(r, reg_read(r) | (v))
-#define reg_clear(r, v)		reg_write(r, reg_read(r) & ~(v))
 
 #define HCI_VERSION			0x00	/* HCI Version (in BCD) */
 
@@ -92,10 +85,8 @@
 #define INTR_SIGNAL_ENABLE		0x28
 #define INTR_FORCE			0x2c
 #define INTR_HC_CMD_SEQ_UFLOW_STAT	BIT(12)	/* Cmd Sequence Underflow */
-#define INTR_HC_RESET_CANCEL		BIT(11)	/* HC Cancelled Reset */
+#define INTR_HC_SEQ_CANCEL		BIT(11)	/* HC Cancelled Transaction Sequence */
 #define INTR_HC_INTERNAL_ERR		BIT(10)	/* HC Internal Error */
-#define INTR_HC_PIO			BIT(8)	/* cascaded PIO interrupt */
-#define INTR_HC_RINGS			GENMASK(7, 0)
 
 #define DAT_SECTION			0x30	/* Device Address Table */
 #define DAT_ENTRY_SIZE			GENMASK(31, 28)
@@ -141,9 +132,12 @@ static u32 aspeed_i3c_get_sdr_phy_reg(struct i3c_hci *hci)
 		return PHY_I3C_SDR1_CTRL0;
 	if (bus->scl_rate.i3c > 4000000)
 		return PHY_I3C_SDR2_CTRL0;
-	if (bus->scl_rate.i3c > 2000000)
-		return PHY_I3C_SDR3_CTRL0;
-	return PHY_I3C_SDR4_CTRL0;
+	/*
+	 * SDR4 is permanently reserved as the slow-CCC slot (~1MHz) for JESD403
+	 * SETHID/DEVCTRL (see aspeed_i3c_phy_init()), so normal transfers never
+	 * use it — buses at or below 2MHz share SDR3. Pair with get_i3c_mode().
+	 */
+	return PHY_I3C_SDR3_CTRL0;
 }
 
 static void aspeed_i3c_phy_init(struct i3c_hci *hci)
@@ -152,62 +146,86 @@ static void aspeed_i3c_phy_init(struct i3c_hci *hci)
 	unsigned long core_rate, core_period;
 
 	core_rate = clk_get_rate(hci->clk);
+	/* core_period is in nanosecond */
 	core_period = DIV_ROUND_UP(1000000000, core_rate);
 
 	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_CAS_NS, core_period) - 1;
 	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_SU_STO_NS, core_period) - 1;
 	ast_phy_write(PHY_I2C_FM_CTRL0, FIELD_PREP(PHY_I2C_FM_CTRL0_CAS, hcnt) |
-				      FIELD_PREP(PHY_I2C_FM_CTRL0_SU_STO, lcnt));
+						FIELD_PREP(PHY_I2C_FM_CTRL0_SU_STO, lcnt));
 
 	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_SCL_H_NS, core_period) - 1;
 	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_SCL_L_NS, core_period) - 1;
 	ast_phy_write(PHY_I2C_FM_CTRL1, FIELD_PREP(PHY_I2C_FM_CTRL1_SCL_H, hcnt) |
-				      FIELD_PREP(PHY_I2C_FM_CTRL1_SCL_L, lcnt));
+						FIELD_PREP(PHY_I2C_FM_CTRL1_SCL_L, lcnt));
 	ast_phy_write(PHY_I2C_FM_CTRL2, FIELD_PREP(PHY_I2C_FM_CTRL2_ACK_H, hcnt) |
-				      FIELD_PREP(PHY_I2C_FM_CTRL2_ACK_L, hcnt));
+						FIELD_PREP(PHY_I2C_FM_CTRL2_ACK_L, hcnt));
 	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_HD_DAT, core_period) - 1;
 	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_AHD_DAT, core_period) - 1;
 	ast_phy_write(PHY_I2C_FM_CTRL3, FIELD_PREP(PHY_I2C_FM_CTRL3_HD_DAT, hcnt) |
-				      FIELD_PREP(PHY_I2C_FM_CTRL3_AHD_DAT, lcnt));
+						FIELD_PREP(PHY_I2C_FM_CTRL3_AHD_DAT, lcnt));
 
 	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_CAS_NS, core_period) - 1;
 	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SU_STO_NS, core_period) - 1;
 	ast_phy_write(PHY_I2C_FMP_CTRL0, FIELD_PREP(PHY_I2C_FMP_CTRL0_CAS, hcnt) |
-				      FIELD_PREP(PHY_I2C_FMP_CTRL0_SU_STO, lcnt));
+						 FIELD_PREP(PHY_I2C_FMP_CTRL0_SU_STO, lcnt));
 
 	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SCL_H_NS, core_period) - 1;
 	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SCL_L_NS, core_period) - 1;
 	ast_phy_write(PHY_I2C_FMP_CTRL1, FIELD_PREP(PHY_I2C_FMP_CTRL1_SCL_H, hcnt) |
-				      FIELD_PREP(PHY_I2C_FMP_CTRL1_SCL_L, lcnt));
+						 FIELD_PREP(PHY_I2C_FMP_CTRL1_SCL_L, lcnt));
 	ast_phy_write(PHY_I2C_FMP_CTRL2, FIELD_PREP(PHY_I2C_FMP_CTRL2_ACK_H, hcnt) |
-				      FIELD_PREP(PHY_I2C_FMP_CTRL2_ACK_L, hcnt));
+						 FIELD_PREP(PHY_I2C_FMP_CTRL2_ACK_L, hcnt));
 	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_HD_DAT, core_period) - 1;
 	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_AHD_DAT, core_period) - 1;
 	ast_phy_write(PHY_I2C_FMP_CTRL3, FIELD_PREP(PHY_I2C_FMP_CTRL3_HD_DAT, hcnt) |
-				      FIELD_PREP(PHY_I2C_FMP_CTRL3_AHD_DAT, lcnt));
+						 FIELD_PREP(PHY_I2C_FMP_CTRL3_AHD_DAT, lcnt));
+
+	/*
+	 * Reserve the SDR4 PHY slot for slow CCCs (SETHID/DEVCTRL/SETAASA).
+	 * Program its SCL/T-bit timing to match I2C FMP (~1MHz) so that
+	 * hci_cmd_v1_prep_ccc() can downgrade those commands by routing them
+	 * through MODE=SDR4. aspeed_i3c_get_sdr_phy_reg() and get_i3c_mode()
+	 * never select SDR4 for normal transfers, keeping the slot dedicated.
+	 * This is unconditional: SETHID/DEVCTRL may be issued through a hub
+	 * proxy where the JESD403 bus context is not visible on this controller.
+	 */
+	hcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SCL_H_NS, core_period) - 1;
+	lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SCL_L_NS, core_period) - 1;
+	ast_phy_write(PHY_I3C_SDR4_CTRL0,
+		      FIELD_PREP(PHY_I3C_SDR4_CTRL0_SCL_H, hcnt) |
+		      FIELD_PREP(PHY_I3C_SDR4_CTRL0_SCL_L, lcnt));
+	ast_phy_write(PHY_I3C_SDR4_CTRL1,
+		      FIELD_PREP(PHY_I3C_SDR4_CTRL1_TBIT_H, hcnt) |
+		      FIELD_PREP(PHY_I3C_SDR4_CTRL1_TBIT_L, lcnt));
 
 	ast_phy_write(PHY_PULLUP_EN, 0x0);
 }
 
-static void aspeed_i3c_of_populate_bus_timing(struct i3c_hci *hci,
-					      struct device_node *np)
+static void aspeed_i3c_of_populate_bus_timing(struct i3c_hci *hci, struct device_node *np)
 {
-	u16 hcnt, lcnt;
+	u16 hcnt, lcnt, total_cnt, min_tbit_cnt, cas_lcnt = 0, cas_cnt, cbp_cnt;
 	unsigned long core_rate, core_period;
-	u32 val, pp_high = 0, pp_low = 0, od_high = 0, od_low = 0;
-	u32 thd_dat = 0, internal_pu = 0;
-	u32 ctrl0, ctrl1, ctrl2;
+	u32 val, pp_high = 0, pp_low = 0, od_high = 0, od_low = 0, thd_dat = 0, internal_pu = 0;
+	u32 cas_period = 0, cbp_period = 0, sr_p_low_period = 0;
+	u32 ctrl0, ctrl1, ctrl2, sr_p_prepare_ctrl;
 	u32 sdr_ctrl0_reg = aspeed_i3c_get_sdr_phy_reg(hci);
 
 	core_rate = clk_get_rate(hci->clk);
+	/* core_period is in nanosecond */
 	core_period = DIV_ROUND_UP(1000000000, core_rate);
+	/*
+	 * The T-bits margin in our I3C controller is too tight to be set at 12.5MHz.
+	 * Set it to a minimum of 60ns to ensure proper functionality.
+	 */
+	min_tbit_cnt = DIV_ROUND_UP(60, core_period) - 1;
 
 	/*
-	 * Workaround. Need to remove once hardware support is available for
-	 * internal LDO powerup support. Check for the JESD403 compliance is
-	 * added to avoid changing the frequency for the i3c buses like APML on
-	 * which there are no i3c hub devices. This check can be removed when
-	 * hardware support is available for internal LDO powerup.
+	 * Workaround for the i3c buses on which the i3c devices are powered
+	 * from the external LDO. The i3c bus clock is set to 1MHz until the
+	 * hardware support is available for internal LDO powerup. The check for
+	 * JESD403 can be removed when hardware support is available for internal
+	 * LDO powerup.
 	 */
 	if (!i3c_device_power &&
 	    hci->master.bus.context == I3C_BUS_CONTEXT_JESD403) {
@@ -215,42 +233,118 @@ static void aspeed_i3c_of_populate_bus_timing(struct i3c_hci *hci,
 		dev_info(&hci->master.dev, "Updated clock to 1Mhz");
 	}
 
-	dev_info(&hci->master.dev, "core rate = %ld core period = %ld ns",
-		 core_rate, core_period);
+	dev_info(&hci->master.dev, "core rate = %ld core period = %ld ns", core_rate, core_period);
 
+	/* Parse configurations from the device tree */
 	if (!of_property_read_u32(np, "i3c-pp-scl-hi-period-ns", &val))
 		pp_high = val;
+
 	if (!of_property_read_u32(np, "i3c-pp-scl-lo-period-ns", &val))
 		pp_low = val;
+
 	if (!of_property_read_u32(np, "i3c-od-scl-hi-period-ns", &val))
 		od_high = val;
+
 	if (!of_property_read_u32(np, "i3c-od-scl-lo-period-ns", &val))
 		od_low = val;
+
 	if (!of_property_read_u32(np, "sda-tx-hold-ns", &val))
 		thd_dat = val;
+
 	if (!of_property_read_u32(np, "internal-pullup", &val))
 		internal_pu = val;
+
+	if (!of_property_read_u32(np, "i3c-cas-period-ns", &val))
+		cas_period = val;
+
+	if (!of_property_read_u32(np, "i3c-cbp-period-ns", &val))
+		cbp_period = val;
+
+	if (!of_property_read_u32(np, "i3c-sr-p-scl-lo-period-ns", &val))
+		sr_p_low_period = val;
 
 	if (pp_high && pp_low) {
 		hcnt = DIV_ROUND_CLOSEST(pp_high, core_period) - 1;
 		lcnt = DIV_ROUND_CLOSEST(pp_low, core_period) - 1;
 	} else if (hci->master.bus.mode == I3C_BUS_MODE_PURE) {
-		hcnt = (DIV_ROUND_UP(core_rate, hci->master.bus.scl_rate.i3c) >> 1) - 1;
-		lcnt = DIV_ROUND_UP(core_rate, hci->master.bus.scl_rate.i3c) - hcnt;
+		total_cnt = DIV_ROUND_UP(core_rate, hci->master.bus.scl_rate.i3c) - 2;
+		hcnt = DIV_ROUND_DOWN_ULL(total_cnt * 2, 5);
+		lcnt = (total_cnt - hcnt);
 	} else {
-		hcnt = DIV_ROUND_UP(I3C_BUS_THIGH_MIXED_MAX_NS, core_period) - 1;
-		lcnt = DIV_ROUND_UP(core_rate, hci->master.bus.scl_rate.i3c) - hcnt;
+		total_cnt = DIV_ROUND_UP(core_rate, hci->master.bus.scl_rate.i3c) - 2;
+		hcnt = DIV_ROUND_UP(I3C_BUS_THIGH_MAX_NS, core_period) - 1;
+		lcnt = (total_cnt - hcnt);
 	}
 	ctrl0 = FIELD_PREP(PHY_I3C_SDR0_CTRL0_SCL_H, hcnt) |
 		FIELD_PREP(PHY_I3C_SDR0_CTRL0_SCL_L, lcnt);
 	ast_phy_write(sdr_ctrl0_reg + PHY_I3C_CTRL0_OFFSET, ctrl0);
+	/* Address assign command(ENTDAA) will always use SDR0 setting */
 	ast_phy_write(PHY_I3C_SDR0_CTRL0, ctrl0);
 	ast_phy_write(PHY_I3C_DDR_CTRL0, ctrl0);
-	ctrl1 = FIELD_PREP(PHY_I3C_SDR0_CTRL1_TBIT_H, hcnt) |
-		FIELD_PREP(PHY_I3C_SDR0_CTRL1_TBIT_L, lcnt);
+	ctrl1 = FIELD_PREP(PHY_I3C_SDR0_CTRL1_TBIT_H, max(hcnt, min_tbit_cnt)) |
+		FIELD_PREP(PHY_I3C_SDR0_CTRL1_TBIT_L, max(lcnt, min_tbit_cnt));
 	ast_phy_write(sdr_ctrl0_reg + PHY_I3C_CTRL1_OFFSET, ctrl1);
 	ast_phy_write(PHY_I3C_SDR0_CTRL1, ctrl1);
 	ast_phy_write(PHY_I3C_DDR_CTRL1, ctrl1);
+
+	/*
+	 * tCAS and tCBP can be set independently through the "i3c-cas-period-ns"
+	 * and "i3c-cbp-period-ns" device tree properties. When a property is
+	 * absent, the value is derived from the SCL low count, mirroring the
+	 * dw-i3c-master driver (dw_i3c_bus_clk_cfg()). The applicable SCL low
+	 * period depends on the bus context:
+	 *   JESD403            : I3C OD SCL low period
+	 *   MIPI I3C, pure bus : I3C PP SCL low period
+	 *   MIPI I3C, mixed bus: I2C FM SCL low period
+	 */
+	if (!cas_period || !cbp_period) {
+		if (hci->master.bus.context == I3C_BUS_CONTEXT_JESD403) {
+			if (od_high && od_low)
+				cas_lcnt = DIV_ROUND_CLOSEST(od_low, core_period) - 1;
+			else
+				cas_lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SCL_L_NS,
+							     core_period) - 1;
+		} else if (hci->master.bus.mode == I3C_BUS_MODE_PURE) {
+			cas_lcnt = lcnt;
+		} else {
+			cas_lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FM_DEFAULT_SCL_L_NS,
+						     core_period) - 1;
+		}
+	}
+
+	/*
+	 * Use the explicit period when provided; otherwise derive from the SCL
+	 * low count and clamp to the MIPI I3C minimums (tCAS >= 38.4ns,
+	 * tCBP >= 19.2ns), which the derived value never enforced.
+	 */
+	if (cas_period)
+		cas_cnt = DIV_ROUND_CLOSEST(cas_period, core_period) - 1;
+	else
+		cas_cnt = max_t(u16, cas_lcnt,
+				DIV_ROUND_UP(PHY_I3C_OD_MIN_CAS_NS_X10, core_period * 10) - 1);
+
+	if (cbp_period)
+		cbp_cnt = DIV_ROUND_CLOSEST(cbp_period, core_period) - 1;
+	else
+		cbp_cnt = max_t(u16, cas_lcnt,
+				DIV_ROUND_UP(PHY_I3C_OD_MIN_CBP_NS_X10, core_period * 10) - 1);
+	ast_phy_write(PHY_I3C_OD_CTRL0, FIELD_PREP(PHY_I3C_OD_CTRL0_CAS, cas_cnt) |
+						FIELD_PREP(PHY_I3C_OD_CTRL0_CBP, cbp_cnt));
+	/*
+	 * The SR_P hold time uses the default value. The SR_P low count is kept
+	 * separate from the per-SDR-slot SCL low count so it can satisfy the
+	 * MIPI I3C Controller Clock Stalling requirement (Figure 19: Clock
+	 * Stalling in T-Bit Before STOP, and Figure 20: Clock Stalling in Low
+	 * T-Bit Before Repeated START). It can be set with the
+	 * "i3c-sr-p-scl-lo-period-ns" device tree property; when absent it
+	 * defaults to the push-pull low count.
+	 */
+	if (sr_p_low_period)
+		lcnt = DIV_ROUND_CLOSEST(sr_p_low_period, core_period) - 1;
+	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_SR_P_DEFAULT_HD_NS, core_period);
+	sr_p_prepare_ctrl = FIELD_PREP(PHY_I3C_SR_P_PREPARE_CTRL_HD, hcnt) |
+			    FIELD_PREP(PHY_I3C_SR_P_PREPARE_CTRL_SCL_L, lcnt);
+	ast_phy_write(PHY_I3C_SR_P_PREPARE_CTRL, sr_p_prepare_ctrl);
 
 	if (od_high && od_low) {
 		hcnt = DIV_ROUND_CLOSEST(od_high, core_period) - 1;
@@ -260,16 +354,16 @@ static void aspeed_i3c_of_populate_bus_timing(struct i3c_hci *hci,
 		lcnt = DIV_ROUND_CLOSEST(PHY_I2C_FMP_DEFAULT_SCL_L_NS, core_period) - 1;
 	}
 	ast_phy_write(PHY_I3C_OD_CTRL1, FIELD_PREP(PHY_I3C_OD_CTRL1_SCL_H, hcnt) |
-				      FIELD_PREP(PHY_I3C_OD_CTRL1_SCL_L, lcnt));
+						FIELD_PREP(PHY_I3C_OD_CTRL1_SCL_L, lcnt));
 	ast_phy_write(PHY_I3C_OD_CTRL2, FIELD_PREP(PHY_I3C_OD_CTRL2_ACK_H, hcnt) |
-				      FIELD_PREP(PHY_I3C_OD_CTRL2_ACK_L, hcnt));
+						FIELD_PREP(PHY_I3C_OD_CTRL2_ACK_L, hcnt));
 
 	if (thd_dat) {
-		hcnt = DIV_ROUND_CLOSEST(thd_dat, core_period) - 1;
+		hcnt = DIV_ROUND_CLOSEST(thd_dat, core_period);
 		lcnt = hcnt;
 	} else {
-		hcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_HD_DAT, core_period) - 1;
-		lcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_AHD_DAT, core_period) - 1;
+		hcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_HD_DAT, core_period);
+		lcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_AHD_DAT, core_period);
 	}
 	ctrl2 = FIELD_PREP(PHY_I3C_SDR0_CTRL2_HD_PP, hcnt) |
 		FIELD_PREP(PHY_I3C_SDR0_CTRL2_TBIT_HD_PP, lcnt);
@@ -278,18 +372,16 @@ static void aspeed_i3c_of_populate_bus_timing(struct i3c_hci *hci,
 	ast_phy_write(PHY_I3C_DDR_CTRL2, ctrl2);
 
 	ast_phy_write(PHY_I3C_OD_CTRL3, FIELD_PREP(PHY_I3C_OD_CTRL3_HD_DAT, hcnt) |
-				      FIELD_PREP(PHY_I3C_OD_CTRL3_AHD_DAT, lcnt));
+						FIELD_PREP(PHY_I3C_OD_CTRL3_AHD_DAT, lcnt));
 
-	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_CAS_NS, core_period) - 1;
-	lcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_CBP_NS, core_period) - 1;
-	ast_phy_write(PHY_I3C_OD_CTRL0, FIELD_PREP(PHY_I3C_OD_CTRL0_CAS, hcnt) |
-				      FIELD_PREP(PHY_I3C_OD_CTRL0_CBP, lcnt));
+	hcnt = DIV_ROUND_CLOSEST(PHY_I3C_OD_DEFAULT_DAP_NS, core_period) - 1;
+	ast_phy_write(PHY_I3C_OD_CTRL4, FIELD_PREP(PHY_I3C_OD_CTRL4_DAP, hcnt));
+
 	if (internal_pu)
 		ast_phy_write(PHY_SW_FORCE_CTRL,
-			      PHY_SW_FORCE_CTRL_SCL_PU_EN |
-			      PHY_SW_FORCE_CTRL_SDA_PU_EN |
-			      FIELD_PREP(PHY_SW_FORCE_CTRL_SCL_PU_VAL, internal_pu) |
-			      FIELD_PREP(PHY_SW_FORCE_CTRL_SDA_PU_VAL, internal_pu));
+			      PHY_SW_FORCE_CTRL_SCL_PU_EN | PHY_SW_FORCE_CTRL_SDA_PU_EN |
+				      FIELD_PREP(PHY_SW_FORCE_CTRL_SCL_PU_VAL, internal_pu) |
+				      FIELD_PREP(PHY_SW_FORCE_CTRL_SDA_PU_VAL, internal_pu));
 }
 #endif
 
@@ -304,12 +396,17 @@ static int i3c_hci_bus_init(struct i3c_master_controller *m)
 	struct i3c_device_info info;
 	int ret;
 
-	DBG("");
 	dev_info(&hci->master.dev, "Master Mode");
 
 #ifdef CONFIG_ARCH_ASPEED
+	/*
+	 * Enable master clock stall: when the controller cannot keep the
+	 * data pipeline fed it holds SCL low instead of underrunning, so a
+	 * transfer pauses and resumes cleanly rather than aborting.
+	 */
 	ast_inhouse_write(ASPEED_I3C_CTRL,
-			  ASPEED_I3C_CTRL_INIT |
+			  ASPEED_I3C_CTRL_CLOCK_STALL_EN |
+				  ASPEED_I3C_CTRL_INIT |
 				  FIELD_PREP(ASPEED_I3C_CTRL_INIT_MODE,
 					     INIT_MST_MODE));
 	aspeed_i3c_phy_init(hci);
@@ -347,8 +444,12 @@ static int i3c_hci_bus_init(struct i3c_master_controller *m)
 	if (ret)
 		return ret;
 
+	/* Set RESP_BUF_THLD to 0(n) to get 1(n+1) response */
+	if (hci->quirks & HCI_QUIRK_RESP_BUF_THLD)
+		amd_set_resp_buf_thld(hci);
+
 	reg_set(HC_CONTROL, HC_CONTROL_BUS_ENABLE);
-	DBG("HC_CONTROL = %#x", reg_read(HC_CONTROL));
+	dev_dbg(&hci->master.dev, "HC_CONTROL = %#x", reg_read(HC_CONTROL));
 
 	return 0;
 }
@@ -358,12 +459,6 @@ static void i3c_hci_bus_cleanup(struct i3c_master_controller *m)
 	struct i3c_hci *hci = to_i3c_hci(m);
 	struct platform_device *pdev = to_platform_device(m->dev.parent);
 
-	DBG("");
-
-#ifdef CONFIG_ARCH_ASPEED
-	if (hci->EXTCAPS_regs == hci->INHOUSE_regs)
-		ast_inhouse_write(ASPEED_I3C_CTRL, 0x2400);
-#endif
 	reg_clear(HC_CONTROL, HC_CONTROL_BUS_ENABLE);
 	synchronize_irq(platform_get_irq(pdev, 0));
 	hci->io->cleanup(hci);
@@ -402,9 +497,9 @@ out:
 	return ret;
 }
 
-void mipi_i3c_hci_iba_ctrl(struct i3c_hci *hci, bool enable)
+static void mipi_i3c_hci_iba_ctrl(struct i3c_hci *hci, bool enable)
 {
-	DBG("%s IBA\n", enable ? "ENABLE" : "DISABLE");
+	dev_dbg(&hci->master.dev, "%s IBA\n", enable ? "ENABLE" : "DISABLE");
 	reg_write(HC_CONTROL,
 		  enable ? reg_read(HC_CONTROL) | HC_CONTROL_IBA_INCLUDE :
 			   reg_read(HC_CONTROL) & ~HC_CONTROL_IBA_INCLUDE);
@@ -412,7 +507,8 @@ void mipi_i3c_hci_iba_ctrl(struct i3c_hci *hci, bool enable)
 
 void mipi_i3c_hci_hj_ctrl(struct i3c_hci *hci, bool ack_nack)
 {
-	DBG("%s Hot-join requeset\n", ack_nack ? "ACK" : "NACK");
+	dev_dbg(&hci->master.dev, "%s Hot-join requeset\n",
+		ack_nack ? "ACK" : "NACK");
 	reg_write(HC_CONTROL,
 		  ack_nack ? reg_read(HC_CONTROL) & ~HC_CONTROL_HOT_JOIN_CTRL :
 			     reg_read(HC_CONTROL) | HC_CONTROL_HOT_JOIN_CTRL);
@@ -430,6 +526,7 @@ void mipi_i3c_hci_pio_reset(struct i3c_hci *hci)
 		  RX_FIFO_RST | TX_FIFO_RST | RESP_QUEUE_RST | CMD_QUEUE_RST);
 }
 
+/* located here rather than pio.c because needed bits are in core reg space */
 void mipi_i3c_hci_pio_ibi_reset(struct i3c_hci *hci)
 {
 	reg_write(RESET_CONTROL, IBI_QUEUE_RST);
@@ -444,7 +541,7 @@ void mipi_i3c_hci_dct_index_reset(struct i3c_hci *hci)
 static int i3c_hci_enable_hotjoin(struct i3c_master_controller *m)
 {
 	struct i3c_hci *hci = to_i3c_hci(m);
-	int ret;
+	int ret = 0;
 
 	if (hci->io->request_hj)
 		ret = hci->io->request_hj(hci);
@@ -474,9 +571,8 @@ static int i3c_hci_send_ccc_cmd(struct i3c_master_controller *m,
 	DECLARE_COMPLETION_ONSTACK(done);
 	int i, last, ret = 0;
 
-	DBG("cmd=%#x rnw=%d dbp=%d db=%#x ndests=%d data[0].len=%d", ccc->id,
-	    ccc->rnw, ccc->dbp, ccc->db, ccc->ndests,
-	    ccc->dests[0].payload.len);
+	dev_dbg(&hci->master.dev, "cmd=%#x rnw=%d ndests=%d data[0].len=%d",
+		ccc->id, ccc->rnw, ccc->ndests, ccc->dests[0].payload.len);
 
 #ifdef CONFIG_ARCH_ASPEED
 	/*
@@ -529,27 +625,31 @@ static int i3c_hci_send_ccc_cmd(struct i3c_master_controller *m,
 		goto out;
 	if (!wait_for_completion_timeout(&done, HZ) &&
 	    hci->io->dequeue_xfer(hci, xfer, nxfers)) {
-		ret = -ETIME;
+		ret = -ETIMEDOUT;
 		goto out;
 	}
 	for (i = prefixed; i < nxfers; i++) {
 		if (ccc->rnw)
 			ccc->dests[i - prefixed].payload.len =
 				RESP_DATA_LENGTH(xfer[i].response);
-		if (RESP_STATUS(xfer[i].response) != RESP_SUCCESS) {
-			DBG("resp status = %lx", RESP_STATUS(xfer[i].response));
-			if (RESP_STATUS(xfer[i].response) ==
-			    RESP_ERR_ADDR_HEADER)
-				ret = I3C_ERROR_M2;
-			else
-				ret = -EIO;
+		switch (RESP_STATUS(xfer[i].response)) {
+		case RESP_SUCCESS:
+			continue;
+		case RESP_ERR_ADDR_HEADER:
+		case RESP_ERR_NACK:
+			ccc->err = I3C_ERROR_M2;
+			fallthrough;
+		default:
+			dev_err(&hci->master.dev, "resp status = %lx",
+				RESP_STATUS(xfer[i].response));
+			ret = -EIO;
 			goto out;
 		}
 	}
 
 	if (ccc->rnw)
-		DBG("got: %*ph",
-		    ccc->dests[0].payload.len, ccc->dests[0].payload.data);
+		dev_dbg(&hci->master.dev, "got: %*ph",
+			ccc->dests[0].payload.len, ccc->dests[0].payload.data);
 
 out:
 	hci_free_xfer(xfer, nxfers);
@@ -559,8 +659,6 @@ out:
 static int i3c_hci_daa(struct i3c_master_controller *m)
 {
 	struct i3c_hci *hci = to_i3c_hci(m);
-
-	DBG("");
 
 	return hci->cmd->perform_daa(hci);
 }
@@ -576,7 +674,7 @@ static int i3c_hci_priv_xfers(struct i3c_dev_desc *dev,
 	unsigned int size_limit;
 	int i, last, ret = 0;
 
-	DBG("nxfers = %d", nxfers);
+	dev_dbg(&hci->master.dev, "nxfers = %d", nxfers);
 
 	xfer = hci_alloc_xfer(nxfers);
 	if (!xfer)
@@ -608,7 +706,7 @@ static int i3c_hci_priv_xfers(struct i3c_dev_desc *dev,
 		goto out;
 	if (!wait_for_completion_timeout(&done, HZ) &&
 	    hci->io->dequeue_xfer(hci, xfer, nxfers)) {
-		ret = -ETIME;
+		ret = -ETIMEDOUT;
 		goto out;
 	}
 	for (i = 0; i < nxfers; i++) {
@@ -627,18 +725,19 @@ out:
 	return ret;
 }
 
-static int i3c_hci_send_hdr_cmds(struct i3c_master_controller *m,
+static int i3c_hci_send_hdr_cmds(struct i3c_dev_desc *dev,
 				 struct i3c_hdr_cmd *cmds, int ncmds)
 {
+	struct i3c_master_controller *m = i3c_dev_get_master(dev);
 	struct i3c_hci *hci = to_i3c_hci(m);
 	struct hci_xfer *xfer;
 	DECLARE_COMPLETION_ONSTACK(done);
 	int i, last, ret = 0, ntxwords = 0, nrxwords = 0;
 
-	DBG("ncmds = %d", ncmds);
+	dev_dbg(&hci->master.dev, "ncmds = %d", ncmds);
 
 	for (i = 0; i < ncmds; i++) {
-		DBG("cmds[%d] mode = %x", i, cmds[i].mode);
+		dev_dbg(&hci->master.dev, "cmds[%d] mode = %x", i, cmds[i].mode);
 		if (!(BIT(cmds[i].mode) & m->this->info.hdr_cap))
 			return -EOPNOTSUPP;
 		if (cmds[i].code & 0x80)
@@ -659,8 +758,7 @@ static int i3c_hci_send_hdr_cmds(struct i3c_master_controller *m,
 			xfer[i].data = cmds[i].data.in;
 		else
 			xfer[i].data = (void *)cmds[i].data.out;
-		hci->cmd->prep_hdr(hci, xfer, cmds[i].addr, cmds[i].code,
-				   cmds[i].mode);
+		hci->cmd->prep_hdr(hci, xfer, dev->info.dyn_addr, cmds[i].code, cmds[i].mode);
 
 		xfer[i].cmd_desc[0] |= CMD_0_ROC;
 	}
@@ -701,14 +799,14 @@ static int i3c_hci_i2c_xfers(struct i2c_dev_desc *dev,
 	DECLARE_COMPLETION_ONSTACK(done);
 	int i, last, ret = 0;
 
-	DBG("nxfers = %d", nxfers);
+	dev_dbg(&hci->master.dev, "nxfers = %d", nxfers);
 
 	xfer = hci_alloc_xfer(nxfers);
 	if (!xfer)
 		return -ENOMEM;
 
 	for (i = 0; i < nxfers; i++) {
-		xfer[i].data = i2c_xfers[i].buf;
+		xfer[i].data = i2c_get_dma_safe_msg_buf(&i2c_xfers[i], 1);
 		xfer[i].data_len = i2c_xfers[i].len;
 		xfer[i].rnw = i2c_xfers[i].flags & I2C_M_RD;
 		hci->cmd->prep_i2c_xfer(hci, dev, &xfer[i]);
@@ -721,9 +819,9 @@ static int i3c_hci_i2c_xfers(struct i2c_dev_desc *dev,
 	ret = hci->io->queue_xfer(hci, xfer, nxfers);
 	if (ret)
 		goto out;
-	if (!wait_for_completion_timeout(&done, HZ) &&
+	if (!wait_for_completion_timeout(&done, m->i2c.timeout) &&
 	    hci->io->dequeue_xfer(hci, xfer, nxfers)) {
-		ret = -ETIME;
+		ret = -ETIMEDOUT;
 		goto out;
 	}
 	for (i = 0; i < nxfers; i++) {
@@ -736,6 +834,10 @@ static int i3c_hci_i2c_xfers(struct i2c_dev_desc *dev,
 	}
 
 out:
+	for (i = 0; i < nxfers; i++)
+		i2c_put_dma_safe_msg_buf(xfer[i].data, &i2c_xfers[i],
+					 ret ? false : true);
+
 	hci_free_xfer(xfer, nxfers);
 	return ret;
 }
@@ -747,16 +849,13 @@ static int i3c_hci_attach_i3c_dev(struct i3c_dev_desc *dev)
 	struct i3c_hci_dev_data *dev_data;
 	int ret;
 
-	DBG("");
-
 	dev_data = kzalloc(sizeof(*dev_data), GFP_KERNEL);
 	if (!dev_data)
 		return -ENOMEM;
 	if (hci->cmd == &mipi_i3c_hci_cmd_v1) {
 #ifdef CONFIG_ARCH_ASPEED
 		ret = mipi_i3c_hci_dat_v1.alloc_entry(hci,
-			dev->info.dyn_addr ?
-			dev->info.dyn_addr : dev->info.static_addr);
+						      dev->info.dyn_addr ?: dev->info.static_addr);
 #else
 		ret = mipi_i3c_hci_dat_v1.alloc_entry(hci);
 #endif
@@ -765,8 +864,7 @@ static int i3c_hci_attach_i3c_dev(struct i3c_dev_desc *dev)
 			return ret;
 		}
 		mipi_i3c_hci_dat_v1.set_dynamic_addr(hci, ret,
-			dev->info.dyn_addr ?
-			dev->info.dyn_addr : dev->info.static_addr);
+						     dev->info.dyn_addr ?: dev->info.static_addr);
 		dev_data->dat_idx = ret;
 	}
 	i3c_dev_set_master_data(dev, dev_data);
@@ -778,8 +876,6 @@ static int i3c_hci_reattach_i3c_dev(struct i3c_dev_desc *dev, u8 old_dyn_addr)
 	struct i3c_master_controller *m = i3c_dev_get_master(dev);
 	struct i3c_hci *hci = to_i3c_hci(m);
 	struct i3c_hci_dev_data *dev_data = i3c_dev_get_master_data(dev);
-
-	DBG("");
 
 	if (hci->cmd == &mipi_i3c_hci_cmd_v1)
 		mipi_i3c_hci_dat_v1.set_dynamic_addr(hci, dev_data->dat_idx,
@@ -796,8 +892,6 @@ static void i3c_hci_detach_i3c_dev(struct i3c_dev_desc *dev)
 	struct i3c_hci *hci = to_i3c_hci(m);
 	struct i3c_hci_dev_data *dev_data = i3c_dev_get_master_data(dev);
 
-	DBG("");
-
 	i3c_dev_set_master_data(dev, NULL);
 	if (hci->cmd == &mipi_i3c_hci_cmd_v1)
 		mipi_i3c_hci_dat_v1.free_entry(hci, dev_data->dat_idx);
@@ -810,8 +904,6 @@ static int i3c_hci_attach_i2c_dev(struct i2c_dev_desc *dev)
 	struct i3c_hci *hci = to_i3c_hci(m);
 	struct i3c_hci_dev_data *dev_data;
 	int ret;
-
-	DBG("");
 
 	if (hci->cmd != &mipi_i3c_hci_cmd_v1)
 		return 0;
@@ -840,8 +932,6 @@ static void i3c_hci_detach_i2c_dev(struct i2c_dev_desc *dev)
 	struct i3c_hci *hci = to_i3c_hci(m);
 	struct i3c_hci_dev_data *dev_data = i2c_dev_get_master_data(dev);
 
-	DBG("");
-
 	if (dev_data) {
 		i2c_dev_set_master_data(dev, NULL);
 		if (hci->cmd == &mipi_i3c_hci_cmd_v1)
@@ -856,12 +946,21 @@ static int i3c_hci_request_ibi(struct i3c_dev_desc *dev,
 	struct i3c_master_controller *m = i3c_dev_get_master(dev);
 	struct i3c_hci *hci = to_i3c_hci(m);
 	struct i3c_hci_dev_data *dev_data = i3c_dev_get_master_data(dev);
-	unsigned int dat_idx = dev_data->dat_idx;
+	unsigned int dat_idx = dev_data->dat_idx, ibi_max_len = req->max_payload_len;
 
-	if (req->max_payload_len != 0)
+	if (req->max_payload_len != 0) {
 		mipi_i3c_hci_dat_v1.set_flags(hci, dat_idx, DAT_0_IBI_PAYLOAD, 0);
-	else
+#ifdef CONFIG_ARCH_ASPEED
+		ibi_max_len = max(ibi_max_len, FIELD_GET(ASPEED_I3C_IBI_TERMINATE_LEN,
+							 ast_inhouse_read(ASPEED_I3C_MST_MRL)));
+		ast_inhouse_write(ASPEED_I3C_MST_MRL,
+				  ASPEED_I3C_IBI_TERMINATE_EN |
+					  FIELD_PREP(ASPEED_I3C_IBI_TERMINATE_LEN,
+						     ibi_max_len));
+#endif
+	} else {
 		mipi_i3c_hci_dat_v1.clear_flags(hci, dat_idx, DAT_0_IBI_PAYLOAD, 0);
+	}
 	return hci->io->request_ibi(hci, dev, req);
 }
 
@@ -925,6 +1024,15 @@ static const struct i3c_master_controller_ops i3c_hci_ops = {
 	.disable_hotjoin	= i3c_hci_disable_hotjoin,
 };
 
+static void i3c_hci_halt_rst_work(struct work_struct *work)
+{
+	struct i3c_hci *hci;
+
+	hci = container_of(work, struct i3c_hci, halt_rst_work);
+	hci->io->dequeue_xfer(hci, NULL, 0);
+	reg_write(INTR_SIGNAL_ENABLE, INTR_HC_INTERNAL_ERR);
+}
+
 static int ast2700_i3c_target_bus_init(struct i3c_master_controller *m)
 {
 	struct i3c_hci *hci = to_i3c_hci(m);
@@ -975,14 +1083,19 @@ static int ast2700_i3c_target_bus_init(struct i3c_master_controller *m)
 	if (ret)
 		return ret;
 
+	/* Enable internal error interrupt to detect the i3c halt caused by the hardware error */
+	reg_write(INTR_SIGNAL_ENABLE, INTR_HC_INTERNAL_ERR);
+	INIT_WORK(&hci->halt_rst_work, i3c_hci_halt_rst_work);
+
+	reg_set(HC_CONTROL, HC_CONTROL_BUS_ENABLE);
+	dev_dbg(&hci->master.dev, "HC_CONTROL = %#x", reg_read(HC_CONTROL));
+
 	return 0;
 }
 
 static void ast2700_i3c_target_bus_cleanup(struct i3c_master_controller *m)
 {
 	struct i3c_hci *hci = to_i3c_hci(m);
-
-	DBG("");
 
 	reg_clear(HC_CONTROL, HC_CONTROL_BUS_ENABLE);
 	hci->io->cleanup(hci);
@@ -1000,7 +1113,7 @@ ast2700_i3c_target_priv_xfers(struct i3c_dev_desc *dev,
 	unsigned int size_limit;
 	int i, ret = 0;
 
-	DBG("nxfers = %d", nxfers);
+	dev_dbg(&hci->master.dev, "nxfers = %d", nxfers);
 
 	xfer = hci_alloc_xfer(nxfers);
 	if (!xfer)
@@ -1014,7 +1127,13 @@ ast2700_i3c_target_priv_xfers(struct i3c_dev_desc *dev,
 			xfer[i].rnw = i3c_xfers[i].rnw;
 			xfer[i].data = (void *)i3c_xfers[i].data.out;
 			xfer[i].cmd_tid = tid;
-			hci->cmd->prep_i3c_xfer(hci, dev, &xfer[i]);
+			if (xfer[i].cmd_tid == TID_TARGET_IBI) {
+				hci->cmd->prep_ibi_xfer(hci, dev, &xfer[i]);
+				xfer[i].data += 1;
+				xfer[i].data_len -= 1;
+			} else {
+				hci->cmd->prep_i3c_xfer(hci, dev, &xfer[i]);
+			}
 		} else {
 			dev_err(&hci->master.dev,
 				"target mode can't do priv_read command\n");
@@ -1030,6 +1149,31 @@ ast2700_i3c_target_priv_xfers(struct i3c_dev_desc *dev,
 	return xfer;
 }
 
+static int ast2700_i3c_target_put_rdata(struct i3c_dev_desc *dev,
+					struct i3c_priv_xfer *i3c_xfers,
+					int nxfers)
+{
+	struct i3c_master_controller *m = i3c_dev_get_master(dev);
+	struct i3c_hci *hci = to_i3c_hci(m);
+	struct hci_xfer *read_xfer;
+
+	reinit_completion(&hci->pending_r_comp);
+	read_xfer = ast2700_i3c_target_priv_xfers(dev, i3c_xfers, nxfers,
+						  TID_TARGET_RD_DATA);
+	if (!read_xfer)
+		return -EINVAL;
+
+	if (!wait_for_completion_interruptible_timeout(&hci->pending_r_comp,
+						       msecs_to_jiffies(1000))) {
+		dev_warn(&hci->master.dev, "timeout waiting for master read\n");
+		mipi_i3c_hci_pio_reset(hci);
+		return -EINVAL;
+	}
+	hci_free_xfer(read_xfer, 1);
+
+	return 0;
+}
+
 static int ast2700_i3c_target_generate_ibi(struct i3c_dev_desc *dev, const u8 *data, int len)
 {
 	struct i3c_master_controller *m = i3c_dev_get_master(dev);
@@ -1038,8 +1182,6 @@ static int ast2700_i3c_target_generate_ibi(struct i3c_dev_desc *dev, const u8 *d
 
 	if (data || len != 0)
 		return -EOPNOTSUPP;
-
-	DBG("");
 
 	reg = ast_inhouse_read(ASPEED_I3C_SLV_STS1);
 	if ((reg & ASPEED_I3C_SLV_STS1_IBI_EN) == 0)
@@ -1065,8 +1207,6 @@ static int ast2700_i3c_target_hj_req(struct i3c_dev_desc *dev)
 	struct i3c_hci *hci = to_i3c_hci(m);
 	u32 reg;
 	int ret;
-
-	DBG("");
 
 	reg = ast_inhouse_read(ASPEED_I3C_STS);
 	if ((reg & ASPEED_I3C_STS_SLV_DYNAMIC_ADDRESS_VALID))
@@ -1152,7 +1292,7 @@ static const struct i3c_target_ops ast2700_i3c_target_ops = {
 	.bus_init = ast2700_i3c_target_bus_init,
 	.bus_cleanup = ast2700_i3c_target_bus_cleanup,
 	.hj_req = ast2700_i3c_target_hj_req,
-	.priv_xfers = NULL,
+	.priv_xfers = ast2700_i3c_target_put_rdata,
 	.generate_ibi = ast2700_i3c_target_generate_ibi,
 	.pending_read_notify = ast2700_i3c_target_pending_read_notify,
 	.is_ibi_enabled = ast2700_i3c_target_is_ibi_enabled,
@@ -1166,26 +1306,31 @@ static irqreturn_t i3c_hci_irq_handler(int irq, void *dev_id)
 	u32 val;
 
 	val = reg_read(INTR_STATUS);
-	DBG("INTR_STATUS = %#x", val);
+	reg_write(INTR_STATUS, val);
+	dev_dbg(&hci->master.dev, "INTR_STATUS %#x", val);
 
-	if (val) {
-		reg_write(INTR_STATUS, val);
-	} else {
-		/* v1.0 does not have PIO cascaded notification bits */
-		val |= INTR_HC_PIO;
-	}
+	if (val)
+		result = IRQ_HANDLED;
 
-	if (val & INTR_HC_RESET_CANCEL) {
-		DBG("cancelled reset");
-		val &= ~INTR_HC_RESET_CANCEL;
+	if (val & INTR_HC_SEQ_CANCEL) {
+		dev_dbg(&hci->master.dev,
+			"Host Controller Cancelled Transaction Sequence\n");
+		val &= ~INTR_HC_SEQ_CANCEL;
 	}
 	if (val & INTR_HC_INTERNAL_ERR) {
-		dev_err(&hci->master.dev, "Host Controller Internal Error\n");
+		if (hci->master.target) {
+			/* Disable the signal enable to avoid the interrupt storm */
+			reg_write(INTR_SIGNAL_ENABLE, 0x0);
+			reg_write(INTR_STATUS, INTR_HC_INTERNAL_ERR);
+			queue_work(hci->master.wq, &hci->halt_rst_work);
+		}
 		val &= ~INTR_HC_INTERNAL_ERR;
 	}
 	if (val)
-		dev_err(&hci->master.dev, "unexpected INTR_STATUS %#x\n", val);
-	else
+		dev_warn_once(&hci->master.dev,
+			      "unexpected INTR_STATUS %#x\n", val);
+
+	if (hci->io->irq_handler(hci))
 		result = IRQ_HANDLED;
 
 	return result;
@@ -1198,28 +1343,25 @@ static irqreturn_t i3c_aspeed_irq_handler(int irqn, void *dev_id)
 	int result = -1;
 
 	val = ast_inhouse_read(ASPEED_I3C_INTR_SUM_STATUS);
-	DBG("Global INTR_STATUS = %#x\n", val);
+	dev_dbg(&hci->master.dev, "Global INTR_STATUS = %#x\n", val);
 
 	if (val & ASPEED_INTR_SUM_CAP) {
 		i3c_hci_irq_handler(irqn, dev_id);
 		val &= ~ASPEED_INTR_SUM_CAP;
 	}
 	if (val & ASPEED_INTR_SUM_PIO) {
-		hci->io->irq_handler(hci, 0);
+		hci->io->irq_handler(hci);
 		val &= ~ASPEED_INTR_SUM_PIO;
 	}
 	if (val & ASPEED_INTR_SUM_RHS) {
-		/*
-		 * ASPEED only has one ring, and HCI v1.2 doesn't have a register to indicate which
-		 * ring has the interrupt.
-		 */
-		hci->io->irq_handler(hci, 1);
+		hci->io->irq_handler(hci);
 		val &= ~ASPEED_INTR_SUM_RHS;
 	}
 	if (val & ASPEED_INTR_SUM_INHOUSE) {
 		inhouse_val = ast_inhouse_read(ASPEED_I3C_INTR_STATUS);
-		DBG("Inhouse INTR_STATUS = %#x/%#x\n", inhouse_val,
-		    ast_inhouse_read(ASPEED_I3C_INTR_SIGNAL_ENABLE));
+		dev_dbg(&hci->master.dev, "Inhouse INTR_STATUS = %#x/%#x\n",
+			inhouse_val,
+			ast_inhouse_read(ASPEED_I3C_INTR_SIGNAL_ENABLE));
 		ast_inhouse_write(ASPEED_I3C_INTR_STATUS, inhouse_val);
 		val &= ~ASPEED_INTR_SUM_INHOUSE;
 	}
@@ -1230,11 +1372,23 @@ static irqreturn_t i3c_aspeed_irq_handler(int irqn, void *dev_id)
 	else
 		result = IRQ_HANDLED;
 
+	/* W1 to trigger the INTC to check for interrupts again.*/
+	ast_inhouse_write(ASPEED_I3C_INTR_RENEW, 1);
+
 	return result;
 }
 
+#ifdef CONFIG_ARCH_ASPEED
+#define PIO_DATA_BUFFER_THLD_CTRL	0x14
+#define DATA_RX_START_THLD		GENMASK(26, 24)
+#define DATA_TX_START_THLD		GENMASK(18, 16)
+#define DATA_RX_BUF_THLD		GENMASK(10, 8)
+#define DATA_TX_BUF_THLD		GENMASK(2, 0)
+#endif
+
 static int i3c_hci_init(struct i3c_hci *hci)
 {
+	bool size_in_dwords, mode_selector;
 	u32 regval, offset;
 	int ret;
 
@@ -1257,13 +1411,18 @@ static int i3c_hci_init(struct i3c_hci *hci)
 	}
 
 	hci->caps = reg_read(HC_CAPABILITIES);
-	dev_info(&hci->master.dev, "caps = %#x", hci->caps);
+	dev_dbg(&hci->master.dev, "caps = %#x", hci->caps);
+
+	size_in_dwords = hci->version_major < 1 ||
+			 (hci->version_major == 1 && hci->version_minor < 1);
 
 	regval = reg_read(DAT_SECTION);
 	offset = FIELD_GET(DAT_TABLE_OFFSET, regval);
 	hci->DAT_regs = offset ? hci->base_regs + offset : NULL;
 	hci->DAT_entries = FIELD_GET(DAT_TABLE_SIZE, regval);
 	hci->DAT_entry_size = FIELD_GET(DAT_ENTRY_SIZE, regval) ? 0 : 8;
+	if (size_in_dwords)
+		hci->DAT_entries = 4 * hci->DAT_entries / hci->DAT_entry_size;
 	dev_info(&hci->master.dev, "DAT: %u %u-bytes entries at offset %#x\n",
 		 hci->DAT_entries, hci->DAT_entry_size, offset);
 
@@ -1272,6 +1431,8 @@ static int i3c_hci_init(struct i3c_hci *hci)
 	hci->DCT_regs = offset ? hci->base_regs + offset : NULL;
 	hci->DCT_entries = FIELD_GET(DCT_TABLE_SIZE, regval);
 	hci->DCT_entry_size = FIELD_GET(DCT_ENTRY_SIZE, regval) ? 0 : 16;
+	if (size_in_dwords)
+		hci->DCT_entries = 4 * hci->DCT_entries / hci->DCT_entry_size;
 	dev_info(&hci->master.dev, "DCT: %u %u-bytes entries at offset %#x\n",
 		 hci->DCT_entries, hci->DCT_entry_size, offset);
 
@@ -1294,6 +1455,9 @@ static int i3c_hci_init(struct i3c_hci *hci)
 	if (ret)
 		return ret;
 
+	spin_lock_init(&hci->lock);
+	mutex_init(&hci->control_mutex);
+
 	/*
 	 * Now let's reset the hardware.
 	 * SOFT_RST must be clear before we write to it.
@@ -1309,9 +1473,14 @@ static int i3c_hci_init(struct i3c_hci *hci)
 	if (ret)
 		return -ENXIO;
 
-	/* Disable all interrupts and allow all signal updates */
+	/* Disable all interrupts */
 	reg_write(INTR_SIGNAL_ENABLE, 0x0);
-	reg_write(INTR_STATUS_ENABLE, 0xffffffff);
+	/*
+	 * Only allow bit 31:10 signal updates because
+	 * Bit 0:9 are reserved in IP version >= 0.8
+	 * Bit 0:5 are defined in IP version < 0.8 but not handled by PIO code
+	 */
+	reg_write(INTR_STATUS_ENABLE, GENMASK(31, 10));
 #ifdef CONFIG_ARCH_ASPEED
 	ast_inhouse_write(ASPEED_I3C_INTR_SIGNAL_ENABLE, 0);
 	ast_inhouse_write(ASPEED_I3C_INTR_STATUS_ENABLE, 0xffffffff);
@@ -1354,11 +1523,17 @@ static int i3c_hci_init(struct i3c_hci *hci)
 		return -EINVAL;
 	}
 
-#if 0
+	mode_selector = hci->version_major > 1 ||
+				(hci->version_major == 1 && hci->version_minor > 0);
+
+	/* Quirk for HCI_QUIRK_PIO_MODE on AMD platforms */
+	if (hci->quirks & HCI_QUIRK_PIO_MODE)
+		hci->RHS_regs = NULL;
+
 	/* Try activating DMA operations first */
 	if (hci->RHS_regs) {
 		reg_clear(HC_CONTROL, HC_CONTROL_PIO_MODE);
-		if (reg_read(HC_CONTROL) & HC_CONTROL_PIO_MODE) {
+		if (mode_selector && (reg_read(HC_CONTROL) & HC_CONTROL_PIO_MODE)) {
 			dev_err(&hci->master.dev, "PIO mode is stuck\n");
 			ret = -EIO;
 		} else if (!hci->dma_rst) {
@@ -1369,14 +1544,18 @@ static int i3c_hci_init(struct i3c_hci *hci)
 			hci->io = &mipi_i3c_hci_dma;
 			reset_control_deassert(hci->dma_rst);
 			dev_info(&hci->master.dev, "Using DMA\n");
+#ifdef CONFIG_ARCH_ASPEED
+			writel((readl(hci->PIO_regs + (PIO_DATA_BUFFER_THLD_CTRL)) &
+				~(DATA_TX_START_THLD)),
+			       hci->PIO_regs + (PIO_DATA_BUFFER_THLD_CTRL));
+#endif
 		}
 	}
-#endif
 
 	/* If no DMA, try PIO */
 	if (!hci->io && hci->PIO_regs) {
 		reg_set(HC_CONTROL, HC_CONTROL_PIO_MODE);
-		if (!(reg_read(HC_CONTROL) & HC_CONTROL_PIO_MODE)) {
+		if (mode_selector && !(reg_read(HC_CONTROL) & HC_CONTROL_PIO_MODE)) {
 			dev_err(&hci->master.dev, "DMA mode is stuck\n");
 			ret = -EIO;
 		} else {
@@ -1391,6 +1570,10 @@ static int i3c_hci_init(struct i3c_hci *hci)
 			ret = -EINVAL;
 		return ret;
 	}
+
+	/* Configure OD and PP timings for AMD platforms */
+	if (hci->quirks & HCI_QUIRK_OD_PP_TIMING)
+		amd_set_od_pp_timing(hci);
 
 	return 0;
 }
@@ -1416,16 +1599,17 @@ static int i3c_hci_probe(struct platform_device *pdev)
 		return PTR_ERR(hci->base_regs);
 
 	platform_set_drvdata(pdev, hci);
-	mutex_init(&hci->control_mutex);
 	/* temporary for dev_printk's, to be replaced in i3c_master_register */
 	hci->master.dev.init_name = dev_name(&pdev->dev);
 
+	hci->quirks = (unsigned long)device_get_match_data(&pdev->dev);
 	hci->rst = devm_reset_control_get_optional_exclusive(&pdev->dev, NULL);
 	if (IS_ERR(hci->rst)) {
 		dev_err(&pdev->dev,
 			"missing or invalid reset controller device tree entry");
 		return PTR_ERR(hci->rst);
 	}
+	reset_control_assert(hci->rst);
 	reset_control_deassert(hci->rst);
 
 	hci->dma_rst = devm_reset_control_get_shared_by_index(&pdev->dev, 1);
@@ -1480,12 +1664,19 @@ static const __maybe_unused struct of_device_id i3c_hci_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, i3c_hci_of_match);
 
+static const struct acpi_device_id i3c_hci_acpi_match[] = {
+	{ "AMDI5017", HCI_QUIRK_PIO_MODE | HCI_QUIRK_OD_PP_TIMING | HCI_QUIRK_RESP_BUF_THLD },
+	{}
+};
+MODULE_DEVICE_TABLE(acpi, i3c_hci_acpi_match);
+
 static struct platform_driver i3c_hci_driver = {
 	.probe = i3c_hci_probe,
 	.remove = i3c_hci_remove,
 	.driver = {
 		.name = "mipi-i3c-hci",
 		.of_match_table = of_match_ptr(i3c_hci_of_match),
+		.acpi_match_table = i3c_hci_acpi_match,
 	},
 };
 module_platform_driver(i3c_hci_driver);

@@ -14,6 +14,7 @@
 #include <linux/i2c.h>
 #include <linux/i3c/ccc.h>
 #include <linux/i3c/device.h>
+#include <linux/i3c/target.h>
 #include <linux/rwsem.h>
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
@@ -24,7 +25,6 @@
 
 struct i2c_client;
 
-struct i3c_target_ops;
 /* notifier actions. notifier call data is the struct i3c_bus */
 enum {
 	I3C_NOTIFY_BUS_ADD,
@@ -220,6 +220,8 @@ struct i3c_target_info {
  *	 code should manipulate it in when updating the dev <-> desc link or
  *	 when propagating IBI events to the driver
  * @boardinfo: pointer to the boardinfo attached to this I3C device
+ * @event_cb: I3C framework event callback used to publish events to registered
+ *	      devices' drivers
  *
  * Internal representation of an I3C device. This object is only used by the
  * core and passed to I3C master controller drivers when they're requested to
@@ -235,6 +237,7 @@ struct i3c_dev_desc {
 	struct i3c_device_ibi_info *ibi;
 	struct i3c_device *dev;
 	const struct i3c_dev_boardinfo *boardinfo;
+	i3c_event_cb event_cb;
 };
 
 /**
@@ -275,6 +278,7 @@ struct i3c_device {
 #define I3C_BUS_THIGH_MIXED_MAX_NS	41
 #define I3C_BUS_TIDLE_MIN_NS		200000
 #define I3C_BUS_TLOW_OD_MIN_NS		200
+#define I3C_BUS_THIGH_MAX_NS		41
 
 /**
  * enum i3c_bus_mode - I3C bus mode
@@ -495,7 +499,7 @@ struct i3c_master_controller_ops {
 				 const struct i3c_ccc_cmd *cmd);
 	int (*send_ccc_cmd)(struct i3c_master_controller *master,
 			    struct i3c_ccc_cmd *cmd);
-	int (*send_hdr_cmds)(struct i3c_master_controller *master,
+	int (*send_hdr_cmds)(struct i3c_dev_desc *dev,
 			     struct i3c_hdr_cmd *cmds, int ncmds);
 	int (*priv_xfers)(struct i3c_dev_desc *dev,
 			  struct i3c_priv_xfer *xfers,
@@ -643,8 +647,9 @@ int i3c_master_register(struct i3c_master_controller *master,
 			const struct i3c_master_controller_ops *ops,
 			bool secondary);
 void i3c_master_unregister(struct i3c_master_controller *master);
-int i3c_master_send_hdr_cmds(struct i3c_master_controller *master,
-			     struct i3c_hdr_cmd *cmds, int ncmds);
+int i3c_master_enable_hotjoin(struct i3c_master_controller *master);
+int i3c_master_disable_hotjoin(struct i3c_master_controller *master);
+
 int i3c_register(struct i3c_master_controller *master,
 		 struct device *parent,
 		 const struct i3c_master_controller_ops *master_ops,

@@ -14,7 +14,6 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
-#include <linux/idr.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
@@ -39,7 +38,7 @@ static struct i3cdev_data *get_free_i3cdev(struct i3c_device *i3c)
 	struct i3cdev_data *i3cdev;
 	int id;
 
-	id = ida_alloc_range(&i3cdev_ida, 0, I3C_MINORS - 1, GFP_KERNEL);
+	id = ida_alloc(&i3cdev_ida, GFP_KERNEL);
 	if (id < 0) {
 		pr_err("i3cdev: no minor number available!\n");
 		return ERR_PTR(id);

@@ -7,6 +7,8 @@
 #include <linux/device.h>
 #include <linux/i3c/device.h>
 
+struct i3c_dev_desc;
+
 struct i3c_master_controller;
 
 struct i3c_target_ops {
@@ -19,6 +21,7 @@ struct i3c_target_ops {
 				   struct i3c_priv_xfer *pending_read,
 				   struct i3c_priv_xfer *ibi_notify);
 	bool (*is_ibi_enabled)(struct i3c_dev_desc *dev);
+	u8 (*get_dyn_addr)(struct i3c_master_controller *master);
 	bool (*is_hj_enabled)(struct i3c_dev_desc *dev);
 };
 

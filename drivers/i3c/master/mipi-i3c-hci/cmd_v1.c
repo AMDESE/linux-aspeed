@@ -10,6 +10,7 @@
 #include <linux/bitfield.h>
 #include <linux/i3c/master.h>
 #include <linux/i3c/device.h>
+#include <dt-bindings/i3c/i3c.h>
 
 #include "hci.h"
 #include "cmd.h"
@@ -118,7 +119,11 @@
  * Target Transfer Command
  */
 
-#define CMD_0_ATTR_T			FIELD_PREP(CMD_0_ATTR, 0x0)
+/* Read */
+#define CMD_0_ATTR_T_R			FIELD_PREP(CMD_0_ATTR, 0x0)
+/* IBI */
+#define CMD_0_ATTR_T_I			FIELD_PREP(CMD_0_ATTR, 0x1)
+
 
 #define CMD_T0_DATA_LENGTH(v)		FIELD_PREP(W0_MASK(31, 16), v)
 #define CMD_T0_MDB(v)			FIELD_PREP(W0_MASK(15, 8), v)
@@ -159,6 +164,17 @@ static enum hci_cmd_mode get_i3c_mode(struct i3c_hci *hci)
 		return MODE_I3C_SDR2;
 	if (bus->scl_rate.i3c > 2000000)
 		return MODE_I3C_SDR3;
+#ifdef CONFIG_ARCH_ASPEED
+	/*
+	 * On Aspeed, SDR4 is permanently reserved as the slow-CCC slot (~1MHz)
+	 * for JESD403 SETHID/DEVCTRL (see aspeed_i3c_phy_init() in core.c), so
+	 * normal transfers must never select it; sub-2MHz buses share SDR3.
+	 * The reservation cannot depend on the bus context, which is stripped
+	 * when a hub proxies these CCCs through a controller running in MIPI
+	 * mode for DAA.
+	 */
+	return MODE_I3C_SDR3;
+#endif
 	return MODE_I3C_SDR4;
 }
 
@@ -209,6 +225,31 @@ static int hci_cmd_v1_prep_ccc(struct i3c_hci *hci, struct hci_xfer *xfer,
 	/* this should never happen */
 	if (WARN_ON(raw))
 		return -EINVAL;
+
+#ifdef CONFIG_ARCH_ASPEED
+	/*
+	 * SETHID/DEVCTRL/SETAASA must be sent at I2C-FMP-like speed (~1MHz) for
+	 * downstream SPD compatibility. Aspeed HCI follows the MIPI spec and
+	 * does not expose an "I3C-at-I2C-Fm" mode, so route these CCCs through
+	 * SDR4, whose PHY timing is programmed to ~1MHz in aspeed_i3c_phy_init().
+	 * Mirrors the SPEED_I3C_I2C_FM override in dw-i3c-master.c.
+	 *
+	 * SETHID and DEVCTRL are JEDEC-reserved opcodes that only ever appear in
+	 * the JESD403/SPD flow, so the opcode alone is an unambiguous signal and
+	 * they are downgraded unconditionally. This also survives a hub proxying
+	 * them through a controller running in MIPI context, where the JESD403
+	 * bus context is no longer visible.
+	 *
+	 * SETAASA is a generic CCC used outside JESD403 as well, so it is only
+	 * downgraded when the bus is explicitly in JESD403 context, to avoid
+	 * slowing it down on ordinary buses.
+	 */
+	if (ccc_cmd == I3C_CCC_SETHID || ccc_cmd == I3C_CCC_DEVCTRL)
+		mode = MODE_I3C_SDR4;
+	else if (ccc_cmd == I3C_CCC_SETAASA &&
+		 i3c_master_get_bus(&hci->master)->context == I3C_BUS_CONTEXT_JESD403)
+		mode = MODE_I3C_SDR4;
+#endif
 
 	if (ccc_addr != I3C_BROADCAST_ADDR) {
 		ret = mipi_i3c_hci_dat_v1.get_index(hci, ccc_addr);
@@ -288,6 +329,24 @@ static int hci_cmd_v1_prep_hdr(struct i3c_hci *hci, struct hci_xfer *xfer,
 	return 0;
 }
 
+static void hci_cmd_v1_prep_ibi_xfer(struct i3c_hci *hci,
+				     struct i3c_dev_desc *dev,
+				     struct hci_xfer *xfer)
+{
+	u8 *data = xfer->data;
+	unsigned int data_len = xfer->data_len - 1;
+
+	if (!aspeed_get_i3c_revision_id(hci))
+		xfer->cmd_desc[0] = CMD_0_ATTR_T_I |
+				    CMD_T0_TID_A0(xfer->cmd_tid) |
+				    CMD_T0_MDB_EN | CMD_T0_MDB(data[0]) |
+				    CMD_T0_DATA_LENGTH(data_len);
+	else
+		xfer->cmd_desc[0] = CMD_0_ATTR_T_I | CMD_T0_TID(xfer->cmd_tid) |
+				    CMD_T0_MDB_EN | CMD_T0_MDB(data[0]) |
+				    CMD_T0_DATA_LENGTH(data_len);
+}
+
 static void hci_cmd_v1_prep_i3c_xfer(struct i3c_hci *hci,
 				     struct i3c_dev_desc *dev,
 				     struct hci_xfer *xfer)
@@ -297,10 +356,10 @@ static void hci_cmd_v1_prep_i3c_xfer(struct i3c_hci *hci,
 
 	if (hci->master.target) {
 		if (!aspeed_get_i3c_revision_id(hci))
-			xfer->cmd_desc[0] = CMD_0_ATTR_T | CMD_T0_TID_A0(xfer->cmd_tid) |
+			xfer->cmd_desc[0] = CMD_0_ATTR_T_R | CMD_T0_TID_A0(xfer->cmd_tid) |
 					CMD_T0_DATA_LENGTH(data_len);
 		else
-			xfer->cmd_desc[0] = CMD_0_ATTR_T | CMD_T0_TID(xfer->cmd_tid) |
+			xfer->cmd_desc[0] = CMD_0_ATTR_T_R | CMD_T0_TID(xfer->cmd_tid) |
 					CMD_T0_DATA_LENGTH(data_len);
 	} else {
 		struct i3c_hci_dev_data *dev_data = i3c_dev_get_master_data(dev);
@@ -398,7 +457,7 @@ static int hci_cmd_v1_daa(struct i3c_hci *hci)
 	unsigned int dcr, bcr;
 	DECLARE_COMPLETION_ONSTACK(done);
 
-	xfer = hci_alloc_xfer(2);
+	xfer = hci_alloc_xfer(1);
 	if (!xfer)
 		return -ENOMEM;
 
@@ -426,14 +485,16 @@ static int hci_cmd_v1_daa(struct i3c_hci *hci)
 			break;
 		dat_idx = ret;
 		i3c_aspeed_set_daa_index(hci, dat_idx);
-		DBG("Dat index = %x %x %x %x\n",
-		    ast_inhouse_read(ASPEED_I3C_DAA_INDEX0),
-		    ast_inhouse_read(ASPEED_I3C_DAA_INDEX1),
-		    ast_inhouse_read(ASPEED_I3C_DAA_INDEX2),
-		    ast_inhouse_read(ASPEED_I3C_DAA_INDEX3));
+		dev_dbg(&hci->master.dev, "Dat index = %x %x %x %x\n",
+			ast_inhouse_read(ASPEED_I3C_DAA_INDEX0),
+			ast_inhouse_read(ASPEED_I3C_DAA_INDEX1),
+			ast_inhouse_read(ASPEED_I3C_DAA_INDEX2),
+			ast_inhouse_read(ASPEED_I3C_DAA_INDEX3));
 #endif
 
-		DBG("next_addr = 0x%02x, DAA using DAT %d", next_addr, dat_idx);
+		dev_dbg(&hci->master.dev,
+			"next_addr = 0x%02x, DAA using DAT %d",
+			next_addr, dat_idx);
 		mipi_i3c_hci_dat_v1.set_dynamic_addr(hci, dat_idx, next_addr);
 		mipi_i3c_hci_dct_index_reset(hci);
 
@@ -450,16 +511,17 @@ static int hci_cmd_v1_daa(struct i3c_hci *hci)
 		hci->io->queue_xfer(hci, xfer, 1);
 		if (!wait_for_completion_timeout(&done, HZ) &&
 		    hci->io->dequeue_xfer(hci, xfer, 1)) {
-			ret = -ETIME;
+			ret = -ETIMEDOUT;
 			break;
 		}
-		if (RESP_STATUS(xfer[0].response) == RESP_ERR_NACK &&
+		if ((RESP_STATUS(xfer->response) == RESP_ERR_ADDR_HEADER ||
+		     RESP_STATUS(xfer->response) == RESP_ERR_NACK) &&
 		    RESP_DATA_LENGTH(xfer->response) == 1) {
 			ret = 0;  /* no more devices to be assigned */
 			break;
 		}
-		if (RESP_STATUS(xfer[0].response) != RESP_SUCCESS) {
-			if (RESP_STATUS(xfer[0].response) ==
+		if (RESP_STATUS(xfer->response) != RESP_SUCCESS) {
+			if (RESP_STATUS(xfer->response) ==
 			    RESP_ERR_ADDR_HEADER)
 				ret = I3C_ERROR_M2;
 			else
@@ -468,8 +530,9 @@ static int hci_cmd_v1_daa(struct i3c_hci *hci)
 		}
 
 		i3c_hci_dct_get_val(hci, 0, &pid, &dcr, &bcr);
-		DBG("assigned address %#x to device PID=0x%llx DCR=%#x BCR=%#x",
-		    next_addr, pid, dcr, bcr);
+		dev_dbg(&hci->master.dev,
+			"assigned address %#x to device PID=0x%llx DCR=%#x BCR=%#x",
+			next_addr, pid, dcr, bcr);
 
 		mipi_i3c_hci_dat_v1.free_entry(hci, dat_idx);
 		dat_idx = -1;
@@ -493,6 +556,7 @@ const struct hci_cmd_ops mipi_i3c_hci_cmd_v1 = {
 	.prep_ccc		= hci_cmd_v1_prep_ccc,
 	.prep_hdr		= hci_cmd_v1_prep_hdr,
 	.prep_i3c_xfer		= hci_cmd_v1_prep_i3c_xfer,
+	.prep_ibi_xfer		= hci_cmd_v1_prep_ibi_xfer,
 	.prep_i2c_xfer		= hci_cmd_v1_prep_i2c_xfer,
 	.prep_internal		= hci_cmd_v1_prep_internal,
 	.perform_daa		= hci_cmd_v1_daa,

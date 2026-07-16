@@ -56,7 +56,6 @@ struct dw_i3c_master {
 	u32 i2c_fm_timing;
 	u32 i2c_fmp_timing;
 	u32 quirks;
-	bool ibi_capable;
 	/*
 	 * Per-device hardware data, used to manage the device address table
 	 * (DAT)
@@ -75,7 +74,9 @@ struct dw_i3c_master {
 	/* platform-specific data */
 	const struct dw_i3c_platform_ops *platform_ops;
 
+	struct work_struct hj_work;
 	/* target mode data */
+
 	struct {
 		struct completion comp;
 		struct completion rdata_comp;
@@ -96,7 +97,6 @@ struct dw_i3c_master {
 		u32 i3c_pp_scl_high;
 		u32 timed_reset_scl_low_ns;
 	} timing;
-	struct work_struct hj_work;
 };
 
 struct dw_i3c_platform_ops {
