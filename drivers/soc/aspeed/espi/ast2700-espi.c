@@ -916,7 +916,7 @@ static long ast2700_espi_vw_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 			return -EFAULT;
 		}
 
-		dev_info(espi->dev, "Get vGPIO value0: 0x%x\n", gpio0);
+		dev_dbg(espi->dev, "Get vGPIO value0: 0x%x\n", gpio0);
 		break;
 
 	case ASPEED_ESPI_VW_PUT_GPIO_VAL:
@@ -925,7 +925,7 @@ static long ast2700_espi_vw_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 			return -EFAULT;
 		}
 
-		dev_info(espi->dev, "Put vGPIO value0: 0x%x\n", gpio0);
+		dev_dbg(espi->dev, "Put vGPIO value0: 0x%x\n", gpio0);
 		writel(gpio0, espi->regs + ESPI_CH1_GPIO_VAL0);
 		break;
 #ifdef CONFIG_ARM64
@@ -935,7 +935,7 @@ static long ast2700_espi_vw_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 			return -EFAULT;
 		}
 
-		dev_info(espi->dev, "Get vGPIO value1: 0x%x\n", gpio1);
+		dev_dbg(espi->dev, "Get vGPIO value1: 0x%x\n", gpio1);
 		break;
 
 	case ASPEED_ESPI_VW_PUT_GPIO_VAL1:
@@ -944,7 +944,7 @@ static long ast2700_espi_vw_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 			return -EFAULT;
 		}
 
-		dev_info(espi->dev, "Put vGPIO value1: 0x%x\n", gpio1);
+		dev_dbg(espi->dev, "Put vGPIO value1: 0x%x\n", gpio1);
 		writel(gpio1, espi->regs + ESPI_CH1_GPIO_VAL1);
 		break;
 #endif
@@ -954,7 +954,7 @@ static long ast2700_espi_vw_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 			return -EFAULT;
 		}
 
-		dev_info(espi->dev, "Get PCH generic event status: 0x%x\n", pch_generic);
+		dev_dbg(espi->dev, "Get PCH generic event status: 0x%x\n", pch_generic);
 		break;
 	case ASPEED_ESPI_VW_PUT_PCH_GENERIC:
 		if (get_user(pch_generic, (u8 __user *)arg)) {
@@ -962,7 +962,7 @@ static long ast2700_espi_vw_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 			return -EFAULT;
 		}
 
-		dev_info(espi->dev, "Put PCH generic event status: 0x%x\n", pch_generic);
+		dev_dbg(espi->dev, "Put PCH generic event status: 0x%x\n", pch_generic);
 		reg = readl(espi->regs + ESPI_CH1_EVT1);
 		reg &= ~ESPI_CH1_EVT1_BMC_GENE;
 		reg |= FIELD_PREP(ESPI_CH1_EVT1_BMC_GENE, pch_generic);
