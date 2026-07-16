@@ -50,22 +50,22 @@
 	};
 
 	aliases {
-		i2c100 = &arthur_local_fans_0;
-		i2c101 = &arthur_local_fans_1;
-		i2c102 = &arthur_fan_board_ch2;
-		i2c103 = &arthur_fan_board_ch3;
-		i2c104 = &arthur_fan_board_ch2;
-		i2c105 = &arthur_fan_board_ch3;
+		i2c104 = &fan_pdb;
 		i2c200 = &arthur_local_fans_0;
 		i2c201 = &arthur_local_fans_1;
 		i2c202 = &arthur_fan_board_ch2;
 		i2c203 = &churro_fans_0_0;
 		i2c204 = &churro_fans_0_1;
-		i2c205 = &arthur_2u_mux;
-		i2c206 = &arthur_2u_ctrl0;
-		i2c207 = &arthur_2u_ctrl1;
-		i2c208 = &churro_fans_1_0;
-		i2c209 = &churro_fans_1_1;
+		i2c210 = &churro_id;
+		i2c211 = &churro_mcu;
+		i2c214 = &arthur_fan_board_ch3;
+		i2c116 = &P0_id;
+		i2c118 = &P0_vr;
+		i2c120 = &brd_vr;
+		i2c121 = &temp;
+		i2c124 = &therm;
+		i2c125 = &adc_pdb;
+		i2c127 = &adc_brd;
 	};
 };
 
@@ -242,6 +242,64 @@
 		compatible = "microchip,24lc256", "atmel,24c256";
 		reg = <0x50>;
 	};
+
+	i2cswitch@70 {
+		compatible = "nxp,pca9546";
+		reg = <0x70>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
+
+		P0_id: i2c@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		P0_vr: i2c@2 {
+			reg = <2>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+	};
+
+	i2cswitch@71 {
+		compatible = "nxp,pca9548";
+		reg = <0x71>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		i2c-mux-idle-disconnect;
+
+		brd_vr: i2c@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		temp: i2c@1 {
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		therm: i2c@4 {
+			reg = <4>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		adc_pdb: i2c@5 {
+			reg = <5>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		adc_brd: i2c@7 {
+			reg = <7>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+	};
 };
 
 &i2c9 {
@@ -272,14 +330,14 @@
 		#size-cells = <0>;
 		i2c-mux-idle-disconnect;
 
-		i2c@6 {
+		fan_pdb: i2c@6 {
 			reg = <6>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			i2cswitch@76 {
+			i2cswitch@75 {
 				compatible = "nxp,pca9546";
-				reg = <0x76>;
+				reg = <0x75>;
 				#address-cells = <1>;
 				#size-cells = <0>;
 				i2c-mux-idle-disconnect;
@@ -333,209 +391,108 @@
 							min-rpm = /bits/ 16 <1000>;
 							max-rpm = /bits/ 16 <16000>;
 						};
-						fan@1 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@2 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@3 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@4 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
 					};
 				};
 
-		/*
-		 * TacoBowl mux channel 2 -> Churro/2U fan-board superset path.
-		 * TODO: split DT variants once 0x76 mux type is finalized per board
-		 * (Churro uses TCA9546, 2U fan board uses TCA9548).
-		 */
-		arthur_fan_board_ch2: i2c@2 {
-			reg = <2>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-
-			arthur_2u_mux: i2cswitch@76 {
-				compatible = "nxp,pca9546";
-				reg = <0x76>;
-				#address-cells = <1>;
-				#size-cells = <0>;
-				i2c-mux-idle-disconnect;
-
-				arthur_2u_ctrl0: churro_fans_0_0: i2c@0 {
-					reg = <0>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-
-					emc2305@4d {
-						compatible = "smsc,emc2305";
-						reg = <0x4d>;
-						#cooling-cells = <0x02>;
-
-						fan@0 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@1 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@2 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@3 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-					};
-
-					nct7363@20 {
-						compatible = "nct,nct7363";
-						reg = <0x20>;
-						fan_sel_gpio = <3>;
-					};
-				};
-
-				arthur_2u_ctrl1: churro_fans_0_1: i2c@1 {
-					reg = <1>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-
-					emc2305@4d {
-						compatible = "smsc,emc2305";
-						reg = <0x4d>;
-						#cooling-cells = <0x02>;
-
-						fan@0 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@1 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@2 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@3 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-					};
-
-					nct7363@20 {
-						compatible = "nct,nct7363";
-						reg = <0x20>;
-						fan_sel_gpio = <3>;
-					};
-				};
-
-				churro_id: i2c@2 {
+				/*
+				 * TacoBowl mux channel 2 -> Churro/2U fan-board superset path.
+				 * TODO: split DT variants once 0x76 mux type is finalized per board
+				 * (Churro uses TCA9546, 2U fan board uses TCA9548).
+				 */
+				arthur_fan_board_ch2: i2c@2 {
 					reg = <2>;
 					#address-cells = <1>;
 					#size-cells = <0>;
+
+					i2cswitch@76 {
+						compatible = "nxp,pca9546";
+						reg = <0x76>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						i2c-mux-idle-disconnect;
+
+						churro_fans_0_0: i2c@0 {
+							reg = <0>;
+							#address-cells = <1>;
+							#size-cells = <0>;
+
+							emc2305@4d {
+								compatible = "smsc,emc2305";
+								reg = <0x4d>;
+								#cooling-cells = <0x02>;
+
+								fan@0 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+								fan@1 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+								fan@2 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+								fan@3 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+								fan@4 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+							};
+						};
+
+						churro_fans_0_1: i2c@1 {
+							reg = <1>;
+							#address-cells = <1>;
+							#size-cells = <0>;
+
+							emc2305@4d {
+								compatible = "smsc,emc2305";
+								reg = <0x4d>;
+								#cooling-cells = <0x02>;
+
+								fan@0 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+								fan@1 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+								fan@2 {
+									min-rpm = /bits/ 16 <1000>;
+									max-rpm = /bits/ 16 <16000>;
+								};
+							};
+						};
+
+						churro_id: i2c@2 {
+							reg = <2>;
+							#address-cells = <1>;
+							#size-cells = <0>;
+
+							eeprom@57 {
+								compatible = "microchip,24lc256", "atmel,24c256";
+								reg = <0x57>;
+							};
+						};
+
+						churro_mcu: i2c@3 {
+							reg = <3>;
+							#address-cells = <1>;
+							#size-cells = <0>;
+						};
+					};
 				};
 
-				churro_mcu: i2c@3 {
-					reg = <3>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-				};
-			};
-		};
-
-				/* TacoBowl ch3 -> second Churro/2U superset path */
+				/* TacoBowl ch3 -> NC */
 				arthur_fan_board_ch3: i2c@3 {
-			reg = <3>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-
-			i2cswitch@76 {
-				compatible = "nxp,pca9546";
-				reg = <0x76>;
-				#address-cells = <1>;
-				#size-cells = <0>;
-				i2c-mux-idle-disconnect;
-
-				churro_fans_1_0: i2c@0 {
-					reg = <0>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-
-					emc2305@4d {
-						compatible = "smsc,emc2305";
-						reg = <0x4d>;
-						#cooling-cells = <0x02>;
-
-						fan@0 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@1 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@2 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@3 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-					};
-				};
-
-				churro_fans_1_1: i2c@1 {
-					reg = <1>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-
-					emc2305@4d {
-						compatible = "smsc,emc2305";
-						reg = <0x4d>;
-						#cooling-cells = <0x02>;
-
-						fan@0 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@1 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@2 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-						fan@3 {
-							min-rpm = /bits/ 16 <1000>;
-							max-rpm = /bits/ 16 <16000>;
-						};
-					};
-				};
-
-				churro1_id: i2c@2 {
-					reg = <2>;
-					#address-cells = <1>;
-					#size-cells = <0>;
-				};
-
-				churro1_mcu: i2c@3 {
 					reg = <3>;
 					#address-cells = <1>;
 					#size-cells = <0>;
-				};
-			};
 				};
 			};
 		};
