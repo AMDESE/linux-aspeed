@@ -209,7 +209,7 @@ static int fs1606a_probe(struct i2c_client *client)
 
 static const struct i2c_device_id fs1606a_id[] = {
         { "fs1006", (kernel_ulong_t)&fs1006_chip },
-        { "fs1604", (kernel_ulong_t)&fs160x_chip },
+        { "fs1604", (kernel_ulong_t)&fs1006_chip },
         { "fs1606", (kernel_ulong_t)&fs160x_chip },
         { "fs1606a", (kernel_ulong_t)&fs160x_chip },
         { }
@@ -218,7 +218,7 @@ MODULE_DEVICE_TABLE(i2c, fs1606a_id);
 
 static const struct of_device_id fs1606a_of_match[] = {
         { .compatible = "tdk,fs1006", .data = &fs1006_chip },
-        { .compatible = "tdk,fs1604", .data = &fs160x_chip },
+        { .compatible = "tdk,fs1604", .data = &fs1006_chip },
         { .compatible = "tdk,fs1606", .data = &fs160x_chip },
         { .compatible = "tdk,fs1606a", .data = &fs160x_chip },
         { }
