@@ -150,6 +150,8 @@ struct lstp_channel {
 /* Channel init/start functions */
 int lstp_spi_init(struct lstp_channel *ch);
 int lstp_spi_start(struct lstp_channel *ch);
+int lstp_gpio_init(struct lstp_channel *ch);
+int lstp_gpio_start(struct lstp_channel *ch);
 int lstp_i2c_init(struct lstp_channel *ch);
 int lstp_i2c_start(struct lstp_channel *ch);
 int lstp_ipmi_init(struct lstp_channel *ch);

@@ -150,8 +150,10 @@ int lstp_validate_resp(struct lstp_usb *dev, struct lstp_packet *rx_pkt,
 	/* Validate LSTP status */
 	ret = lstp_status_to_errno(GET_BIT_0_6(rx_hdr->status));
 	if (ret) {
-		dev_dbg(&dev->intf->dev, "%s: ch_%u: LSTP error status %d (errno=%d)\n", __func__,
-			ch_id, GET_BIT_0_6(rx_hdr->status), ret);
+		dev_dbg(&dev->intf->dev,
+			"%s: ch_%u: LSTP error raw_status=0x%02x lstp_status=%u errno=%d payload_len=%u\n",
+			__func__, ch_id, rx_hdr->status, GET_BIT_0_6(rx_hdr->status), ret,
+			le16_to_cpu(rx_hdr->length));
 		return ret;
 	}
 
@@ -159,8 +161,9 @@ int lstp_validate_resp(struct lstp_usb *dev, struct lstp_packet *rx_pkt,
 	payload_len = le16_to_cpu(rx_hdr->length);
 	if (expected_payload_len != LSTP_ANY_RX_LEN && payload_len != expected_payload_len) {
 		dev_err(&dev->intf->dev,
-			"%s: ch_%u: Unexpected payload length (expected %zu, got %zu)\n", __func__,
-			ch_id, expected_payload_len, payload_len);
+			"%s: ch_%u: Unexpected payload length (expected %zu, got %zu, raw_status=0x%02x payload=%*ph)\n",
+			__func__, ch_id, expected_payload_len, payload_len, rx_hdr->status,
+			min_t(unsigned int, payload_len, 32U), rx_pkt->payload);
 		return -EIO;
 	}
 
@@ -799,6 +802,26 @@ static struct device_node *lstp_find_channel_node(struct device_node *usb_dev_no
 	return NULL;
 }
 
+static const char *lstp_channel_type_name(u8 ch_type)
+{
+	switch (ch_type) {
+	case LSTP_CHANNEL_TYPE_MGMT:
+		return "mgmt";
+	case LSTP_CHANNEL_TYPE_SPI:
+		return "spi";
+	case LSTP_CHANNEL_TYPE_GPIO:
+		return "gpio";
+	case LSTP_CHANNEL_TYPE_I2C:
+		return "i2c";
+	case LSTP_CHANNEL_TYPE_UART:
+		return "uart";
+	case LSTP_CHANNEL_TYPE_IPMI:
+		return "ipmi";
+	default:
+		return "unknown";
+	}
+}
+
 /**
  * lstp_init_channel_of_node() - Initialize channel's device tree node.
  * @ch:         LSTP channel to initialize
@@ -960,12 +983,29 @@ static int lstp_init_channels(struct lstp_usb *dev)
 
 		/* Parse READ response data and init type-specific structures */
 		ch->ch_type = ch0_resp->read.ch_type;
+		dev_info(&dev->intf->dev,
+			 "%s: ch_%d: discovered type=%s(%u) flags=0x%02x name=%s payload_len=%u\n",
+			 __func__, ch_id, lstp_channel_type_name(ch->ch_type), ch->ch_type,
+			 ch0_resp->read.ch_flags, ch0_resp->read.ch_name,
+			 le16_to_cpu(rx_pkt->hdr.length));
 		switch (ch0_resp->read.ch_type) {
 		case LSTP_CHANNEL_TYPE_SPI:
+			dev_info(&dev->intf->dev, "%s: ch_%d: entering SPI init\n", __func__,
+				 ch_id);
 			ret = lstp_init_channel_of_node(ch, "nv,lstp-spi");
 			if (ret)
 				return ret;
 			ret = lstp_spi_init(ch);
+			if (ret)
+				return ret;
+			break;
+		case LSTP_CHANNEL_TYPE_GPIO:
+			dev_info(&dev->intf->dev, "%s: ch_%d: entering GPIO init\n", __func__,
+				 ch_id);
+			ret = lstp_init_channel_of_node(ch, "nv,lstp-gpio");
+			if (ret)
+				return ret;
+			ret = lstp_gpio_init(ch);
 			if (ret)
 				return ret;
 			break;
@@ -1012,7 +1052,16 @@ static int lstp_start_channels(struct lstp_usb *dev)
 
 		switch (ch->ch_type) {
 		case LSTP_CHANNEL_TYPE_SPI:
+			dev_info(&dev->intf->dev, "%s: ch_%d: starting SPI child registration\n",
+				 __func__, ch->ch_id);
 			ret = lstp_spi_start(ch);
+			if (ret)
+				return ret;
+			break;
+		case LSTP_CHANNEL_TYPE_GPIO:
+			dev_info(&dev->intf->dev, "%s: ch_%d: starting GPIO child registration\n",
+				 __func__, ch->ch_id);
+			ret = lstp_gpio_start(ch);
 			if (ret)
 				return ret;
 			break;
@@ -1329,8 +1378,15 @@ int lstp_recv_resp_helper(struct lstp_channel *ch, u8 cmd, u16 request_len, u16 
 	}
 
 	ret = lstp_validate_resp(ch->usb, response_pkt, response_len);
-	if (ret)
+	if (ret) {
+		dev_err(&ch->usb->intf->dev,
+			"%s: ch_%d: invalid response for cmd=0x%02x raw_status=0x%02x rx_len=%u payload=%*ph\n",
+			__func__, ch->ch_id, cmd, response_pkt->hdr.status,
+			le16_to_cpu(response_pkt->hdr.length),
+			min_t(unsigned int, le16_to_cpu(response_pkt->hdr.length), 32U),
+			response_pkt->payload);
 		goto out_unlock;
+	}
 
 	dev_dbg(&ch->usb->intf->dev, "%s: ch_%d: RX rx_len=%d (success)\n", __func__, ch->ch_id,
 		le16_to_cpu(response_pkt->hdr.length));
