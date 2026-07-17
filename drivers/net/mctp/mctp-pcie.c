@@ -116,7 +116,13 @@ static int mctp_netdev_header_create(struct sk_buff *skb, struct net_device *dev
 	memcpy(&hdr->requester, saddr, 2);
 	hdr->tag = ((4 - ((len - 4) % 4)) & 0x3) << 4;
 	hdr->code = 0x7F;
-	memcpy(&hdr->target, daddr, 2);
+
+	/*
+	 * Set the target to MPIO Virtual Bridge with fixed BDF 0/0/0.
+	 * Bridge can route MCTP requests based on MCTP EID mapping.
+	 */
+	memset(hdr->target, 0, sizeof(hdr->target));
+
 	hdr->vendor[0] = 0x1A;
 	hdr->vendor[1] = 0xB4;
 	mhdr->ver = 0x01;
