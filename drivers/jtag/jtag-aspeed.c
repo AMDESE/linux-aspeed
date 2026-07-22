@@ -6,6 +6,7 @@
 #include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
+#include <linux/iopoll.h>
 #include <linux/jtag.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -71,7 +72,7 @@
 #define ASPEED_JTAG_SW_MODE_TDIO		BIT(16)
 
 /* ASPEED_JTAG_TCK : TCK Control */
-#define ASPEED_JTAG_TCK_DIVISOR_MASK	GENMASK(10, 0)
+#define ASPEED_JTAG_TCK_DIVISOR_MASK	GENMASK(11, 0)
 #define ASPEED_JTAG_TCK_GET_DIV(x)	((x) & ASPEED_JTAG_TCK_DIVISOR_MASK)
 
 /* ASPEED_JTAG_EC : Controller set for go to IDLE */
@@ -162,6 +163,9 @@
 /* Use this macro to set us delay for JTAG Master Controller to be programmed */
 #define AST26XX_JTAG_CTRL_UDELAY	2
 
+/* Timeout (us) for a GBLCTRL FIFO mode/reset state change to settle */
+#define ASPEED_JTAG_FIFO_POLL_TIMEOUT_US	1000
+
 #define DEBUG_JTAG
 
 static const char * const regnames[] = {
@@ -248,8 +252,8 @@ static u32 aspeed_jtag_read(struct aspeed_jtag *aspeed_jtag, u32 reg)
 static void aspeed_jtag_write(struct aspeed_jtag *aspeed_jtag, u32 val, u32 reg)
 {
 #ifdef DEBUG_JTAG
-	dev_dbg(aspeed_jtag->dev, "write:%s val = 0x%08x\n",
-		regnames[reg], val);
+	dev_dbg(aspeed_jtag->dev, "write:%s val = 0x%08x\n", regnames[reg],
+		val);
 #endif
 	writel(val, aspeed_jtag->reg_base + reg);
 }
@@ -272,7 +276,6 @@ static int aspeed_jtag_freq_set(struct jtag *jtag, u32 freq)
 	if (div > ASPEED_JTAG_TCK_DIVISOR_MASK)
 		div = ASPEED_JTAG_TCK_DIVISOR_MASK;
 	tck_val = aspeed_jtag_read(aspeed_jtag, ASPEED_JTAG_TCK);
-	dev_dbg(aspeed_jtag->dev, "aspeed_jtag_freq_set:  tck_val = 0x%08x\n", tck_val);
 	aspeed_jtag_write(aspeed_jtag,
 			  (tck_val & ~ASPEED_JTAG_TCK_DIVISOR_MASK) | div,
 			  ASPEED_JTAG_TCK);
@@ -377,10 +380,6 @@ static inline void aspeed_jtag_master_26xx(struct aspeed_jtag *aspeed_jtag)
 	if (aspeed_jtag->mode & JTAG_XFER_HW_MODE) {
 		aspeed_jtag_write(aspeed_jtag, 0, ASPEED_JTAG_CTRL);
 		aspeed_jtag_write(aspeed_jtag, 0, ASPEED_JTAG_SW);
-		aspeed_jtag_write(aspeed_jtag,
-			reg_val | ASPEED_JTAG_GBLCTRL_ENG_MODE_EN |
-			ASPEED_JTAG_GBLCTRL_ENG_OUT_EN,
-			ASPEED_JTAG_GBLCTRL);
 	} else {
 		aspeed_jtag_write(aspeed_jtag,
 				  ASPEED_JTAG_SW_MODE_EN |
@@ -673,7 +672,6 @@ static int aspeed_jtag_shctrl_tms_mask(enum jtag_tapstate from,
 				       u32 start_shift, u32 end_shift,
 				       u32 *tms_mask)
 {
-	// _tms_cycle_lookup[16][4].count
 	u32 pre_tms = start_shift ? _tms_cycle_lookup[from][to].count : 0;
 	u32 post_tms = end_shift ? _tms_cycle_lookup[there][endstate].count : 0;
 	u32 tms_value = start_shift ? _tms_cycle_lookup[from][to].tmsbits : 0;
@@ -682,6 +680,7 @@ static int aspeed_jtag_shctrl_tms_mask(enum jtag_tapstate from,
 					 << pre_tms :
 				 0;
 	if (pre_tms > GENMASK(2, 0) || post_tms > GENMASK(2, 0)) {
+		pr_err("pre/port tms count is greater than hw limit");
 		return -EINVAL;
 	}
 	*tms_mask = start_shift | ASPEED_JTAG_SHCTRL_PRE_TMS(pre_tms) |
@@ -712,14 +711,7 @@ static void aspeed_jtag_set_tap_state_hw2(struct aspeed_jtag *aspeed_jtag,
 		while (aspeed_jtag_read(aspeed_jtag, ASPEED_JTAG_GBLCTRL) & ASPEED_JTAG_GBLCTRL_FORCE_TMS)
 			;
 		aspeed_jtag->current_state = JTAG_STATE_TLRESET;
-	} else if (tapstate->endstate == JTAG_STATE_IDLE &&
-                  aspeed_jtag->current_state != JTAG_STATE_IDLE) {
-               /* Always go to RTI, do not wait for shift operation */
-               aspeed_jtag_set_tap_state(aspeed_jtag,
-                                         aspeed_jtag->current_state,
-                                         JTAG_STATE_IDLE);
-               aspeed_jtag->current_state = JTAG_STATE_IDLE;
-        } else {
+	} else {
 		aspeed_jtag_set_tap_state(aspeed_jtag,
 					  aspeed_jtag->current_state,
 					  tapstate->endstate);
@@ -1148,6 +1140,7 @@ static int aspeed_jtag_xfer_hw2(struct aspeed_jtag *aspeed_jtag,
 	u32 shift_bits;
 	u32 data_reg;
 	u32 reg_val;
+	u32 poll_val;
 	enum jtag_tapstate shift;
 	enum jtag_tapstate exit;
 	enum jtag_tapstate exitx;
@@ -1171,10 +1164,6 @@ static int aspeed_jtag_xfer_hw2(struct aspeed_jtag *aspeed_jtag,
 		exit = JTAG_STATE_EXIT1DR;
 		exitx = JTAG_STATE_EXIT1IR;
 	}
-	if (aspeed_jtag->current_state == JTAG_STATE_CURRENT) {
-		dev_warn(aspeed_jtag->dev, "STATE_CURRENT is requested, assigning to State %u", aspeed_jtag->status);
-		aspeed_jtag->current_state = aspeed_jtag->status;
-	}
 #ifdef DEBUG_JTAG
 	dev_dbg(aspeed_jtag->dev,
 		"HW2 JTAG SHIFT %s, length %d status %s from %s to %s then %s pad 0x%x\n",
@@ -1184,6 +1173,7 @@ static int aspeed_jtag_xfer_hw2(struct aspeed_jtag *aspeed_jtag,
 		end_status_str[shift],
 		end_status_str[xfer->endstate], xfer->padding);
 #endif
+
 	if (aspeed_jtag->current_state == shift) {
 		start_shift = 0;
 	} else {
@@ -1235,14 +1225,44 @@ static int aspeed_jtag_xfer_hw2(struct aspeed_jtag *aspeed_jtag,
 		partial_xfer = partial_xfer_size;
 
 		reg_val = aspeed_jtag_read(aspeed_jtag, ASPEED_JTAG_GBLCTRL);
+
+		/*
+		 * The FIFO must only be reset while it is in CPU mode;
+		 * asserting RESET_FIFO in controller mode corrupts the data
+		 * of subsequent transfers. Whether the FIFO is in CPU or
+		 * controller mode is decided by the hardware itself and
+		 * FIFO_CTRL_MODE is read-only, so wait for the hardware to
+		 * report CPU mode (0) before asserting RESET_FIFO.
+		 */
+		ret = read_poll_timeout(aspeed_jtag_read, poll_val,
+					!(poll_val & ASPEED_JTAG_GBLCTRL_FIFO_CTRL_MODE),
+					0, ASPEED_JTAG_FIFO_POLL_TIMEOUT_US, false,
+					aspeed_jtag, ASPEED_JTAG_GBLCTRL);
+		if (ret) {
+			dev_err(aspeed_jtag->dev,
+				"timed out waiting for FIFO to return to CPU mode\n");
+			return ret;
+		}
+
+		/* CPU mode confirmed; it is now safe to reset the FIFO. */
 		aspeed_jtag_write(aspeed_jtag, reg_val |
 				  ASPEED_JTAG_GBLCTRL_RESET_FIFO,
 				  ASPEED_JTAG_GBLCTRL);
 
-		/* Switch internal FIFO into CPU mode */
-		reg_val = reg_val & ~BIT(24);
-		aspeed_jtag_write(aspeed_jtag, reg_val,
-				  ASPEED_JTAG_GBLCTRL);
+		/*
+		 * RESET_FIFO is self-clearing; wait for it to read back as 0
+		 * so the FIFO is guaranteed flushed before we start loading
+		 * data into it.
+		 */
+		ret = read_poll_timeout(aspeed_jtag_read, poll_val,
+					!(poll_val & ASPEED_JTAG_GBLCTRL_RESET_FIFO),
+					0, ASPEED_JTAG_FIFO_POLL_TIMEOUT_US, false,
+					aspeed_jtag, ASPEED_JTAG_GBLCTRL);
+		if (ret) {
+			dev_err(aspeed_jtag->dev,
+				"timed out waiting for FIFO reset to clear\n");
+			return ret;
+		}
 
 		while (partial_xfer) {
 			if (partial_xfer > ASPEED_JTAG_DATA_CHUNK_SIZE)
@@ -1267,10 +1287,7 @@ static int aspeed_jtag_xfer_hw2(struct aspeed_jtag *aspeed_jtag,
 			 * Transmit bytes that were not equals to column length
 			 * and after the transfer go to Pause IR/DR.
 			 */
-			dev_dbg(aspeed_jtag->dev,
-				"SHCTRL_TMS_MASK -- current state %u, shift %u, exit %u, endstate %u\n",
-				aspeed_jtag->current_state, shift, exit, endstate
-			);
+
 			ret = aspeed_jtag_shctrl_tms_mask(aspeed_jtag->current_state, shift, exit,
 							  endstate, start_shift, 0, &tms_mask);
 			if (ret)
@@ -1293,10 +1310,6 @@ static int aspeed_jtag_xfer_hw2(struct aspeed_jtag *aspeed_jtag,
 			/*
 			 * Read bytes equals to column length
 			 */
-			dev_dbg(aspeed_jtag->dev,
-				"SHCTRL_TMS_MASK -- current state %u, shift %u, exit %u, endstate %u\n",
-				aspeed_jtag->current_state, shift, exit, endstate
-			);
 			shift_bits = remain_xfer;
 			ret = aspeed_jtag_shctrl_tms_mask(aspeed_jtag->current_state, shift, exit,
 							  endstate, start_shift, end_shift,
