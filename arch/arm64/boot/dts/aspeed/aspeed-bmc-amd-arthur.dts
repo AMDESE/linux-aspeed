@@ -596,7 +596,7 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 };
 #endif
 
-&gpio0 {
+&gpio1 {
 	status = "okay";
 
 	p0_sec_i2c {
@@ -606,10 +606,6 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 		line-name = "SEL_P0_SEC_I2C_ROT_BMC";
 	};
 
-};
-
-&gpio1 {
-	status = "okay";
 	/* Rev-B HPM EN line on gpiochip1 C7 */
 	hpm_en_rev_b_default {
 		gpio-hog;

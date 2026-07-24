@@ -910,7 +910,7 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 	JESD300_PMIC_I2C_MODE(0, 7, 4f);
 };
 
-&gpio0 {
+&gpio1 {
 	status = "okay";
 
 	/*

@@ -321,7 +321,7 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 };
 #endif
 
-&gpio0 {
+&gpio1 {
 	status = "okay";
 
 	/*
