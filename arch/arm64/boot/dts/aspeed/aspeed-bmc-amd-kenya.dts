@@ -768,6 +768,14 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 	memory-region = <&bmc_dev0_memory>;
 };
 
+&pinctrl0 {
+	pinctrl_emmc_8ma: emmc_8ma {
+		pins = "AC14", "AE15", "AD14", "AE14", "AF14",
+		       "AB13", "AF13", "AC13", "AD13", "AE13";
+		drive-strength = <2>;
+	};
+};
+
 &emmc_controller {
 	status = "okay";
 	mmc-hs200-1_8v;
@@ -775,8 +783,9 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 
 &emmc {
 	status = "okay";
-	bus-width = <4>;
-	pinctrl-0 = <&pinctrl_emmc_default &pinctrl_emmcg8_default>;
+	bus-width = <8>;
+	pinctrl-0 = <&pinctrl_emmc_default &pinctrl_emmcg8_default
+		     &pinctrl_emmc_8ma>;
 	non-removable;
 	max-frequency = <200000000>;
 };
