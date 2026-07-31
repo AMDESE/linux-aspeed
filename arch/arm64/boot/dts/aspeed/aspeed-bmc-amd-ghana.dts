@@ -933,8 +933,7 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 };
 
 &usb3ahp {
-	status = "okay";
-	pinctrl-0 = <&pinctrl_usb3axhp_default &pinctrl_usb2axhp_default>;
+	status = "disabled";
 };
 
 &usb3bhp {
