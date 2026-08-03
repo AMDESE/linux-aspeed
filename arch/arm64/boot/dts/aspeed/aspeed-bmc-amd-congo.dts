@@ -1109,3 +1109,7 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 	non-removable;
 	max-frequency = <200000000>;
 };
+
+&ehci1 {
+	status = "okay";
+};
