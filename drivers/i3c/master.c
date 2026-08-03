@@ -835,6 +835,67 @@ static ssize_t rescan_store(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR_WO(rescan);
 
+/*
+ * The I3C hubs can't have CCCs sent to them prior to having their internal
+ * power supply configured. Otherwise, the bus will hang. The devices behind
+ * the hubs are interacted with by another master, and put into I3C mode. This
+ * rstdaa is meant to put the devices behind the hubs back into I2C
+ * mode. This WILL NOT perform any of the software cleanup. Existing I3C
+ * devices aren't unregistered. (IE still exposed via SYSFS)
+ */
+static ssize_t rstdaa_store(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t count)
+{
+	struct i3c_master_controller *master = dev_to_i3cmaster(dev);
+	struct i3c_bus *bus = i3c_master_get_bus(master);
+	bool val;
+	int ret;
+
+	ret = kstrtobool(buf, &val);
+	if (ret)
+		return ret;
+
+	if (!val)
+		return count;
+
+	i3c_bus_maintenance_lock(bus);
+
+	/*
+	 * Disable SIR/MR/HJ before RSTDAA. A device that just dropped its
+	 * dynamic address is otherwise free to Hot-Join immediately; if the
+	 * controller ACKs it, that silently kicks off a full DAA, which this
+	 * workaround must not trigger since it intentionally leaves software
+	 * state alone and does no rediscovery of its own.
+	 */
+	ret = i3c_master_disec_locked(master, I3C_BROADCAST_ADDR,
+				      I3C_CCC_EVENT_SIR | I3C_CCC_EVENT_MR |
+				      I3C_CCC_EVENT_HJ);
+	if (ret && ret != I3C_ERROR_M2) {
+		dev_dbg(&master->dev,
+			"Failed to run broadcast DISEC for rstdaa workaround, ret=%d\n",
+			ret);
+		goto unlock;
+	}
+
+	ret = i3c_master_rstdaa_locked(master, I3C_BROADCAST_ADDR);
+	if (ret && ret != I3C_ERROR_M2) {
+		dev_dbg(&master->dev,
+			"Failed to run RSTDAA for rstdaa workaround, ret=%d\n",
+			ret);
+		goto unlock;
+	}
+
+	i3c_bus_maintenance_unlock(bus);
+
+	return count;
+
+unlock:
+	i3c_bus_maintenance_unlock(bus);
+	return ret;
+}
+static DEVICE_ATTR_WO(rstdaa);
+
 static struct attribute *i3c_masterdev_attrs[] = {
 	&dev_attr_mode.attr,
 	&dev_attr_current_master.attr,
@@ -849,6 +910,7 @@ static struct attribute *i3c_masterdev_attrs[] = {
 	&dev_attr_bus_context.attr,
 	&dev_attr_bus_reset.attr,
 	&dev_attr_rescan.attr,
+	&dev_attr_rstdaa.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(i3c_masterdev);
