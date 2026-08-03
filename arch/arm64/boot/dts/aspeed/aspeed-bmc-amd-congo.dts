@@ -1116,4 +1116,63 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 
 &ehci1 {
 	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	/*
+	 * NVIDIA LSTP adapter on USB port 1 (VID:PID = 0955:cf11).
+	 * lsusb path 1-1.1.1 — hub chain required so the device node binds.
+	 * The driver matches interface@N/channel@M by reg values.
+	 */
+	hub@1 {
+		compatible = "usb424,2513", "usb424,2514";
+		reg = <1>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		hub@1 {
+			compatible = "usb424,2517";
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			device@1 {
+				compatible = "usb0955,cf11";
+				reg = <1>;
+				#address-cells = <2>;
+				#size-cells = <0>;
+
+				interface@0 {
+					reg = <0 1>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					spi@1 {
+						compatible = "nv,lstp-spi";
+						reg = <1>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+
+						spidev@0 {
+							compatible = "jedec,spi-nor";
+							m25p,fast-read;
+							reg = <0>;
+							spi-max-frequency = <10000000>;
+							status = "okay";
+							spi-tx-bus-width = <1>;
+							spi-rx-bus-width = <1>;
+						};
+					};
+
+					lstp_gpio: gpio@3 {
+						compatible = "nv,lstp-gpio";
+						reg = <3>;
+						gpio-controller;
+						#gpio-cells = <2>;
+						label = "OBMF_GPIO";
+					};
+				};
+			};
+		};
+	};
 };
