@@ -16,7 +16,6 @@
 #include "lstp-main.h"
 
 #define LSTP_GPIO_NAME_MAX_LEN 32U
-#define LSTP_GPIO_MAX_CFGS_PER_READ 10U
 
 enum lstp_gpio_cmd {
 	LSTP_GPIO_CMD_GET_VALUE = 0x00,
@@ -1081,19 +1080,26 @@ int lstp_gpio_init(struct lstp_channel *ch)
 	u16 ngpio = 0;
 	unsigned int fw_ngpio = 0;
 	int ret;
+	size_t gpio_meta_len = sizeof(struct lstp_ch0_resp_read) +
+			       sizeof(struct lstp_gpio_channel_config);
+
+	payload_len = le16_to_cpu(rx_pkt->hdr.length);
+	if (payload_len < gpio_meta_len) {
+		ret = lstp_ch0_read_timeout(ch->usb, ch->ch_id, 0, LSTP_READ_LEN_ALL,
+					    LSTP_USB_PROBE_RESPONSE_TIMEOUT_MS);
+		if (ret)
+			return ret;
+		payload_len = le16_to_cpu(rx_pkt->hdr.length);
+	}
 
 	ret = lstp_validate_resp(ch->usb, rx_pkt, LSTP_ANY_RX_LEN);
 	if (ret)
 		return ret;
 
-	payload_len = le16_to_cpu(rx_pkt->hdr.length);
-	if (payload_len <
-	    sizeof(struct lstp_ch0_resp_read) + sizeof(struct lstp_gpio_channel_config)) {
+	if (payload_len < gpio_meta_len) {
 		dev_err(dev,
 			"%s: ch_%d: Response too small for GPIO metadata (got %u, need at least %zu)\n",
-			__func__, ch->ch_id, payload_len,
-			sizeof(struct lstp_ch0_resp_read) +
-				sizeof(struct lstp_gpio_channel_config));
+			__func__, ch->ch_id, payload_len, gpio_meta_len);
 		return -EIO;
 	}
 

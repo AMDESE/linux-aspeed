@@ -438,7 +438,15 @@ int lstp_i2c_init(struct lstp_channel *ch)
 	struct i2c_adapter *adap;
 	struct lstp_packet *rx_pkt = (struct lstp_packet *)ch->usb->rx_buf;
 	union lstp_ch0_resp_payload *ch0_resp;
+	size_t i2c_cfg_len = sizeof(struct lstp_ch0_resp_read) +
+			     sizeof(struct lstp_i2c_config);
 	/* struct lstp_i2c_config *config = (struct lstp_i2c_config *)ch0_resp->read.ch_config; */
+
+	if (le16_to_cpu(rx_pkt->hdr.length) < i2c_cfg_len) {
+		ret = lstp_ch0_read(ch->usb, ch->ch_id, 0, i2c_cfg_len);
+		if (ret)
+			return ret;
+	}
 
 	/* Validate expected I2C config size */
 	ret = lstp_validate_resp(ch->usb, rx_pkt,
