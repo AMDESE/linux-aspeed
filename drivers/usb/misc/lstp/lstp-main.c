@@ -1146,21 +1146,22 @@ static int lstp_probe(struct usb_interface *intf, const struct usb_device_id *id
 	dev->max_ch_id = 255; /* Maximum possible before device discovery */
 	dev->bulk_in_ep = ep_in->bEndpointAddress;
 	dev->bulk_out_ep = ep_out->bEndpointAddress;
-	dev->bulk_tx_size = usb_endpoint_maxp(ep_out);
-	dev->bulk_rx_size = usb_endpoint_maxp(ep_in);
 
-	/* Clamp to max size */
-	if (dev->bulk_tx_size > LSTP_USB_EP_MAX_SIZE)
-		dev->bulk_tx_size = LSTP_USB_EP_MAX_SIZE;
-	if (dev->bulk_rx_size > LSTP_USB_EP_MAX_SIZE)
-		dev->bulk_rx_size = LSTP_USB_EP_MAX_SIZE;
-
-	/* Validate minimum size */
-	if (dev->bulk_tx_size < LSTP_USB_EP_MIN_SIZE || dev->bulk_rx_size < LSTP_USB_EP_MIN_SIZE) {
-		dev_err(&intf->dev, "OBMF invalid endpoint sizes (tx=%zu, rx=%zu, min=%u)\n",
-			dev->bulk_tx_size, dev->bulk_rx_size, LSTP_USB_EP_MIN_SIZE);
+	if (usb_endpoint_maxp(ep_out) < LSTP_USB_EP_MIN_SIZE ||
+	    usb_endpoint_maxp(ep_in) < LSTP_USB_EP_MIN_SIZE) {
+		dev_err(&intf->dev, "OBMF invalid endpoint max packet size (tx=%u, rx=%u, min=%u)\n",
+			usb_endpoint_maxp(ep_out), usb_endpoint_maxp(ep_in),
+			LSTP_USB_EP_MIN_SIZE);
 		return -EINVAL;
 	}
+
+	/*
+	 * Bulk URB buffers use the LSTP protocol maximum. Full-speed devices
+	 * still report wMaxPacketSize=64, but the host may transfer larger
+	 * payloads across multiple USB packets in one bulk transaction.
+	 */
+	dev->bulk_tx_size = LSTP_USB_EP_MAX_SIZE;
+	dev->bulk_rx_size = LSTP_USB_EP_MAX_SIZE;
 
 	dev->rx_buf = devm_kzalloc(&intf->dev, dev->bulk_rx_size, GFP_KERNEL);
 	if (!dev->rx_buf)
