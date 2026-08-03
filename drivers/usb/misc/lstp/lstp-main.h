@@ -16,12 +16,15 @@
 
 #define LSTP_VERSION 1
 #define LSTP_USB_RESPONSE_TIMEOUT_MS 1000
+#define LSTP_USB_PROBE_RESPONSE_TIMEOUT_MS 5000
 #define LSTP_USB_REQUEST_TIMEOUT_MS 1000
 #define LSTP_USB_EP_MIN_SIZE 8
 #define LSTP_USB_EP_MAX_SIZE 512
 #define LSTP_MAX_CHANNELS 256 /* Includes channel 0 */
 #define LSTP_ANY_RX_LEN 0xFFFF
 #define LSTP_READ_LEN_ALL 0
+/* Channel type/name/flags only; type-specific init fetches full config separately. */
+#define LSTP_CH0_DISCOVERY_READ_LEN sizeof(struct lstp_ch0_resp_read)
 #define LSTP_CH_NAME_LEN 16
 
 #define GET_BIT_7(u8_byte) (((u8_byte) >> 7) & 0x01)
@@ -84,6 +87,15 @@ struct lstp_ch0_resp_read {
 	char ch_name[LSTP_CH_NAME_LEN];
 	u8 ch_config[];
 } __packed;
+
+
+/* GPIO READ_CONFIG layout (must match lstp_gpio_line_config in lstp-gpio.c). */
+#define LSTP_GPIO_LINE_CONFIG_LEN 48U
+#define LSTP_GPIO_MAX_CFGS_PER_READ 10U
+#define LSTP_CH0_GPIO_FIRST_CHUNK_LEN                                         \
+	(sizeof(struct lstp_ch0_resp_read) + sizeof(u8) +                       \
+	 LSTP_GPIO_MAX_CFGS_PER_READ * LSTP_GPIO_LINE_CONFIG_LEN)
+#define LSTP_CH0_MAX_READ_LEN (LSTP_USB_EP_MAX_SIZE - sizeof(struct lstp_header))
 
 union lstp_ch0_req_payload {
 	struct lstp_ch0_req_read read;
@@ -171,6 +183,8 @@ int lstp_validate_rx_pkt(struct lstp_usb *dev, struct lstp_packet *rx_pkt, size_
 int lstp_validate_resp(struct lstp_usb *dev, struct lstp_packet *rx_pkt,
 		       size_t expected_payload_len);
 int lstp_ch0_read(struct lstp_usb *dev, u8 ch_id, u16 offset, u16 length);
+int lstp_ch0_read_timeout(struct lstp_usb *dev, u8 ch_id, u16 offset, u16 length,
+		  int timeout_ms);
 
 /* USB Helper Functions */
 void lstp_usb_tx_callback(struct urb *urb);

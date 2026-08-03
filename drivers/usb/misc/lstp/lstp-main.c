@@ -71,6 +71,53 @@ int lstp_status_to_errno(u8 status)
 	return -EIO;
 }
 
+/**
+ * lstp_ch0_read_discover() - Read channel config during probe discovery.
+ * @dev:   LSTP USB device structure
+ * @ch_id: Channel ID to query
+ *
+ * SPI/I2C accept a short metadata READ_CONFIG. GPIO rejects small reads and
+ * length=0 (READ_LEN_ALL) can hang on obmf-demo; use an explicit first-chunk
+ * length before falling back to READ_LEN_ALL.
+ *
+ * Return: 0 on success, negative errno on failure
+ */
+static int lstp_ch0_read_discover(struct lstp_usb *dev, u8 ch_id)
+{
+	static const u16 fallback_lens[] = {
+		LSTP_CH0_GPIO_FIRST_CHUNK_LEN,
+		LSTP_CH0_MAX_READ_LEN,
+		LSTP_READ_LEN_ALL,
+	};
+	unsigned int i;
+	int ret;
+
+	ret = lstp_ch0_read(dev, ch_id, 0, LSTP_CH0_DISCOVERY_READ_LEN);
+	if (!ret)
+		return 0;
+
+	if (ret != -EIO && ret != -ETIMEDOUT)
+		return ret;
+
+	dev_info(&dev->intf->dev,
+		 "OBMF channel %d metadata read failed (%d), trying extended READ_CONFIG lengths\n",
+		 ch_id, ret);
+
+	for (i = 0; i < ARRAY_SIZE(fallback_lens); i++) {
+		dev_info(&dev->intf->dev,
+			 "OBMF channel %d READ_CONFIG offset 0 length %u\n", ch_id,
+			 fallback_lens[i]);
+		ret = lstp_ch0_read_timeout(dev, ch_id, 0, fallback_lens[i],
+					    LSTP_USB_PROBE_RESPONSE_TIMEOUT_MS);
+		if (!ret)
+			return 0;
+		if (ret != -EIO && ret != -ETIMEDOUT)
+			return ret;
+	}
+
+	return ret;
+}
+
 /*******************************************************************************
  * Management channel (Channel 0)
  ******************************************************************************/
@@ -184,13 +231,15 @@ int lstp_validate_resp(struct lstp_usb *dev, struct lstp_packet *rx_pkt,
  *
  * Return: 0 on success, negative errno on failure
  */
-int lstp_ch0_read(struct lstp_usb *dev, u8 ch_id, u16 offset, u16 length)
+int lstp_ch0_read_timeout(struct lstp_usb *dev, u8 ch_id, u16 offset, u16 length,
+			  int timeout_ms)
 {
 	int ret;
 	int actual_length;
 	struct lstp_packet *tx_pkt;
 	struct lstp_packet *rx_pkt;
 	union lstp_ch0_req_payload *ch0_req;
+	size_t expected_payload;
 
 	/* Allocate request packet */
 	tx_pkt = kzalloc(sizeof(*tx_pkt) + sizeof(ch0_req->read), GFP_KERNEL);
@@ -219,7 +268,7 @@ int lstp_ch0_read(struct lstp_usb *dev, u8 ch_id, u16 offset, u16 length)
 
 	/* Receive response */
 	ret = usb_bulk_msg(dev->udev, usb_rcvbulkpipe(dev->udev, dev->bulk_in_ep), dev->rx_buf,
-			   dev->bulk_rx_size, &actual_length, LSTP_USB_RESPONSE_TIMEOUT_MS);
+			   dev->bulk_rx_size, &actual_length, timeout_ms);
 	if (ret) {
 		dev_err(&dev->intf->dev, "OBMF management channel could not receive response for channel %d (%d)\n",
 			ch_id, ret);
@@ -245,10 +294,21 @@ int lstp_ch0_read(struct lstp_usb *dev, u8 ch_id, u16 offset, u16 length)
 		goto out_free;
 	}
 
+	expected_payload = (length == LSTP_READ_LEN_ALL) ? LSTP_ANY_RX_LEN : length;
+	ret = lstp_validate_resp(dev, rx_pkt, expected_payload);
+	if (ret)
+		goto out_free;
+
 	/* Note: data is stored in dev->rx_buf */
 out_free:
 	kfree(tx_pkt);
 	return ret;
+}
+
+int lstp_ch0_read(struct lstp_usb *dev, u8 ch_id, u16 offset, u16 length)
+{
+	return lstp_ch0_read_timeout(dev, ch_id, offset, length,
+				     LSTP_USB_RESPONSE_TIMEOUT_MS);
 }
 
 /**
@@ -984,7 +1044,7 @@ static int lstp_init_channels(struct lstp_usb *dev)
 			dev_err(&dev->intf->dev, "OBMF could not allocate channel %d\n", ch_id);
 			return -ENOMEM;
 		}
-		ret = lstp_ch0_read(dev, ch_id, 0, LSTP_READ_LEN_ALL);
+		ret = lstp_ch0_read_discover(dev, ch_id);
 		if (ret)
 			return ret;
 
