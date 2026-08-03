@@ -1045,8 +1045,13 @@ static int lstp_init_channels(struct lstp_usb *dev)
 			return -ENOMEM;
 		}
 		ret = lstp_ch0_read_discover(dev, ch_id);
-		if (ret)
-			return ret;
+		if (ret) {
+			dev_warn(&dev->intf->dev,
+				 "OBMF channel %d discovery failed (%d), skipping channel\n",
+				 ch_id, ret);
+			dev->channels[ch_id] = NULL;
+			continue;
+		}
 
 		/* Parse READ response data and init type-specific structures */
 		ch->ch_type = ch0_resp->read.ch_type;
@@ -1059,20 +1064,40 @@ static int lstp_init_channels(struct lstp_usb *dev)
 		case LSTP_CHANNEL_TYPE_SPI:
 			dev_info(&dev->intf->dev, "OBMF channel %d entering SPI init\n", ch_id);
 			ret = lstp_init_channel_of_node(ch, "nv,lstp-spi");
-			if (ret)
-				return ret;
+			if (ret) {
+				dev_warn(&dev->intf->dev,
+					 "OBMF channel %d SPI OF init failed (%d), skipping channel\n",
+					 ch_id, ret);
+				dev->channels[ch_id] = NULL;
+				continue;
+			}
 			ret = lstp_spi_init(ch);
-			if (ret)
-				return ret;
+			if (ret) {
+				dev_warn(&dev->intf->dev,
+					 "OBMF channel %d SPI init failed (%d), skipping channel\n",
+					 ch_id, ret);
+				dev->channels[ch_id] = NULL;
+				continue;
+			}
 			break;
 		case LSTP_CHANNEL_TYPE_GPIO:
 			dev_info(&dev->intf->dev, "OBMF channel %d entering GPIO init\n", ch_id);
 			ret = lstp_init_channel_of_node(ch, "nv,lstp-gpio");
-			if (ret)
-				return ret;
+			if (ret) {
+				dev_warn(&dev->intf->dev,
+					 "OBMF channel %d GPIO OF init failed (%d), skipping channel\n",
+					 ch_id, ret);
+				dev->channels[ch_id] = NULL;
+				continue;
+			}
 			ret = lstp_gpio_init(ch);
-			if (ret)
-				return ret;
+			if (ret) {
+				dev_warn(&dev->intf->dev,
+					 "OBMF channel %d GPIO init failed (%d), skipping channel\n",
+					 ch_id, ret);
+				dev->channels[ch_id] = NULL;
+				continue;
+			}
 			break;
 			case LSTP_CHANNEL_TYPE_I2C:
 				ret = lstp_i2c_init(ch);
