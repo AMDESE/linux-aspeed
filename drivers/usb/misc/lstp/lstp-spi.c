@@ -111,6 +111,18 @@ static int lstp_spi_set_speed(struct lstp_channel *ch, u32 speed_hz, u32 *actual
 	ret = lstp_recv_resp_helper(ch, LSTP_SPI_CMD_CONFIG, sizeof(spi_req->config),
 				    sizeof(struct lstp_spi_config_resp));
 	if (ret) {
+		/*
+		 * OpenSMA/ASpeed device firmware ignores CONFIG request payload
+		 * and only returns the current speed. Some ports reject non-empty
+		 * requests; retry once with an empty payload for diagnosis.
+		 */
+		dev_warn(&ch->usb->intf->dev,
+			 "OBMF SPI channel %d CONFIG with speed payload failed (%d), retrying empty request\n",
+			 ch->ch_id, ret);
+		ret = lstp_recv_resp_helper(ch, LSTP_SPI_CMD_CONFIG, 0,
+					    sizeof(struct lstp_spi_config_resp));
+	}
+	if (ret) {
 		dev_err(&ch->usb->intf->dev, "OBMF SPI channel %d CONFIG command failed (%d)\n",
 			ch->ch_id, ret);
 		goto out_mutex;
