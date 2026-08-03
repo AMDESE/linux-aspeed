@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 
+ccflags-$(CONFIG_USB_LSTP_DEBUG) += -DDEBUG
+
 obj-$(CONFIG_USB_LSTP) += lstp.o
 lstp-y := lstp-main.o lstp-gpio.o lstp-i2c.o lstp-spi.o lstp-ipmi.o lstp-uart.o

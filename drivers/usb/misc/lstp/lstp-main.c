@@ -71,6 +71,30 @@ int lstp_status_to_errno(u8 status)
 	return -EIO;
 }
 
+#ifdef CONFIG_USB_LSTP_USB_TRACE
+#define LSTP_USB_TRACE_DUMP_MAX 64U
+
+/**
+ * lstp_usb_trace_bulk() - Log raw USB bulk transfer bytes (compile-time debug).
+ */
+static void lstp_usb_trace_bulk(struct device *dev, const char *dir, u8 ep,
+				const void *buf, size_t len)
+{
+	unsigned int dump_len = min_t(size_t, len, LSTP_USB_TRACE_DUMP_MAX);
+
+	dev_info(dev, "OBMF USB %s ep=0x%02x len=%zu data=%*ph\n", dir, ep, len, dump_len,
+		 buf);
+	if (len > dump_len)
+		dev_info(dev, "OBMF USB %s ep=0x%02x ... (%zu bytes total, log truncated)\n",
+			 dir, ep, len);
+}
+#else
+static void lstp_usb_trace_bulk(struct device *dev, const char *dir, u8 ep,
+				const void *buf, size_t len)
+{
+}
+#endif
+
 /**
  * lstp_ch0_read_discover() - Read channel config during probe discovery.
  * @dev:   LSTP USB device structure
@@ -274,6 +298,8 @@ int lstp_ch0_read_timeout(struct lstp_usb *dev, u8 ch_id, u16 offset, u16 length
 			ch_id, ret);
 		goto out_free;
 	}
+
+	lstp_usb_trace_bulk(&dev->intf->dev, "RX", dev->bulk_in_ep, dev->rx_buf, actual_length);
 
 	/* Validate response */
 	rx_pkt = (struct lstp_packet *)dev->rx_buf;
@@ -1345,6 +1371,9 @@ static void lstp_usb_rx_callback(struct urb *urb)
 		goto resubmit;
 	}
 
+	lstp_usb_trace_bulk(&dev->intf->dev, "RX-URB", dev->bulk_in_ep, dev->rx_buf,
+			    urb->actual_length);
+
 	struct lstp_packet *rx_pkt = (struct lstp_packet *)dev->rx_buf;
 
 	if (lstp_validate_rx_pkt(dev, rx_pkt, urb->actual_length))
@@ -1451,6 +1480,9 @@ int lstp_recv_resp_helper(struct lstp_channel *ch, u8 cmd, u16 request_len, u16 
 	usb_fill_bulk_urb(ch->bulk_tx_urb, ch->usb->udev,
 			  usb_sndbulkpipe(ch->usb->udev, ch->usb->bulk_out_ep), ch->tx_buf,
 			  sizeof(struct lstp_header) + request_len, lstp_usb_tx_callback, ch);
+
+	lstp_usb_trace_bulk(&ch->usb->intf->dev, "TX-URB", ch->usb->bulk_out_ep, ch->tx_buf,
+			    sizeof(struct lstp_header) + request_len);
 
 	ch->rx_ready = false;
 

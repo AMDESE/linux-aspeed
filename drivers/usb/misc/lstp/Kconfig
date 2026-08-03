@@ -16,6 +16,26 @@ config USB_LSTP
 	  This driver can also be built as a module. If so, the module will be
 	  called lstp.
 
+config USB_LSTP_DEBUG
+	bool "Debug messages for LSTP/OBMF USB driver"
+	depends on USB_LSTP
+	help
+	  Enable verbose protocol debug messages for the LSTP/OBMF USB driver at
+	  compile time. This promotes dev_dbg() calls to dev_info() so probe
+	  and channel I/O flow is visible in dmesg without runtime setup.
+
+config USB_LSTP_USB_TRACE
+	bool "Compile-time USB bulk traffic trace for LSTP/OBMF driver"
+	depends on USB_LSTP
+	help
+	  Always log raw USB bulk TX/RX bytes from the OBMF driver to the kernel
+	  log (dev_info) at compile time. This is intended for boot-time probe
+	  debugging where there is no opportunity to enable dynamic debug or
+	  usbmon manually.
+
+	  Each transfer logs endpoint, length, and up to 64 data bytes. Enable
+	  CONFIG_USB_LSTP_DEBUG as well for full protocol-level messages.
+
 config SEPARATE_LSTP_IPMI_POSTCODES
 	bool "Separate LSTP IPMI post codes writes to another channel"
 	depends on USB_LSTP

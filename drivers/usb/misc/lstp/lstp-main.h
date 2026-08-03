@@ -88,7 +88,6 @@ struct lstp_ch0_resp_read {
 	u8 ch_config[];
 } __packed;
 
-
 /* GPIO READ_CONFIG layout (must match lstp_gpio_line_config in lstp-gpio.c). */
 #define LSTP_GPIO_LINE_CONFIG_LEN 48U
 #define LSTP_GPIO_MAX_CFGS_PER_READ 10U
@@ -190,5 +189,14 @@ int lstp_ch0_read_timeout(struct lstp_usb *dev, u8 ch_id, u16 offset, u16 length
 void lstp_usb_tx_callback(struct urb *urb);
 int lstp_recv_resp_helper(struct lstp_channel *ch, u8 cmd, u16 tx_len, u16 rx_len);
 void lstp_unlock_resp_buffer(struct lstp_channel *ch);
+
+/*
+ * When USB_LSTP_DEBUG is enabled, promote dev_dbg() to dev_info() so debug
+ * trace is always visible in dmesg (including when CONFIG_DYNAMIC_DEBUG is on).
+ */
+#if defined(CONFIG_USB_LSTP_DEBUG)
+#undef dev_dbg
+#define dev_dbg(dev, fmt, ...) dev_info(dev, fmt, ##__VA_ARGS__)
+#endif
 
 #endif
