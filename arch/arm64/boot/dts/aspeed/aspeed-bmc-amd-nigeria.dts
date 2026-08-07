@@ -888,12 +888,6 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 
 &gpio0 {
 	status = "okay";
-	espi_default {
-		gpio-hog;
-		gpios = <10 GPIO_ACTIVE_HIGH>;
-		output-low;
-		line-name = "espiboot_pin_default";
-	};
 
 	/*
          * by default the direction of the SEL_P0_SEC_I2C_ROT_BMC (GPIO B0)
