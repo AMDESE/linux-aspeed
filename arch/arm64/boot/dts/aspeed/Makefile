@@ -1,5 +1,6 @@
 dtb-$(CONFIG_ARCH_ASPEED) += \
 	ast2700-evb.dtb \
+	aspeed-bmc-amd-unknown.dtb \
 	aspeed-bmc-amd-congo.dtb \
 	aspeed-bmc-amd-falcon.dtb \
 	aspeed-bmc-amd-eagle.dtb \
