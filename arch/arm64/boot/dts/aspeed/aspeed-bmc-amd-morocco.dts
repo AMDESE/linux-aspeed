@@ -1146,13 +1146,6 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 		output-high;
 		line-name = "SEL_P1_SEC_I2C_ROT_BMC";
 	};
-
-	espi_default {
-		gpio-hog;
-		gpios = <10 GPIO_ACTIVE_HIGH>;
-		output-low;
-		line-name = "espiboot_pin_default";
-	};
 };
 
 &ltpi0 {
