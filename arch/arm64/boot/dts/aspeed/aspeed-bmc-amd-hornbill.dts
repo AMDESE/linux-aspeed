@@ -1201,11 +1201,3 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 &chassis {
 	status = "okay";
 };
-
-&ehci0 {
-       status = "okay";
-};
-
-&ehci1 {
-       status = "okay";
-};
