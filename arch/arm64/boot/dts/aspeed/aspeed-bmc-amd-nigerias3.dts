@@ -485,6 +485,10 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	pinctrl-0 = <&pinctrl_usb2ahpd0_default>;
 };
 
+&usb3ahp {
+	status = "okay";
+};
+
 &xdma0 {
 	status = "okay";
 	memory-region = <&xdma_memory0>;
