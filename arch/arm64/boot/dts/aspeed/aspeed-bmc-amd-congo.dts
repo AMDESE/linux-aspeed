@@ -1120,7 +1120,7 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 	#size-cells = <0>;
 
 	/*
-	 * NVIDIA LSTP adapter on USB port 1 (VID:PID = 0955:cf11).
+	 * AMD MI350P OBMF adapter on USB port 1 (VID:PID = 0e78:cf11).
 	 * lsusb path 1-1.1.1 — hub chain required so the device node binds.
 	 * The driver matches interface@N/channel@M by reg values.
 	 */
@@ -1137,7 +1137,7 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 			#size-cells = <0>;
 
 			device@1 {
-				compatible = "usb0955,cf11";
+				compatible = "usb0e78,cf11";
 				reg = <1>;
 				#address-cells = <2>;
 				#size-cells = <0>;
