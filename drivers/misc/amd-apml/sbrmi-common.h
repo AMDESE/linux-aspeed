@@ -17,6 +17,7 @@
  */
 struct apml_sbrmi_device {
 	struct miscdevice sbrmi_misc_dev;
+	struct device *hwmon_dev;
 	struct completion misc_fops_done;
 	struct i3c_device *i3cdev;
 	struct i2c_client *client;

@@ -98,6 +98,8 @@ static int sbrmi_read(struct device *dev, enum hwmon_sensor_types type,
 
 	if ((type != hwmon_power) && (type != hwmon_temp))
 		return -EINVAL;
+	if (atomic_read(&rmi_dev->no_new_trans))
+		return -ENODEV;
 	/* Configure regmap if not configured yet */
 	if (!rmi_dev->regmap) {
 		ret = configure_regmap(rmi_dev);
@@ -108,6 +110,10 @@ static int sbrmi_read(struct device *dev, enum hwmon_sensor_types type,
 	}
 
 	mutex_lock(&rmi_dev->lock);
+	if (atomic_read(&rmi_dev->no_new_trans) || !rmi_dev->regmap) {
+		mutex_unlock(&rmi_dev->lock);
+		return -ENODEV;
+	}
 	msg.data_in.reg_in[RD_FLAG_INDEX] = 1;
 
 	switch (attr) {
@@ -186,6 +192,8 @@ static int sbrmi_write(struct device *dev, enum hwmon_sensor_types type,
 
 	if (type != hwmon_power && attr != hwmon_power_cap)
 		return -EINVAL;
+	if (atomic_read(&rmi_dev->no_new_trans))
+		return -ENODEV;
 	/* Configure regmap if not configured yet */
 	if (!rmi_dev->regmap) {
 		ret = configure_regmap(rmi_dev);
@@ -207,6 +215,10 @@ static int sbrmi_write(struct device *dev, enum hwmon_sensor_types type,
 	msg.data_in.reg_in[RD_FLAG_INDEX] = 0;
 
 	mutex_lock(&rmi_dev->lock);
+	if (atomic_read(&rmi_dev->no_new_trans) || !rmi_dev->regmap) {
+		mutex_unlock(&rmi_dev->lock);
+		return -ENODEV;
+	}
 	ret = rmi_mailbox_xfer(rmi_dev, &msg);
 	mutex_unlock(&rmi_dev->lock);
 	return ret;
@@ -288,9 +300,9 @@ static long sbrmi_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	 */
 	mutex_lock(&rmi_dev->lock);
 	/* Verify device unbind/remove is not invoked */
-	if (atomic_read(&rmi_dev->no_new_trans)) {
+	if (atomic_read(&rmi_dev->no_new_trans) || !rmi_dev->regmap) {
 		mutex_unlock(&rmi_dev->lock);
-		return -EBUSY;
+		return -ENODEV;
 	}
 
 	/* Is this a read/monitor/get request */
@@ -353,8 +365,12 @@ static int sbrmi_open(struct inode *inode, struct file *filp)
 							 sbrmi_misc_dev);
 	int ret = 0;
 
-	if (!rmi_dev)
-		return -ENODEV;
+	mutex_lock(&rmi_dev->lock);
+	if (atomic_read(&rmi_dev->no_new_trans)) {
+		ret = -ENODEV;
+		goto unlock;
+	}
+	mutex_unlock(&rmi_dev->lock);
 
 	if (!rmi_dev->regmap) {
 		ret = configure_regmap(rmi_dev);
@@ -363,8 +379,16 @@ static int sbrmi_open(struct inode *inode, struct file *filp)
 			return ret;
 		}
 	}
+
+	mutex_lock(&rmi_dev->lock);
+	if (atomic_read(&rmi_dev->no_new_trans) || !rmi_dev->regmap) {
+		mutex_unlock(&rmi_dev->lock);
+		return -ENODEV;
+	}
 	filp->private_data = rmi_dev;
-	return 0;
+unlock:
+	mutex_unlock(&rmi_dev->lock);
+	return ret;
 }
 
 static int sbrmi_release(struct inode *inode, struct file *filp)
@@ -484,7 +508,7 @@ static int sbrmi_i2c_probe(struct i2c_client *client)
 	const char *hwmon_dev_name;
 	int ret;
 
-	rmi_dev = devm_kzalloc(dev, sizeof(struct apml_sbrmi_device), GFP_KERNEL);
+	rmi_dev = devm_kzalloc(dev, sizeof(*rmi_dev), GFP_KERNEL);
 	if (!rmi_dev)
 		return -ENOMEM;
 
@@ -500,24 +524,31 @@ static int sbrmi_i2c_probe(struct i2c_client *client)
 	hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbrmi_%s",
 					sbrmi_addr_to_label(rmi_dev->dev_static_addr));
 
-	hwmon_dev = devm_hwmon_device_register_with_info(dev, hwmon_dev_name,
-							 rmi_dev,
-							 &sbrmi_chip_info,
-							 NULL);
+	hwmon_dev = hwmon_device_register_with_info(dev, hwmon_dev_name,
+						    rmi_dev,
+						    &sbrmi_chip_info,
+						    NULL);
 
-	if (!hwmon_dev)
-		return PTR_ERR_OR_ZERO(hwmon_dev);
+	if (IS_ERR(hwmon_dev)) {
+		ret = PTR_ERR(hwmon_dev);
+		dev_set_drvdata(dev, NULL);
+		return ret;
+	}
+	rmi_dev->hwmon_dev = hwmon_dev;
 
 	init_completion(&rmi_dev->misc_fops_done);
 	ret = create_misc_rmi_device(rmi_dev, dev);
-	if (ret)
+	if (ret) {
+		hwmon_device_unregister(rmi_dev->hwmon_dev);
+		dev_set_drvdata(dev, NULL);
 		return ret;
+	}
 	/* Register with ALERT_L common system */
 	ret = apml_register_sbrmi_device(rmi_dev);
 	if (ret)
 		dev_warn(dev, "Failed to register with ALERT_L common system: %d\n", ret);
 
-	return ret;
+	return 0;
 }
 
 static int sbrmi_i3c_reg_read(struct i3c_device *i3cdev, int reg_size, u32 *val)
@@ -669,7 +700,7 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 		return -ENXIO;
 	}
 
-	rmi_dev = devm_kzalloc(dev, sizeof(struct apml_sbrmi_device), GFP_KERNEL);
+	rmi_dev = devm_kzalloc(dev, sizeof(*rmi_dev), GFP_KERNEL);
 	if (!rmi_dev)
 	{
 		dev_info(dev, "SBRMI: Error Mem Alloc\n");
@@ -696,33 +727,68 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 	hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbrmi_%s",
 					sbrmi_addr_to_label(rmi_dev->dev_static_addr));
 
-	hwmon_dev = devm_hwmon_device_register_with_info(dev, hwmon_dev_name, rmi_dev,
-							 &sbrmi_chip_info, NULL);
+	hwmon_dev = hwmon_device_register_with_info(dev, hwmon_dev_name, rmi_dev,
+						    &sbrmi_chip_info, NULL);
 
-	if (!hwmon_dev)
+	if (IS_ERR(hwmon_dev))
 	{
 		dev_info(dev, "SBRMI: Error HWMON Device Register\n");
-		return PTR_ERR_OR_ZERO(hwmon_dev);
+		ret = PTR_ERR(hwmon_dev);
+		dev_set_drvdata(dev, NULL);
+		return ret;
 	}
+	rmi_dev->hwmon_dev = hwmon_dev;
 
 	i3c_sbrmi_cache = kmem_cache_create_usercopy("i3c-data-cache",
 					sizeof(struct i3c_sbrmi_data), 0, 0, 0,
 					sizeof(struct i3c_sbrmi_data), NULL);
-	if (IS_ERR(i3c_sbrmi_cache)) {
-		ret = PTR_ERR(i3c_sbrmi_cache);
-		return -1;
+	if (!i3c_sbrmi_cache) {
+		hwmon_device_unregister(rmi_dev->hwmon_dev);
+		dev_set_drvdata(dev, NULL);
+		return -ENOMEM;
 	}
 
 	init_completion(&rmi_dev->misc_fops_done);
 	ret = create_misc_rmi_device(rmi_dev, dev);
-	if (ret)
+	if (ret) {
+		kmem_cache_destroy(i3c_sbrmi_cache);
+		hwmon_device_unregister(rmi_dev->hwmon_dev);
+		dev_set_drvdata(dev, NULL);
 		return ret;
+	}
 	/* Register with ALERT_L common system */
 	ret = apml_register_sbrmi_device(rmi_dev);
 	if (ret)
 		dev_warn(dev, "Failed to register with ALERT_L common system: %d\n", ret);
 
-	return ret;
+	return 0;
+}
+
+static void sbrmi_stop_device(struct apml_sbrmi_device *rmi_dev)
+{
+	/*
+	 * Reject new ioctl and hwmon calls, then wait out a transaction
+	 * that already passed the gate. The mutex covers the window before
+	 * in_progress is set: remove blocks until that call drops the lock,
+	 * then clears regmap so the next caller returns -ENODEV.
+	 */
+	atomic_set(&rmi_dev->no_new_trans, 1);
+	if (atomic_read(&rmi_dev->in_progress))
+		wait_for_completion_timeout(&rmi_dev->misc_fops_done,
+					    MAX_WAIT_TIME_SEC * HZ);
+
+	apml_unregister_sbrmi_device(rmi_dev);
+	misc_deregister(&rmi_dev->sbrmi_misc_dev);
+	rmi_dev->sbrmi_misc_dev.fops = NULL;
+	rmi_dev->sbrmi_misc_dev.parent = NULL;
+	if (rmi_dev->hwmon_dev)
+		hwmon_device_unregister(rmi_dev->hwmon_dev);
+
+	mutex_lock(&rmi_dev->lock);
+	rmi_dev->regmap = NULL;
+	rmi_dev->i3cdev = NULL;
+	rmi_dev->client = NULL;
+	mutex_unlock(&rmi_dev->lock);
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0)
@@ -739,26 +805,8 @@ static void sbrmi_i2c_remove(struct i2c_client *client)
 #else
 		return;
 #endif
-	/* Unregister from APML common system */
-	apml_unregister_sbrmi_device(rmi_dev);
-	/*
-	 * Set the no_new_trans so no new transaction can
-	 * occur in sbrmi_ioctl
-	 */
-	atomic_set(&rmi_dev->no_new_trans, 1);
-	/*
-	 * If any transaction is in progress wait for the
-	 * transaction to get complete
-	 * Max wait for 3 sec for any pending transaction to
-	 * complete
-	 */
-	if (atomic_read(&rmi_dev->in_progress))
-		wait_for_completion_timeout(&rmi_dev->misc_fops_done,
-					    MAX_WAIT_TIME_SEC * HZ);
-	misc_deregister(&rmi_dev->sbrmi_misc_dev);
-	/* Assign fops and parent of misc dev to NULL */
-	rmi_dev->sbrmi_misc_dev.fops = NULL;
-	rmi_dev->sbrmi_misc_dev.parent = NULL;
+	sbrmi_stop_device(rmi_dev);
+	dev_set_drvdata(&client->dev, NULL);
 
 	dev_info(&client->dev, "Removed sbrmi driver\n");
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0)
@@ -780,28 +828,9 @@ static void sbrmi_i3c_remove(struct i3c_device *i3cdev)
 #else
 		return;
 #endif
-	/* Unregister from APML common system */
-	apml_unregister_sbrmi_device(rmi_dev);
-	/*
-	 * Set the no_new_trans so no new transaction can
-	 * occur in sbrmi_ioctl
-	 */
-	atomic_set(&rmi_dev->no_new_trans, 1);
-	/*
-	 * If any transaction is in progress wait for the
-	 * transaction to get complete
-	 * Max wait for 3 sec for any pending transaction to
-	 * complete
-	 */
-	if (atomic_read(&rmi_dev->in_progress))
-		wait_for_completion_timeout(&rmi_dev->misc_fops_done,
-					    MAX_WAIT_TIME_SEC * HZ);
-	misc_deregister(&rmi_dev->sbrmi_misc_dev);
-	/* Assign fops and parent of misc dev to NULL */
-	rmi_dev->sbrmi_misc_dev.fops = NULL;
-	rmi_dev->sbrmi_misc_dev.parent = NULL;
-
+	sbrmi_stop_device(rmi_dev);
 	kmem_cache_destroy(i3c_sbrmi_cache);
+	dev_set_drvdata(&i3cdev->dev, NULL);
 
 	dev_info(&i3cdev->dev, "Removed sbrmi_i3c driver\n");
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)

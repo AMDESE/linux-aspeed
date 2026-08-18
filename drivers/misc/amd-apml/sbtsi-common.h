@@ -12,12 +12,16 @@
 #ifndef _AMD_SBTSI_COMMON_H_
 #define _AMD_SBTSI_COMMON_H_
 
+#include <linux/types.h>
+
 struct apml_sbtsi_device {
 	struct miscdevice sbtsi_misc_dev;
+	struct device *hwmon_dev;
 	struct i2c_client *client;
 	struct i3c_device *i3cdev;
 	struct regmap *regmap;
-	struct mutex lock;	//lock for tsi devices
+	struct mutex lock;	/* lock for tsi devices */
+	atomic_t no_new_trans;
 	u8 dev_static_addr;
 } __packed;
 
