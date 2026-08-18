@@ -839,7 +839,7 @@ static int lstp_create_channel_sysfs(struct lstp_channel *ch)
  * Expected DTS structure::
  *
  *   usb-device@X {                    // USB device node (usb_dev_node)
- *       compatible = "usbVVVV,PPPP";  // USB VID:PID (e.g., "usb0955,cf11")
+ *       compatible = "usbVVVV,PPPP";  // USB VID:PID (e.g., "usb0e78,cf11")
  *       #address-cells = <1>;
  *       #size-cells = <0>;
  *
@@ -1548,7 +1548,7 @@ void lstp_unlock_resp_buffer(struct lstp_channel *ch)
  ******************************************************************************/
 
 static const struct usb_device_id lstp_id_table[] = {
-	{ USB_DEVICE_AND_INTERFACE_INFO(0x0955, 0xcf11, 0xFF, 0x3F, LSTP_VERSION) },
+	{ USB_DEVICE_AND_INTERFACE_INFO(0x0e78, 0xcf11, 0xFF, 0x3F, LSTP_VERSION) },
 	{}
 };
 MODULE_DEVICE_TABLE(usb, lstp_id_table);
