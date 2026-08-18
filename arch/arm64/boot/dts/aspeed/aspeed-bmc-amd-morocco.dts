@@ -1303,6 +1303,10 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 	pinctrl-0 = <&pinctrl_usb2ahpd0_default>;
 };
 
+&usb3ahp {
+	status = "okay";
+};
+
 &usb3bhp {
 	status = "okay";
 };
