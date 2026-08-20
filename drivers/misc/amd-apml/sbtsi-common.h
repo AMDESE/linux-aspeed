@@ -12,6 +12,7 @@
 #ifndef _AMD_SBTSI_COMMON_H_
 #define _AMD_SBTSI_COMMON_H_
 
+#include <linux/kref.h>
 #include <linux/types.h>
 
 struct apml_sbtsi_device {
@@ -21,6 +22,7 @@ struct apml_sbtsi_device {
 	struct i3c_device *i3cdev;
 	struct regmap *regmap;
 	struct mutex lock;	/* lock for tsi devices */
+	struct kref refcount;
 	atomic_t no_new_trans;
 	u8 dev_static_addr;
 } __packed;

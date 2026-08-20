@@ -6,6 +6,7 @@
 #ifndef _AMD_APML_SBRMI_H_
 #define _AMD_APML_SBRMI_H_
 
+#include <linux/kref.h>
 #include <linux/miscdevice.h>
 #include <linux/amd-apml.h>
 
@@ -23,6 +24,7 @@ struct apml_sbrmi_device {
 	struct i2c_client *client;
 	struct regmap *regmap;
 	struct mutex lock;
+	struct kref refcount;
 	u32 pwr_limit_max;
 	atomic_t in_progress;
 	atomic_t no_new_trans;

@@ -15,7 +15,9 @@
 #include <linux/i3c/device.h>
 #include <linux/i3c/master.h>
 #include <linux/init.h>
+#include <linux/kref.h>
 #include <linux/miscdevice.h>
+#include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/minmax.h>
 #include <linux/mutex.h>
@@ -364,9 +366,9 @@ static long sbtsi_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		if (msg.cmd != APML_REG)
 			return -EINVAL;
 
-		tsi_dev = container_of(fp->private_data, struct apml_sbtsi_device, sbtsi_misc_dev);
+		tsi_dev = fp->private_data;
 		if (!tsi_dev)
-			return -EFAULT;
+			return -ENODEV;
 
 		mutex_lock(&tsi_dev->lock);
 		if (atomic_read(&tsi_dev->no_new_trans) || !tsi_dev->regmap) {
@@ -396,9 +398,9 @@ out:
 					  sizeof(struct apml_tbai_msg)))
 			return -EFAULT;
 
-		tsi_dev = container_of(fp->private_data, struct apml_sbtsi_device, sbtsi_misc_dev);
+		tsi_dev = fp->private_data;
 		if (!tsi_dev)
-			return -EFAULT;
+			return -ENODEV;
 
 		mutex_lock(&tsi_dev->lock);
 		if (atomic_read(&tsi_dev->no_new_trans) || !tsi_dev->regmap) {
@@ -425,8 +427,51 @@ tbai_exit:
 	return 0;
 }
 
+static void sbtsi_dev_release(struct kref *ref)
+{
+	struct apml_sbtsi_device *tsi_dev =
+		container_of(ref, struct apml_sbtsi_device, refcount);
+
+	mutex_destroy(&tsi_dev->lock);
+	kfree(tsi_dev);
+}
+
+static int sbtsi_open(struct inode *inode, struct file *filp)
+{
+	struct miscdevice *mdev = filp->private_data;
+	struct apml_sbtsi_device *tsi_dev =
+		container_of(mdev, struct apml_sbtsi_device, sbtsi_misc_dev);
+	int ret = 0;
+
+	mutex_lock(&tsi_dev->lock);
+	if (atomic_read(&tsi_dev->no_new_trans)) {
+		ret = -ENODEV;
+		goto unlock;
+	}
+
+	kref_get(&tsi_dev->refcount);
+	filp->private_data = tsi_dev;
+
+unlock:
+	mutex_unlock(&tsi_dev->lock);
+	return ret;
+}
+
+static int sbtsi_release(struct inode *inode, struct file *filp)
+{
+	struct apml_sbtsi_device *tsi_dev = filp->private_data;
+
+	filp->private_data = NULL;
+	if (tsi_dev)
+		kref_put(&tsi_dev->refcount, sbtsi_dev_release);
+
+	return 0;
+}
+
 static const struct file_operations sbtsi_fops = {
 	.owner		= THIS_MODULE,
+	.open		= sbtsi_open,
+	.release	= sbtsi_release,
 	.unlocked_ioctl	= sbtsi_ioctl,
 	.compat_ioctl	= sbtsi_ioctl,
 };
@@ -497,13 +542,14 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 		return PTR_ERR(regmap);
 	}
 
-	tsi_dev = devm_kzalloc(dev, sizeof(*tsi_dev), GFP_KERNEL);
+	tsi_dev = kzalloc(sizeof(*tsi_dev), GFP_KERNEL);
 	if (!tsi_dev)
 	{
 		dev_err(dev, "SBTSI: Error Mem All0c\n");
 		return -ENOMEM;
 	}
 
+	kref_init(&tsi_dev->refcount);
 	mutex_init(&tsi_dev->lock);
 	atomic_set(&tsi_dev->no_new_trans, 0);
 	tsi_dev->i3cdev = i3cdev;
@@ -544,6 +590,7 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 
 err_put:
 	dev_set_drvdata(dev, NULL);
+	kref_put(&tsi_dev->refcount, sbtsi_dev_release);
 	return ret;
 }
 
@@ -564,10 +611,11 @@ static int sbtsi_i2c_probe(struct i2c_client *client)
 	const char *hwmon_dev_name;
 	int ret;
 
-	tsi_dev = devm_kzalloc(dev, sizeof(*tsi_dev), GFP_KERNEL);
+	tsi_dev = kzalloc(sizeof(*tsi_dev), GFP_KERNEL);
 	if (!tsi_dev)
 		return -ENOMEM;
 
+	kref_init(&tsi_dev->refcount);
 	mutex_init(&tsi_dev->lock);
 	atomic_set(&tsi_dev->no_new_trans, 0);
 	tsi_dev->regmap = devm_regmap_init_i2c(client, &sbtsi_i2c_regmap_config);
@@ -610,6 +658,7 @@ static int sbtsi_i2c_probe(struct i2c_client *client)
 
 err_put:
 	dev_set_drvdata(dev, NULL);
+	kref_put(&tsi_dev->refcount, sbtsi_dev_release);
 	return ret;
 }
 
@@ -632,6 +681,7 @@ static void sbtsi_i3c_remove(struct i3c_device *i3cdev)
 		tsi_dev->i3cdev = NULL;
 		mutex_unlock(&tsi_dev->lock);
 		dev_set_drvdata(&i3cdev->dev, NULL);
+		kref_put(&tsi_dev->refcount, sbtsi_dev_release);
 	}
 
 	dev_info(&i3cdev->dev, "Removed sbtsi-i3c driver\n");
@@ -659,6 +709,7 @@ static void sbtsi_i2c_remove(struct i2c_client *client)
 		tsi_dev->client = NULL;
 		mutex_unlock(&tsi_dev->lock);
 		dev_set_drvdata(&client->dev, NULL);
+		kref_put(&tsi_dev->refcount, sbtsi_dev_release);
 	}
 
 	dev_info(&client->dev, "Removed sbtsi driver\n");

@@ -18,7 +18,9 @@
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/fs.h>
+#include <linux/kref.h>
 #include <linux/regmap.h>
+#include <linux/slab.h>
 #include <linux/version.h>
 
 #include "sbrmi-common.h"
@@ -358,6 +360,15 @@ static long sbrmi_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	return ret;
 }
 
+static void sbrmi_dev_release(struct kref *ref)
+{
+	struct apml_sbrmi_device *rmi_dev =
+		container_of(ref, struct apml_sbrmi_device, refcount);
+
+	mutex_destroy(&rmi_dev->lock);
+	kfree(rmi_dev);
+}
+
 static int sbrmi_open(struct inode *inode, struct file *filp)
 {
 	struct miscdevice *mdev = filp->private_data;
@@ -370,12 +381,14 @@ static int sbrmi_open(struct inode *inode, struct file *filp)
 		ret = -ENODEV;
 		goto unlock;
 	}
+	kref_get(&rmi_dev->refcount);
 	mutex_unlock(&rmi_dev->lock);
 
 	if (!rmi_dev->regmap) {
 		ret = configure_regmap(rmi_dev);
 		if (ret < 0) {
 			pr_err("regmap configuration failed with return value:%d in misc dev open\n", ret);
+			kref_put(&rmi_dev->refcount, sbrmi_dev_release);
 			return ret;
 		}
 	}
@@ -383,6 +396,7 @@ static int sbrmi_open(struct inode *inode, struct file *filp)
 	mutex_lock(&rmi_dev->lock);
 	if (atomic_read(&rmi_dev->no_new_trans) || !rmi_dev->regmap) {
 		mutex_unlock(&rmi_dev->lock);
+		kref_put(&rmi_dev->refcount, sbrmi_dev_release);
 		return -ENODEV;
 	}
 	filp->private_data = rmi_dev;
@@ -393,7 +407,11 @@ unlock:
 
 static int sbrmi_release(struct inode *inode, struct file *filp)
 {
+	struct apml_sbrmi_device *rmi_dev = filp->private_data;
+
 	filp->private_data = NULL;
+	if (rmi_dev)
+		kref_put(&rmi_dev->refcount, sbrmi_dev_release);
 
 	return 0;
 }
@@ -508,10 +526,11 @@ static int sbrmi_i2c_probe(struct i2c_client *client)
 	const char *hwmon_dev_name;
 	int ret;
 
-	rmi_dev = devm_kzalloc(dev, sizeof(*rmi_dev), GFP_KERNEL);
+	rmi_dev = kzalloc(sizeof(*rmi_dev), GFP_KERNEL);
 	if (!rmi_dev)
 		return -ENOMEM;
 
+	kref_init(&rmi_dev->refcount);
 	atomic_set(&rmi_dev->in_progress, 0);
 	atomic_set(&rmi_dev->no_new_trans, 0);
 	rmi_dev->client = client;
@@ -532,6 +551,7 @@ static int sbrmi_i2c_probe(struct i2c_client *client)
 	if (IS_ERR(hwmon_dev)) {
 		ret = PTR_ERR(hwmon_dev);
 		dev_set_drvdata(dev, NULL);
+		kref_put(&rmi_dev->refcount, sbrmi_dev_release);
 		return ret;
 	}
 	rmi_dev->hwmon_dev = hwmon_dev;
@@ -541,6 +561,7 @@ static int sbrmi_i2c_probe(struct i2c_client *client)
 	if (ret) {
 		hwmon_device_unregister(rmi_dev->hwmon_dev);
 		dev_set_drvdata(dev, NULL);
+		kref_put(&rmi_dev->refcount, sbrmi_dev_release);
 		return ret;
 	}
 	/* Register with ALERT_L common system */
@@ -700,13 +721,14 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 		return -ENXIO;
 	}
 
-	rmi_dev = devm_kzalloc(dev, sizeof(*rmi_dev), GFP_KERNEL);
+	rmi_dev = kzalloc(sizeof(*rmi_dev), GFP_KERNEL);
 	if (!rmi_dev)
 	{
 		dev_info(dev, "SBRMI: Error Mem Alloc\n");
 		return -ENOMEM;
 	}
 
+	kref_init(&rmi_dev->refcount);
 	atomic_set(&rmi_dev->in_progress, 0);
 	atomic_set(&rmi_dev->no_new_trans, 0);
 	rmi_dev->i3cdev = i3cdev;
@@ -735,6 +757,7 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 		dev_info(dev, "SBRMI: Error HWMON Device Register\n");
 		ret = PTR_ERR(hwmon_dev);
 		dev_set_drvdata(dev, NULL);
+		kref_put(&rmi_dev->refcount, sbrmi_dev_release);
 		return ret;
 	}
 	rmi_dev->hwmon_dev = hwmon_dev;
@@ -745,6 +768,7 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 	if (!i3c_sbrmi_cache) {
 		hwmon_device_unregister(rmi_dev->hwmon_dev);
 		dev_set_drvdata(dev, NULL);
+		kref_put(&rmi_dev->refcount, sbrmi_dev_release);
 		return -ENOMEM;
 	}
 
@@ -754,6 +778,7 @@ static int sbrmi_i3c_probe(struct i3c_device *i3cdev)
 		kmem_cache_destroy(i3c_sbrmi_cache);
 		hwmon_device_unregister(rmi_dev->hwmon_dev);
 		dev_set_drvdata(dev, NULL);
+		kref_put(&rmi_dev->refcount, sbrmi_dev_release);
 		return ret;
 	}
 	/* Register with ALERT_L common system */
@@ -807,6 +832,7 @@ static void sbrmi_i2c_remove(struct i2c_client *client)
 #endif
 	sbrmi_stop_device(rmi_dev);
 	dev_set_drvdata(&client->dev, NULL);
+	kref_put(&rmi_dev->refcount, sbrmi_dev_release);
 
 	dev_info(&client->dev, "Removed sbrmi driver\n");
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 1, 0)
@@ -831,6 +857,7 @@ static void sbrmi_i3c_remove(struct i3c_device *i3cdev)
 	sbrmi_stop_device(rmi_dev);
 	kmem_cache_destroy(i3c_sbrmi_cache);
 	dev_set_drvdata(&i3cdev->dev, NULL);
+	kref_put(&rmi_dev->refcount, sbrmi_dev_release);
 
 	dev_info(&i3cdev->dev, "Removed sbrmi_i3c driver\n");
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
