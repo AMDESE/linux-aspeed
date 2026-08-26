@@ -834,6 +834,8 @@ static const struct i3c_device_id sbrmi_i3c_id[] = {
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x119, NULL), /* SP7 Socket:1 IOD:0 AB/B0*/
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x11A, NULL), /* SP8 Socket:0, IOD:0 */
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x11A, NULL), /* SP8 Socket:1 IOD:0 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x11B, NULL), /* SB1 Socket:0, IOD:0 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x11B, NULL), /* SB1 Socket:1 IOD:0 */
 	{}
 };
 MODULE_DEVICE_TABLE(i3c, sbrmi_i3c_id);
