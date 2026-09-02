@@ -974,12 +974,12 @@
 	};
 
 	pinctrl_di2c14_default: di2c14_default {
-		function = "DI2C14";
+		function = "I2C14";
 		groups = "DI2C14";
 	};
 
 	pinctrl_di2c15_default: di2c15_default {
-		function = "DI2C15";
+		function = "I2C15";
 		groups = "DI2C15";
 	};
 
