@@ -70,6 +70,23 @@
 		i2c135 = &p1_sec;
 		i2c203 = &fan_board0;
 	};
+
+        /* Alert_L associated with socket 0 */
+        alertl_sock0 {
+		compatible = "apml-alertl";
+		status = "okay";
+		socket-num = /bits/ 8 <0>;
+		gpios = <&ltpi0_gpio 20 GPIO_ACTIVE_LOW>;
+	};
+
+	/* Alert_L associated with socket 1 */
+	alertl_sock1 {
+		compatible = "apml-alertl";
+		status = "okay";
+		socket-num = /bits/ 8 <1>;
+		gpios = <&ltpi0_gpio 104 GPIO_ACTIVE_LOW>;
+	};
+
 };
 
 &mdio0 {
