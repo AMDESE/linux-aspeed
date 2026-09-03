@@ -260,6 +260,42 @@
 			reg = <2>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+
+			core0run@40 {
+				// P0_VDD_CORE_0_RUN and P0_VDD_MEM_S3_RUN
+				compatible = "mps,mp2869";
+				reg = <0x40>;
+			};
+			core1run@41 {
+				// P0_VDD_CORE_1_RUN and P0_VDD_SOC_RUN
+				compatible = "mps,mp2869";
+				reg = <0x41>;
+			};
+			vddvddiorun@42 {
+				// P0_VDD_VDDIO_RUN
+				compatible = "mps,mp29608";
+				reg = <0x42>;
+			};
+			vddvddio05mem0run@43 {
+				// P0_VDD_VDDIO_05_MEM0_RUN
+				compatible = "mps,mpq82d00";
+				reg = <0x43>;
+			};
+			vddvddio05mem1run@44 {
+				// P0_VDD_VDDIO_05_MEM1_RUN
+				compatible = "mps,mpq82d00";
+				reg = <0x44>;
+			};
+			vdd33s5run@46 {
+				// P0_VDD_33_S5_RUN
+				compatible = "mps,mpq82d00";
+				reg = <0x46>;
+			};
+			vdd18s5run@47 {
+				// P0_VDD_18_S5_RUN
+				compatible = "infineon,tda38740a";
+				reg = <0x47>;
+			};
 		};
 	};
 
@@ -274,6 +310,38 @@
 			reg = <0>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+
+			vdd5dual@45 {
+				// VDD_5_DUAL
+				compatible = "mps,mpq82d00";
+				reg = <0x45>;
+			};
+			socammn5run@48 {
+				// P0_SOCAMM_N_5_RUN
+				compatible = "mps,mpq82d00";
+				reg = <0x48>;
+			};
+			socamme5run@49 {
+				// P0_SOCAMM_E_5_RUN
+				compatible = "mps,mpq82d00";
+				reg = <0x49>;
+			};
+			socamms5run@4a {
+				// P0_SOCAMM_S_5_RUN
+				compatible = "mps,mpq82d00";
+				reg = <0x4a>;
+			};
+			socammw5run@4b {
+				// P0_SOCAMM_W_5_RUN
+				compatible = "mps,mpq82d00";
+				reg = <0x4b>;
+
+			};
+			vdd33dual@4c {
+				// VDD_33_DUAL
+				compatible = "infineon,tda38740a";
+				reg = <0x4c>;
+			};
 		};
 
 		temp: i2c@1 {
