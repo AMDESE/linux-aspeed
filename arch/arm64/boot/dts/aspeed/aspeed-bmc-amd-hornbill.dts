@@ -1041,6 +1041,10 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 	memory-region = <&video_engine_memory1>;
 };
 
+&edaf0 {
+	reg = <0x1 0x80000000 0x0 0x2000000>;
+};
+
 /* eSPI node for P0 - PCC, eDAF enabled */
 &espi0 {
    status = "okay";
