@@ -422,6 +422,10 @@
 	memory-region = <&video_engine_memory>;
 };
 
+&edaf0 {
+	reg = <0x1 0x80000000 0x0 0x2000000>;
+};
+
 &espi0 {
 	status = "okay";
 	perif-dma-mode;
