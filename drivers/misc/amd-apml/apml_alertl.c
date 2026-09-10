@@ -41,7 +41,7 @@ MODULE_ALIAS("apml_alertl:" DRIVER_NAME);
  * Event data contains address, bus number, PID (for I3C devices; 0 otherwise), and alert
  * source information. See amd-apml.h for alert source details.
  */
-static int send_uevent(u8 address, u8 bus_num, u32 alert_src,
+static int send_uevent(u8 address, int bus_num, u32 alert_src,
 		       u64 pid, struct device *dev)
 {
 	char *alert_source[NUM_ENVP];
@@ -49,7 +49,7 @@ static int send_uevent(u8 address, u8 bus_num, u32 alert_src,
 	int i;
 
 	alert_source[ENVP_SRC_INDX] = kasprintf(GFP_KERNEL, "SOURCE=0x%08x", alert_src);
-	alert_source[ENVP_BUS_NUM_INDX] = kasprintf(GFP_KERNEL, "BUS_NUM=%u", bus_num);
+	alert_source[ENVP_BUS_NUM_INDX] = kasprintf(GFP_KERNEL, "BUS_NUM=%d", bus_num);
 	alert_source[ENVP_PID_INDX] = kasprintf(GFP_KERNEL, "PID=0x%016llx", pid);
 	alert_source[ENVP_ADDR_INDX] = kasprintf(GFP_KERNEL, "ADDRESS=0x%02x", address);
 	alert_source[NUM_ENVP - 1] = NULL;
@@ -62,7 +62,7 @@ static int send_uevent(u8 address, u8 bus_num, u32 alert_src,
 	}
 
 	dev_dbg(dev, "Sending uevent: Addr:0x%x Src:0x%08x\n bus:%d pid: 0x%llx\n",
-		 address, alert_src, bus_num, pid);
+		address, alert_src, bus_num, pid);
 	kobject_uevent_env(&dev->kobj, KOBJ_CHANGE, alert_source);
 
 out_free:
@@ -74,8 +74,9 @@ out_free:
 
 static int handle_rmi_device_alert(struct apml_device_node *device_node, struct device *dev)
 {
-	int status = 0, ret;
-	u8 addr, bus_num;
+	unsigned int status = 0;
+	int ret, bus_num;
+	u8 addr;
 	u64 pid;
 
 	if (!device_node->rmi_dev || !device_node->rmi_dev->regmap) {
@@ -140,8 +141,9 @@ static int handle_rmi_device_alert(struct apml_device_node *device_node, struct 
 /* Handle TSI device alerts */
 static int handle_tsi_device_alert(struct apml_device_node *device_node, struct device *dev)
 {
-	int status = 0, ret;
-	u8 addr, bus_num;
+	unsigned int status = 0;
+	int ret, bus_num;
+	u8 addr;
 	u64 pid;
 
 	if (!device_node->tsi_dev || !device_node->tsi_dev->regmap) {
@@ -266,7 +268,7 @@ static int apml_alertl_probe(struct platform_device *pdev)
 
 	oob_alert->irq_num = ret;
 
-	/* Try to read socket-id property from DTS */
+	/* Try to read socket-num property from DTS */
 	ret = of_property_read_u8(np, "socket-num", &socket_num);
 	if (!ret) {
 		irq_name = devm_kasprintf(dev, GFP_KERNEL, "apml_irq%u", socket_num);
