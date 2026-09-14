@@ -3,6 +3,7 @@ dtb-$(CONFIG_ARCH_ASPEED) += \
 	aspeed-bmc-amd-unknown.dtb \
 	aspeed-bmc-amd-congo.dtb \
 	aspeed-bmc-amd-falcon.dtb \
+	aspeed-bmc-amd-falcons.dtb \
 	aspeed-bmc-amd-eagle.dtb \
 	aspeed-bmc-amd-ghana.dtb \
 	aspeed-bmc-amd-hornbill.dtb \
