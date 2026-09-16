@@ -196,31 +196,9 @@
 	status = "okay";
 };
 
-&i2c1 {
-	/delete-property/ pinctrl-names;
-	/delete-property/ pinctrl-0;
-	status = "okay";
-};
-
 &i2c2 {
 	/delete-property/ pinctrl-names;
 	/delete-property/ pinctrl-0;
-	status = "okay";
-};
-
-&i2c3 {
-	status = "okay";
-};
-
-&i2c4 {
-	status = "okay";
-};
-
-&i2c5 {
-	status = "okay";
-};
-
-&i2c6 {
 	status = "okay";
 };
 
