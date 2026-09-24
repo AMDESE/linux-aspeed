@@ -363,7 +363,8 @@
 &i2c12 {
 	// Net name i2c2 (SCM_I2C_SDA<2>) - FAN/LM75/ADC
 	status = "okay";
-	clock-frequency = <400000>;
+	// TODO: remove after bringup
+	clock-frequency = <100000>;
 
 	/*
 	 * Arthur fan path adds top-level mux at 0x70.
@@ -380,6 +381,16 @@
 			reg = <6>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+
+			psu0eeprom@52 {
+				compatible = "atmel,24c02";
+				reg = <0x52>;
+			};
+
+			psu1eeprom@53 {
+				compatible = "atmel,24c02";
+				reg = <0x53>;
+			};
 
 			i2cswitch@75 {
 				compatible = "nxp,pca9546";
