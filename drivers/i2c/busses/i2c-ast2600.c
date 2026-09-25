@@ -142,6 +142,7 @@
 #define AST2600_I2CM_SDA_O_OUT_DIR			BIT(14)
 #define AST2600_I2CM_SCL_OE_OUT_DIR			BIT(13)
 #define AST2600_I2CM_SCL_O_OUT_DIR			BIT(12)
+#define AST2600_I2CM_OUT_DIR_MASK			GENMASK(15, 12)
 #define AST2600_I2CM_RECOVER_CMD_EN			BIT(11)
 
 #define AST2600_I2CM_RX_DMA_EN			BIT(9)
@@ -370,6 +371,7 @@ struct ast2600_i2c_bus {
 	void (*target_packet_irq)(struct ast2600_i2c_bus *i2c_bus, u32 isr);
 	void (*target_byte_irq)(struct ast2600_i2c_bus *i2c_bus, u32 isr);
 #endif
+	bool			bitbang_bus_recovery;
 };
 
 static u32 i2c_cal_high_min_config(struct ast2600_i2c_bus *i2c_bus, u64 base_clk)
@@ -551,13 +553,137 @@ static void ast2700_i2c_ac_timing_config(struct ast2600_i2c_bus *i2c_bus)
 	writel(data, i2c_bus->reg_base + AST2600_I2CC_AC_TIMING);
 }
 
-static int ast2600_i2c_recover_bus(struct ast2600_i2c_bus *i2c_bus)
+/*
+ * The command bits in AST2600_I2CM_CMD_STS are one-shot, so only the manual
+ * direction bits are kept when read back: rewriting a command left over from a
+ * stuck transfer would issue it again once the controller is re-enabled.
+ *
+ * All three only work while the controller is disabled.
+ */
+static void ast2600_i2c_ctrl_scl_sda_manually(struct ast2600_i2c_bus *i2c_bus, bool enable)
+{
+	u32 dir = readl(i2c_bus->reg_base + AST2600_I2CM_CMD_STS) & AST2600_I2CM_OUT_DIR_MASK;
+
+	if (enable)
+		dir |= AST2600_I2CM_SCL_OE_OUT_DIR | AST2600_I2CM_SDA_OE_OUT_DIR;
+	else
+		dir &= ~(AST2600_I2CM_SCL_OE_OUT_DIR | AST2600_I2CM_SDA_OE_OUT_DIR);
+
+	writel(dir, i2c_bus->reg_base + AST2600_I2CM_CMD_STS);
+}
+
+static void ast2600_i2c_set_scl(struct ast2600_i2c_bus *i2c_bus, bool high)
+{
+	u32 dir = readl(i2c_bus->reg_base + AST2600_I2CM_CMD_STS) & AST2600_I2CM_OUT_DIR_MASK;
+
+	if (high)
+		dir |= AST2600_I2CM_SCL_O_OUT_DIR;
+	else
+		dir &= ~AST2600_I2CM_SCL_O_OUT_DIR;
+
+	writel(dir, i2c_bus->reg_base + AST2600_I2CM_CMD_STS);
+}
+
+static void ast2600_i2c_set_sda(struct ast2600_i2c_bus *i2c_bus, bool high)
+{
+	u32 dir = readl(i2c_bus->reg_base + AST2600_I2CM_CMD_STS) & AST2600_I2CM_OUT_DIR_MASK;
+
+	if (high)
+		dir |= AST2600_I2CM_SDA_O_OUT_DIR;
+	else
+		dir &= ~AST2600_I2CM_SDA_O_OUT_DIR;
+
+	writel(dir, i2c_bus->reg_base + AST2600_I2CM_CMD_STS);
+}
+
+/*
+ * We are generating clock pulses. ndelay() determines durating of clk pulses.
+ * We will generate clock with rate 100 KHz and so duration of both clock levels
+ * is: delay in ns = (10^6 / 100) / 2
+ */
+#define RECOVERY_NDELAY		5000
+#define RECOVERY_CLK_CNT	9
+static int ast2600_i2c_bitbang_recover_bus(struct ast2600_i2c_bus *i2c_bus)
 {
 	u32 state = readl(i2c_bus->reg_base + AST2600_I2CC_STS_AND_BUFF);
 	u32 ctrl;
 	int ret = 0;
+
+	dev_dbg(i2c_bus->dev, "%d-bus recovery bus via bitbang [%x]\n", i2c_bus->adap.nr, state);
+
+	/* Disable the I2C controller */
+	ctrl = readl(i2c_bus->reg_base + AST2600_I2CC_FUN_CTRL);
+	writel(ctrl & ~AST2600_I2CC_MASTER_EN, i2c_bus->reg_base + AST2600_I2CC_FUN_CTRL);
+
+	/* Check SDA/SCL status in the status register. */
+	state = readl(i2c_bus->reg_base + AST2600_I2CC_STS_AND_BUFF);
+	if (!(state & AST2600_I2CC_SDA_LINE_STS) && (state & AST2600_I2CC_SCL_LINE_STS)) {
+		int i = 0;
+		int scl_sda = 1;
+
+		/* Match the SCL/SDA value of the bus before enabling the outputs. */
+		ast2600_i2c_set_scl(i2c_bus, 1);
+		ast2600_i2c_set_sda(i2c_bus, 0);
+		ast2600_i2c_ctrl_scl_sda_manually(i2c_bus, true);
+		/*
+		 * If we can set SDA, we will always create a STOP to ensure additional
+		 * pulses will do no harm. This is achieved by letting SDA follow SCL
+		 * half a cycle later. Check the 'incomplete_write_byte' fault injector
+		 * for details. Note that we must honour tsu:sto, 4us, but lets use 5us
+		 * here for simplicity. SCL is already driven high above, so only
+		 * the setup time is honoured here before SDA is released.
+		 */
+		ndelay(RECOVERY_NDELAY);
+		ast2600_i2c_set_sda(i2c_bus, scl_sda);
+		ndelay(RECOVERY_NDELAY / 2);
+
+		/*
+		 * By this time SCL is high, as we need to give 9 falling-rising edges
+		 */
+		while (i++ < RECOVERY_CLK_CNT * 2) {
+			scl_sda = !scl_sda;
+			ast2600_i2c_set_scl(i2c_bus, scl_sda);
+			/* Creating STOP again, see above */
+			if (scl_sda == 1)  {
+				/* Honour minimum tsu:sto */
+				ndelay(RECOVERY_NDELAY);
+			} else {
+				/* Honour minimum tf and thd:dat */
+				ndelay(RECOVERY_NDELAY / 2);
+			}
+			ast2600_i2c_set_sda(i2c_bus, scl_sda);
+			ndelay(RECOVERY_NDELAY / 2);
+		}
+		/* Tristate the bus */
+		ast2600_i2c_ctrl_scl_sda_manually(i2c_bus, false);
+	}
+
+	/* Re-enable the I2C controller */
+	writel(ctrl, i2c_bus->reg_base + AST2600_I2CC_FUN_CTRL);
+
+	/* Recovery done */
+	state = readl(i2c_bus->reg_base + AST2600_I2CC_STS_AND_BUFF);
+	if ((state & AST2600_I2CC_BUS_BUSY_STS)
+        || !(state & AST2600_I2CC_SDA_LINE_STS)
+        || !(state & AST2600_I2CC_SCL_LINE_STS)) {
+		dev_dbg(i2c_bus->dev, "Can't recover bus via bitbang [%x]\n", state);
+		ret = -EPROTO;
+	}
+
+	return ret;
+}
+
+static int ast2600_i2c_recover_bus(struct ast2600_i2c_bus *i2c_bus)
+{
+	u32 state;
+	u32 ctrl;
+	int ret = 0;
 	int r;
 
+	if (i2c_bus->bitbang_bus_recovery)
+		return ast2600_i2c_bitbang_recover_bus(i2c_bus);
+
+	state = readl(i2c_bus->reg_base + AST2600_I2CC_STS_AND_BUFF);
 	dev_dbg(i2c_bus->dev, "%d-bus recovery bus [%x]\n", i2c_bus->adap.nr, state);
 
 	/* reset i2c controller to avoid the bus getting stuck */
@@ -2943,6 +3069,8 @@ static int ast2600_i2c_probe(struct platform_device *pdev)
 #endif
 	i2c_bus->dev = dev;
 	i2c_bus->multi_master = device_property_read_bool(dev, "multi-master");
+	i2c_bus->bitbang_bus_recovery =
+		device_property_read_bool(dev, "aspeed,bitbang-bus-recovery");
 
 	if (i2c_bus->version == AST2700) {
 		/* select the transfer method*/
