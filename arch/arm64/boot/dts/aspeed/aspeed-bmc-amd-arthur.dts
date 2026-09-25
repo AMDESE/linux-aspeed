@@ -365,6 +365,8 @@
 	status = "okay";
 	// TODO: remove after bringup
 	clock-frequency = <100000>;
+	// SW workaround for failing to recover from SDA bus hang
+	aspeed,bitbang-bus-recovery;
 
 	/*
 	 * Arthur fan path adds top-level mux at 0x70.
