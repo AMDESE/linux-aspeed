@@ -364,6 +364,8 @@
 	// Net name i2c2 (SCM_I2C_SDA<2>) - FAN/LM75/ADC
 	status = "okay";
 	clock-frequency = <400000>;
+	// SW workaround for failing to recover from SDA bus hang
+	aspeed,bitbang-bus-recovery;
 
 	/*
 	 * Arthur fan path adds top-level mux at 0x70.
