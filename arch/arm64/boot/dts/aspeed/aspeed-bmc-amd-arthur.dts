@@ -50,7 +50,34 @@
 	};
 
 	aliases {
+		i2c100 = &P0_conn_012_cpu;
+		i2c101 = &P0_conn_345_cpu;
+		i2c102 = &P0_conn_012_mgmt;
+		i2c103 = &P0_conn_345_mgmt;
 		i2c104 = &fan_pdb;
+		i2c132 = &conn_0_a_cpu;
+		i2c133 = &conn_0_b_cpu;
+		i2c136 = &conn_2_a_cpu;
+		i2c137 = &conn_2_b_cpu;
+		i2c140 = &conn_3_a_cpu;
+		i2c141 = &conn_3_b_cpu;
+		i2c142 = &conn_4_a_cpu;
+		i2c143 = &conn_4_b_cpu;
+		i2c144 = &conn_5_a_cpu;
+		i2c145 = &conn_5_b_cpu;
+		i2c148 = &conn_0_a_mgmt;
+		i2c149 = &conn_0_b_mgmt;
+		i2c150 = &ocp30_0;
+		i2c152 = &conn_2_a_mgmt;
+		i2c153 = &conn_2_b_mgmt;
+		i2c154 = &boot_conn1;
+		i2c155 = &boot_conn2;
+		i2c156 = &conn_3_a_mgmt;
+		i2c157 = &conn_3_b_mgmt;
+		i2c158 = &conn_4_a_mgmt;
+		i2c159 = &conn_4_b_mgmt;
+		i2c160 = &conn_5_a_mgmt;
+		i2c161 = &conn_5_b_mgmt;
 		i2c200 = &arthur_local_fans_0;
 		i2c201 = &arthur_local_fans_1;
 		i2c202 = &arthur_fan_board_ch2;
@@ -361,7 +388,7 @@
 };
 
 &i2c12 {
-	// Net name i2c2 (SCM_I2C_SDA<2>) - FAN/LM75/ADC
+	// Net name SCM_I2C<2> / BMC BUS 12 - MCIO, OCP, boot, PCP, PDB/fans
 	status = "okay";
 	// TODO: remove after bringup
 	clock-frequency = <100000>;
@@ -371,6 +398,7 @@
 	/*
 	 * Arthur fan path adds top-level mux at 0x70.
 	 * TacoBowl branch: 0x70 channel 6 routes to fan mux tree.
+	 * Ch0-3: PCIe connectors (CPU/MGMT) via nested TCA9548A @ 0x71
 	 */
 	i2cswitch@70 {
 		compatible = "nxp,pca9548";
@@ -378,6 +406,204 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		i2c-mux-idle-disconnect;
+
+		/* P0_PCIE_CONN0-2_CPU */
+		P0_conn_012_cpu: i2c@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			i2cswitch@71 {
+				compatible = "nxp,pca9548";
+				reg = <0x71>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				i2c-mux-idle-disconnect;
+
+				conn_0_a_cpu: i2c@0 {
+					reg = <0>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_0_b_cpu: i2c@1 {
+					reg = <1>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_2_a_cpu: i2c@4 {
+					reg = <4>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_2_b_cpu: i2c@5 {
+					reg = <5>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+			};
+		};
+
+		/* P0_PCIE_CONN3-5_CPU */
+		P0_conn_345_cpu: i2c@1 {
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			i2cswitch@71 {
+				compatible = "nxp,pca9548";
+				reg = <0x71>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				i2c-mux-idle-disconnect;
+
+				conn_3_a_cpu: i2c@0 {
+					reg = <0>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_3_b_cpu: i2c@1 {
+					reg = <1>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_4_a_cpu: i2c@2 {
+					reg = <2>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_4_b_cpu: i2c@3 {
+					reg = <3>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_5_a_cpu: i2c@4 {
+					reg = <4>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_5_b_cpu: i2c@5 {
+					reg = <5>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+			};
+		};
+
+		/* SCM_PCIE_CONN0-2_MGMT, OCP, boot connectors */
+		P0_conn_012_mgmt: i2c@2 {
+			reg = <2>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			i2cswitch@71 {
+				compatible = "nxp,pca9548";
+				reg = <0x71>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				i2c-mux-idle-disconnect;
+
+				conn_0_a_mgmt: i2c@0 {
+					reg = <0>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_0_b_mgmt: i2c@1 {
+					reg = <1>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				ocp30_0: i2c@2 {
+					reg = <2>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_2_a_mgmt: i2c@4 {
+					reg = <4>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_2_b_mgmt: i2c@5 {
+					reg = <5>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				boot_conn1: i2c@6 {
+					reg = <6>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				boot_conn2: i2c@7 {
+					reg = <7>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+			};
+		};
+
+		/* SCM_PCIE_CONN3-5_MGMT */
+		P0_conn_345_mgmt: i2c@3 {
+			reg = <3>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			i2cswitch@71 {
+				compatible = "nxp,pca9548";
+				reg = <0x71>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				i2c-mux-idle-disconnect;
+
+				conn_3_a_mgmt: i2c@0 {
+					reg = <0>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_3_b_mgmt: i2c@1 {
+					reg = <1>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_4_a_mgmt: i2c@2 {
+					reg = <2>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_4_b_mgmt: i2c@3 {
+					reg = <3>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_5_a_mgmt: i2c@4 {
+					reg = <4>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+
+				conn_5_b_mgmt: i2c@5 {
+					reg = <5>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+			};
+		};
 
 		fan_pdb: i2c@6 {
 			reg = <6>;
