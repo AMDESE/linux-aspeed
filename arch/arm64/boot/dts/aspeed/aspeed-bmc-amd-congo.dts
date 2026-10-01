@@ -1051,7 +1051,7 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 };
 
 &vhuba1 {
-	status = "okay";
+	status = "disabled";
 };
 
 &vhuba0 {

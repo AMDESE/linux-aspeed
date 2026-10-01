@@ -1295,11 +1295,11 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 };
 
 &uphy3b {
-	status = "okay";
+	status = "disabled";
 };
 
 &vhuba1 {
-	status = "okay";
+	status = "disabled";
 };
 
 &vhuba0 {
@@ -1312,15 +1312,15 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 };
 
 &usb3bhp {
-	status = "okay";
+	status = "disabled";
 };
 
 &uphy2b {
-	status = "okay";
+	status = "disabled";
 };
 
 &vhubb1 {
-	status = "okay";
+	status = "disabled";
 };
 
 &xdma0 {
