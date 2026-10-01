@@ -812,6 +812,13 @@
 	sbrmi_p0_sb1: sbrmi@0,2240000111B {
 		reg = <0x0 0x224 0x0000111B>;
 		assigned-address = <0x3c>;
+
+		/*
+		 * Driver is hard coded for 16 DIMMs for SP7/SP8 while SB1 has only 6
+		 * SOCAMMs. Repeat the values for M0 -> M5 for the remaining ones.
+		 * Otherwise, this entry will be ignored.
+		 */
+		dimm-ids = <0x81 0x80 0x8d 0x8c 0x84 0x8a 0x81 0x80 0x8d 0x8c 0x84 0x8a 0x81 0x80 0x8d 0x8c>;
 	};
 
 	scoob_p0_sb1: scoob@0,2240000211B {
