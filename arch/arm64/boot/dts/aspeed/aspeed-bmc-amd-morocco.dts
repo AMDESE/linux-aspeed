@@ -1287,11 +1287,11 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 };
 
 &uphy2a {
-	status = "okay";
+	status = "disabled";
 };
 
 &uphy3a {
-	status = "okay";
+	status = "disabled";
 };
 
 &uphy3b {
@@ -1299,7 +1299,7 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 };
 
 &vhuba1 {
-	status = "okay";
+	status = "disabled";
 };
 
 &vhuba0 {

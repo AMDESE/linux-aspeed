@@ -839,7 +839,7 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 };
 
 &uphy3a {
-	status = "okay";
+	status = "disabled";
 };
 
 &uphy3b {
