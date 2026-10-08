@@ -1007,3 +1007,7 @@
 		gpios = <&ltpi0_gpio 20 GPIO_ACTIVE_LOW>;
 	};
 };
+
+&ehci1 {
+	status = "okay";
+};
