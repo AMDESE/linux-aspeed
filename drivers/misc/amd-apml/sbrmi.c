@@ -452,7 +452,7 @@ static int sbrmi_i2c_identify_reg_addr_size(struct i2c_client *i2c, u32 *size, u
 		}
 	}
 
-	if (*rev == 0x21 || *rev == 0x31)
+	if (*rev == 0x21 || *rev == 0x31 || *rev == 0x33)
 		*size = SBRMI_REG_ADDR_SIZE_TWO_BYTE;
 	else
 		*size = SBRMI_REG_ADDR_SIZE_DEF;
@@ -582,12 +582,13 @@ static int sbrmi_i3c_identify_reg_addr_size(struct i3c_device *i3cdev, u32 *size
 		}
 	}
 
-	pr_err("sbrmi_i3c_identify_reg_addr_size(): *rev = 0x%x, *size = 0x%x\n",
-		*rev, *size);
-	if ((*rev & 0xff) == 0x21 || (*rev & 0xff) == 0x31)
+	if ((*rev & 0xff) == 0x21 || (*rev & 0xff) == 0x31 ||
+	    (*rev & 0xff) == 0x33)
 		*size = SBRMI_REG_ADDR_SIZE_TWO_BYTE;
 	else
 		*size = SBRMI_REG_ADDR_SIZE_DEF;
+	pr_debug("sbrmi_i3c_identify_reg_addr_size(): *rev = 0x%x, *size = 0x%x\n",
+		 *rev, *size);
 	return ret;
 }
 
@@ -836,6 +837,8 @@ static const struct i3c_device_id sbrmi_i3c_id[] = {
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x11A, NULL), /* SP8 Socket:1 IOD:0 */
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x11B, NULL), /* SB1 Socket:0, IOD:0 */
 	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x11B, NULL), /* SB1 Socket:1 IOD:0 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x0, 0x120, NULL), /* Florence/Rosenhorn Socket:0, IOD:0 */
+	I3C_DEVICE_EXTRA_INFO(0x112, 0x100, 0x120, NULL), /* Florence/Rosenhorn Socket:1, IOD:0 */
 	{}
 };
 MODULE_DEVICE_TABLE(i3c, sbrmi_i3c_id);

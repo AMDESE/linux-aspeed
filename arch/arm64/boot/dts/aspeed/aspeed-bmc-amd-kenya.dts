@@ -486,8 +486,18 @@
 		assigned-address = <0x4c>;
 	};
 
+	sbtsi_p0_iod0_florence: sbtsi@0,22400000120 {
+		reg = <0x0 0x224 0x00000120>;
+		assigned-address = <0x4c>;
+	};
+
 	sbrmi_p0_iod0_AB: sbrmi@0,22400001119 {
 		reg = <0x0 0x224 0x00001119>;
+		assigned-address = <0x3c>;
+	};
+
+	sbrmi_p0_iod0_florence: sbrmi@0,22400001120 {
+		reg = <0x0 0x224 0x00001120>;
 		assigned-address = <0x3c>;
 	};
 
@@ -498,6 +508,12 @@
 	};
 	scoob_p0_AB: scoob@0,22400002119 {
 		reg = <0x0 0x224 0x00002119>;
+		mrl = <69>;
+		mwl = <69>;
+	};
+
+	scoob_p0_florence: scoob@0,22400002120 {
+		reg = <0x0 0x224 0x00002120>;
 		mrl = <69>;
 		mwl = <69>;
 	};
