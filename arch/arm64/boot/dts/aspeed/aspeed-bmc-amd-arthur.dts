@@ -933,7 +933,15 @@
 	sirq-polarity = <0>;
 };
 
+&uphy2a {
+	status = "okay";
+};
+
 &uphy3a {
+	status = "okay";
+};
+
+&vhuba1 {
 	status = "okay";
 };
 
@@ -944,7 +952,6 @@
 
 &usb3ahp {
 	status = "okay";
-	pinctrl-0 = <&pinctrl_usb3axhp_default &pinctrl_usb2axhp_default>;
 };
 
 &xdma0 {
@@ -1006,4 +1013,8 @@
 		socket-num = /bits/ 8 <0>;
 		gpios = <&ltpi0_gpio 20 GPIO_ACTIVE_LOW>;
 	};
+};
+
+&ehci1 {
+	status = "okay";
 };
