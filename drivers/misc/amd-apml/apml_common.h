@@ -46,7 +46,6 @@ static inline int apml_register_sbrmi_device(struct apml_sbrmi_device *rmi_dev)
 
 static inline void apml_unregister_sbrmi_device(struct apml_sbrmi_device *rmi_dev)
 {
-	return 0;
 }
 
 static inline int apml_register_sbtsi_device(struct apml_sbtsi_device *tsi_dev)
@@ -56,7 +55,6 @@ static inline int apml_register_sbtsi_device(struct apml_sbtsi_device *tsi_dev)
 
 static inline void apml_unregister_sbtsi_device(struct apml_sbtsi_device *tsi_dev)
 {
-	return 0
 }
 
 static inline struct apml_device_node *apml_get_device_node(struct apml_device_node *node)
@@ -66,7 +64,6 @@ static inline struct apml_device_node *apml_get_device_node(struct apml_device_n
 
 static inline void apml_put_device_node(struct apml_device_node *node)
 {
-	return 0;
 }
 
 #endif /* IS_ENABLED(CONFIG_APML_COMMON) */
