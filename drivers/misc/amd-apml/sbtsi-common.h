@@ -17,8 +17,8 @@ struct apml_sbtsi_device {
 	struct i2c_client *client;
 	struct i3c_device *i3cdev;
 	struct regmap *regmap;
-	struct mutex lock;	//lock for tsi devices
+	struct mutex lock;	/* lock for tsi devices */
 	u8 dev_static_addr;
-} __packed;
+};
 
 #endif

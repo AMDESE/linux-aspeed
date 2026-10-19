@@ -130,23 +130,27 @@ static int sbtsi_read(struct device *dev, enum hwmon_sensor_types type,
 		mutex_lock(&tsi_dev->lock);
 		if (cfg & BIT(SBTSI_CONFIG_READ_ORDER_SHIFT)) {
 			ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_DEC, &temp_dec);
-			ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_INT, &temp_int);
+			if (!ret)
+				ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_INT, &temp_int);
 		} else {
 			ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_INT, &temp_int);
-			ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_DEC, &temp_dec);
+			if (!ret)
+				ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_DEC, &temp_dec);
 		}
 		mutex_unlock(&tsi_dev->lock);
 		break;
 	case hwmon_temp_max:
 		mutex_lock(&tsi_dev->lock);
 		ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_HIGH_INT, &temp_int);
-		ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_HIGH_DEC, &temp_dec);
+		if (!ret)
+			ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_HIGH_DEC, &temp_dec);
 		mutex_unlock(&tsi_dev->lock);
 		break;
 	case hwmon_temp_min:
 		mutex_lock(&tsi_dev->lock);
 		ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_LOW_INT, &temp_int);
-		ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_LOW_DEC, &temp_dec);
+		if (!ret)
+			ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_LOW_DEC, &temp_dec);
 		mutex_unlock(&tsi_dev->lock);
 		break;
 	default:
@@ -422,6 +426,16 @@ static const char *sbtsi_addr_to_label(u8 addr)
 	}
 }
 
+static char *sbtsi_hwmon_name(struct device *dev, u8 addr)
+{
+	const char *label = sbtsi_addr_to_label(addr);
+
+	if (label)
+		return devm_kasprintf(dev, GFP_KERNEL, "sbtsi_%s", label);
+
+	return devm_kasprintf(dev, GFP_KERNEL, "sbtsi_%x", addr);
+}
+
 static int create_misc_tsi_device(struct apml_sbtsi_device *tsi_dev,
 				  struct device *dev)
 {
@@ -454,7 +468,6 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 		.val_bits = 8,
 	};
 	struct regmap *regmap;
-	const char *hwmon_dev_name;
 	int ret;
 
 	dev_info(dev, "SBTSI: PID: %llx\n", i3cdev->desc->info.pid);
@@ -485,17 +498,16 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 	/* Need to verify for the static address for i3cdev */
 	tsi_dev->dev_static_addr = i3cdev->desc->info.dyn_addr;
 
-	hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbtsi_%s",
-					sbtsi_addr_to_label(tsi_dev->dev_static_addr));
-
 	dev_set_drvdata(dev, (void *)tsi_dev);
-	hwmon_dev = devm_hwmon_device_register_with_info(dev, hwmon_dev_name, tsi_dev,
+	hwmon_dev = devm_hwmon_device_register_with_info(dev,
+							 sbtsi_hwmon_name(dev, tsi_dev->dev_static_addr),
+							 tsi_dev,
 							 &sbtsi_chip_info, NULL);
 
-	if (!hwmon_dev)
+	if (IS_ERR(hwmon_dev))
 	{
 		dev_err(dev, "SBTSI: Error hwmon_device_register \n" );
-		return PTR_ERR_OR_ZERO(hwmon_dev);
+		return PTR_ERR(hwmon_dev);
 	}
 
 	ret = create_misc_tsi_device(tsi_dev, dev);
@@ -524,7 +536,6 @@ static int sbtsi_i2c_probe(struct i2c_client *client)
 		.reg_bits = 8,
 		.val_bits = 8,
 	};
-	const char *hwmon_dev_name;
 	int ret;
 
 	tsi_dev = devm_kzalloc(dev, sizeof(struct apml_sbtsi_device), GFP_KERNEL);
@@ -541,16 +552,14 @@ static int sbtsi_i2c_probe(struct i2c_client *client)
 
 	tsi_dev->dev_static_addr = client->addr;
 
-	hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbtsi_%s",
-					sbtsi_addr_to_label(tsi_dev->dev_static_addr));
-
-	hwmon_dev = devm_hwmon_device_register_with_info(dev, hwmon_dev_name,
+	hwmon_dev = devm_hwmon_device_register_with_info(dev,
+							 sbtsi_hwmon_name(dev, tsi_dev->dev_static_addr),
 							 tsi_dev,
 							 &sbtsi_chip_info,
 							 NULL);
 
-	if (!hwmon_dev)
-		return PTR_ERR_OR_ZERO(hwmon_dev);
+	if (IS_ERR(hwmon_dev))
+		return PTR_ERR(hwmon_dev);
 
 	ret = create_misc_tsi_device(tsi_dev, dev);
 	if (ret)
