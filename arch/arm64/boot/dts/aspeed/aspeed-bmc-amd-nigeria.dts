@@ -1095,7 +1095,7 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 };
 
 &uphy3a {
-	status = "okay";
+	status = "disabled";
 };
 
 &uphy3b {
@@ -1105,10 +1105,6 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 &vhuba0 {
 	status = "okay";
 	pinctrl-0 = <&pinctrl_usb2ahpd0_default>;
-};
-
-&usb3ahp {
-	status = "okay";
 };
 
 &usb3bhp {

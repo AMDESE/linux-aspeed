@@ -638,16 +638,12 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 };
 
 &uphy3a {
-	status = "okay";
+	status = "disabled";
 };
 
 &vhuba0 {
 	status = "okay";
 	pinctrl-0 = <&pinctrl_usb2ahpd0_default>;
-};
-
-&usb3ahp {
-	status = "okay";
 };
 
 &xdma0 {
