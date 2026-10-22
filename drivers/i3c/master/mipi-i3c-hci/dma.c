@@ -950,14 +950,21 @@ done:
 #ifdef CONFIG_ARCH_ASPEED
 /*
  * The ASPEED I3C controller reuses the PIO FIFO in DMA mode and raises the
- * transfer-error interrupt before DMA completes. Wait until both engines are
- * idle before the data buffer is unmapped. Reset the PIO FIFO only after the
- * response ring has been consumed.
+ * transfer-error interrupt before DMA completes. Both DMA engines must go
+ * idle before the response ring is consumed, since hci_dma_xfer_done() reads
+ * the RDMA-written response descriptor and unmaps the transfer buffer. The
+ * PIO FIFO is reset only after that consumption, once the ring state it
+ * relies on is stable.
  */
 static void aspeed_dma_wait_idle(struct i3c_hci *hci)
 {
 	u32 dbg;
 	int ret;
+
+	dev_dbg(&hci->master.dev, "WDMA_DBG_LO = 0x%x, RDMA_DBG_LO = 0x%x RING_STATUS = 0x%x\n",
+		readl(hci->base_regs + ASPEED_I3C_WDMA_DBG_LO),
+		readl(hci->base_regs + ASPEED_I3C_RDMA_DBG_LO),
+		readl(hci->base_regs + ASPEED_I3C_RING_STATUS));
 
 	/* Poll I3C_DMA_DBG_LO_BUSY until it becomes 0 */
 	ret = readl_poll_timeout_atomic(hci->base_regs + ASPEED_I3C_WDMA_DBG_LO, dbg,
@@ -971,14 +978,15 @@ static void aspeed_dma_wait_idle(struct i3c_hci *hci)
 		dev_warn(&hci->master.dev, "RDMA still busy after timeout: 0x%x\n", dbg);
 }
 
-static void aspeed_pio_fifo_reset(struct i3c_hci *hci)
+/*
+ * already_idle lets a caller that just confirmed both DMA engines are idle
+ * (via aspeed_dma_wait_idle()) skip polling the same registers again here.
+ */
+static void aspeed_pio_fifo_reset(struct i3c_hci *hci, bool already_idle)
 {
-	dev_dbg(&hci->master.dev, "WDMA_DBG_LO = 0x%x, RDMA_DBG_LO = 0x%x RING_STATUS = 0x%x\n",
-		readl(hci->base_regs + ASPEED_I3C_WDMA_DBG_LO),
-		readl(hci->base_regs + ASPEED_I3C_RDMA_DBG_LO),
-		readl(hci->base_regs + ASPEED_I3C_RING_STATUS));
+	if (!already_idle)
+		aspeed_dma_wait_idle(hci);
 
-	aspeed_dma_wait_idle(hci);
 	mipi_i3c_hci_pio_ibi_reset(hci);
 	mipi_i3c_hci_pio_reset(hci);
 }
@@ -1014,7 +1022,7 @@ static bool hci_dma_irq_handler(struct i3c_hci *hci)
 				dev_warn(&hci->master.dev,
 					 "ring %d: Transfer Error\n", i);
 #ifdef CONFIG_ARCH_ASPEED
-				aspeed_pio_fifo_reset(hci);
+				aspeed_pio_fifo_reset(hci, true);
 #endif
 				mipi_i3c_hci_resume(hci);
 			}
@@ -1028,7 +1036,7 @@ static bool hci_dma_irq_handler(struct i3c_hci *hci)
 			dev_notice_ratelimited(&hci->master.dev,
 				"Ring %d: Transfer Aborted\n", i);
 #ifdef CONFIG_ARCH_ASPEED
-			aspeed_pio_fifo_reset(hci);
+			aspeed_pio_fifo_reset(hci, false);
 #endif
 			mipi_i3c_hci_resume(hci);
 			ring_status = rh_reg_read(RING_STATUS);
