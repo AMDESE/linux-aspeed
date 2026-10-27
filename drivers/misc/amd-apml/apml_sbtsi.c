@@ -15,7 +15,9 @@
 #include <linux/i3c/device.h>
 #include <linux/i3c/master.h>
 #include <linux/init.h>
+#include <linux/kref.h>
 #include <linux/miscdevice.h>
+#include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/minmax.h>
 #include <linux/mutex.h>
@@ -123,11 +125,17 @@ static int sbtsi_read(struct device *dev, enum hwmon_sensor_types type,
 		 * so integer part should be read first. If bit == 1, read
 		 * order should be reversed.
 		 */
-		ret = regmap_read(tsi_dev->regmap, SBTSI_REG_CONFIG, &cfg);
-		if (ret < 0)
-			return ret;
-
 		mutex_lock(&tsi_dev->lock);
+		if (atomic_read(&tsi_dev->no_new_trans) || !tsi_dev->regmap) {
+			mutex_unlock(&tsi_dev->lock);
+			return -ENODEV;
+		}
+		ret = regmap_read(tsi_dev->regmap, SBTSI_REG_CONFIG, &cfg);
+		if (ret < 0) {
+			mutex_unlock(&tsi_dev->lock);
+			return ret;
+		}
+
 		if (cfg & BIT(SBTSI_CONFIG_READ_ORDER_SHIFT)) {
 			ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_DEC, &temp_dec);
 			ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_INT, &temp_int);
@@ -139,12 +147,20 @@ static int sbtsi_read(struct device *dev, enum hwmon_sensor_types type,
 		break;
 	case hwmon_temp_max:
 		mutex_lock(&tsi_dev->lock);
+		if (atomic_read(&tsi_dev->no_new_trans) || !tsi_dev->regmap) {
+			mutex_unlock(&tsi_dev->lock);
+			return -ENODEV;
+		}
 		ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_HIGH_INT, &temp_int);
 		ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_HIGH_DEC, &temp_dec);
 		mutex_unlock(&tsi_dev->lock);
 		break;
 	case hwmon_temp_min:
 		mutex_lock(&tsi_dev->lock);
+		if (atomic_read(&tsi_dev->no_new_trans) || !tsi_dev->regmap) {
+			mutex_unlock(&tsi_dev->lock);
+			return -ENODEV;
+		}
 		ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_LOW_INT, &temp_int);
 		ret = regmap_read(tsi_dev->regmap, SBTSI_REG_TEMP_LOW_DEC, &temp_dec);
 		mutex_unlock(&tsi_dev->lock);
@@ -187,6 +203,10 @@ static int sbtsi_write(struct device *dev, enum hwmon_sensor_types type,
 	sbtsi_mc_to_reg(val, (u8 *)&temp_int, (u8 *)&temp_dec);
 
 	mutex_lock(&tsi_dev->lock);
+	if (atomic_read(&tsi_dev->no_new_trans) || !tsi_dev->regmap) {
+		mutex_unlock(&tsi_dev->lock);
+		return -ENODEV;
+	}
 	err = regmap_write(tsi_dev->regmap, reg_int, temp_int);
 	if (err)
 		goto exit;
@@ -346,11 +366,15 @@ static long sbtsi_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		if (msg.cmd != APML_REG)
 			return -EINVAL;
 
-		tsi_dev = container_of(fp->private_data, struct apml_sbtsi_device, sbtsi_misc_dev);
+		tsi_dev = fp->private_data;
 		if (!tsi_dev)
-			return -EFAULT;
+			return -ENODEV;
 
 		mutex_lock(&tsi_dev->lock);
+		if (atomic_read(&tsi_dev->no_new_trans) || !tsi_dev->regmap) {
+			mutex_unlock(&tsi_dev->lock);
+			return -ENODEV;
+		}
 
 		if (!msg.data_in.reg_in[RD_FLAG_INDEX]) {
 			ret = regmap_write(tsi_dev->regmap,
@@ -374,11 +398,15 @@ out:
 					  sizeof(struct apml_tbai_msg)))
 			return -EFAULT;
 
-		tsi_dev = container_of(fp->private_data, struct apml_sbtsi_device, sbtsi_misc_dev);
+		tsi_dev = fp->private_data;
 		if (!tsi_dev)
-			return -EFAULT;
+			return -ENODEV;
 
 		mutex_lock(&tsi_dev->lock);
+		if (atomic_read(&tsi_dev->no_new_trans) || !tsi_dev->regmap) {
+			mutex_unlock(&tsi_dev->lock);
+			return -ENODEV;
+		}
 		if (tbai_msg.reg_in[TBAI_CMD_INDEX] == TB_ACQUIRE)
 			ret = acquire_trace_buffer(tsi_dev, &tbai_msg);
 		else if (tbai_msg.reg_in[TBAI_CMD_INDEX] == TB_FLUSH)
@@ -399,8 +427,51 @@ tbai_exit:
 	return 0;
 }
 
+static void sbtsi_dev_release(struct kref *ref)
+{
+	struct apml_sbtsi_device *tsi_dev =
+		container_of(ref, struct apml_sbtsi_device, refcount);
+
+	mutex_destroy(&tsi_dev->lock);
+	kfree(tsi_dev);
+}
+
+static int sbtsi_open(struct inode *inode, struct file *filp)
+{
+	struct miscdevice *mdev = filp->private_data;
+	struct apml_sbtsi_device *tsi_dev =
+		container_of(mdev, struct apml_sbtsi_device, sbtsi_misc_dev);
+	int ret = 0;
+
+	mutex_lock(&tsi_dev->lock);
+	if (atomic_read(&tsi_dev->no_new_trans)) {
+		ret = -ENODEV;
+		goto unlock;
+	}
+
+	kref_get(&tsi_dev->refcount);
+	filp->private_data = tsi_dev;
+
+unlock:
+	mutex_unlock(&tsi_dev->lock);
+	return ret;
+}
+
+static int sbtsi_release(struct inode *inode, struct file *filp)
+{
+	struct apml_sbtsi_device *tsi_dev = filp->private_data;
+
+	filp->private_data = NULL;
+	if (tsi_dev)
+		kref_put(&tsi_dev->refcount, sbtsi_dev_release);
+
+	return 0;
+}
+
 static const struct file_operations sbtsi_fops = {
 	.owner		= THIS_MODULE,
+	.open		= sbtsi_open,
+	.release	= sbtsi_release,
 	.unlocked_ioctl	= sbtsi_ioctl,
 	.compat_ioctl	= sbtsi_ioctl,
 };
@@ -471,16 +542,18 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 		return PTR_ERR(regmap);
 	}
 
-	tsi_dev = devm_kzalloc(dev, sizeof(struct apml_sbtsi_device), GFP_KERNEL);
+	tsi_dev = kzalloc(sizeof(*tsi_dev), GFP_KERNEL);
 	if (!tsi_dev)
 	{
 		dev_err(dev, "SBTSI: Error Mem All0c\n");
 		return -ENOMEM;
 	}
 
+	kref_init(&tsi_dev->refcount);
+	mutex_init(&tsi_dev->lock);
+	atomic_set(&tsi_dev->no_new_trans, 0);
 	tsi_dev->i3cdev = i3cdev;
 	tsi_dev->regmap = regmap;
-	mutex_init(&tsi_dev->lock);
 
 	/* Need to verify for the static address for i3cdev */
 	tsi_dev->dev_static_addr = i3cdev->desc->info.dyn_addr;
@@ -489,18 +562,24 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 					sbtsi_addr_to_label(tsi_dev->dev_static_addr));
 
 	dev_set_drvdata(dev, (void *)tsi_dev);
-	hwmon_dev = devm_hwmon_device_register_with_info(dev, hwmon_dev_name, tsi_dev,
-							 &sbtsi_chip_info, NULL);
+	hwmon_dev = hwmon_device_register_with_info(dev, hwmon_dev_name,
+						    tsi_dev,
+						    &sbtsi_chip_info,
+						    NULL);
 
-	if (!hwmon_dev)
+	if (IS_ERR(hwmon_dev))
 	{
 		dev_err(dev, "SBTSI: Error hwmon_device_register \n" );
-		return PTR_ERR_OR_ZERO(hwmon_dev);
+		ret = PTR_ERR(hwmon_dev);
+		goto err_put;
 	}
 
+	tsi_dev->hwmon_dev = hwmon_dev;
 	ret = create_misc_tsi_device(tsi_dev, dev);
-	if (ret)
-		return ret;
+	if (ret) {
+		hwmon_device_unregister(tsi_dev->hwmon_dev);
+		goto err_put;
+	}
 
 	/* Register with ALERT_L common system */
 	ret = apml_register_sbtsi_device(tsi_dev);
@@ -508,6 +587,11 @@ static int sbtsi_i3c_probe(struct i3c_device *i3cdev)
 		dev_warn(dev, "Failed to register with ALERT_L common system: %d\n", ret);
 
 	return 0;
+
+err_put:
+	dev_set_drvdata(dev, NULL);
+	kref_put(&tsi_dev->refcount, sbtsi_dev_release);
+	return ret;
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0)
@@ -527,15 +611,19 @@ static int sbtsi_i2c_probe(struct i2c_client *client)
 	const char *hwmon_dev_name;
 	int ret;
 
-	tsi_dev = devm_kzalloc(dev, sizeof(struct apml_sbtsi_device), GFP_KERNEL);
+	tsi_dev = kzalloc(sizeof(*tsi_dev), GFP_KERNEL);
 	if (!tsi_dev)
 		return -ENOMEM;
 
+	kref_init(&tsi_dev->refcount);
 	mutex_init(&tsi_dev->lock);
+	atomic_set(&tsi_dev->no_new_trans, 0);
 	tsi_dev->regmap = devm_regmap_init_i2c(client, &sbtsi_i2c_regmap_config);
 	tsi_dev->client = client;
-	if (IS_ERR(tsi_dev->regmap))
-		return PTR_ERR(tsi_dev->regmap);
+	if (IS_ERR(tsi_dev->regmap)) {
+		ret = PTR_ERR(tsi_dev->regmap);
+		goto err_put;
+	}
 
 	dev_set_drvdata(dev, (void *)tsi_dev);
 
@@ -544,17 +632,22 @@ static int sbtsi_i2c_probe(struct i2c_client *client)
 	hwmon_dev_name = devm_kasprintf(dev, GFP_KERNEL, "sbtsi_%s",
 					sbtsi_addr_to_label(tsi_dev->dev_static_addr));
 
-	hwmon_dev = devm_hwmon_device_register_with_info(dev, hwmon_dev_name,
-							 tsi_dev,
-							 &sbtsi_chip_info,
-							 NULL);
+	hwmon_dev = hwmon_device_register_with_info(dev, hwmon_dev_name,
+						    tsi_dev,
+						    &sbtsi_chip_info,
+						    NULL);
 
-	if (!hwmon_dev)
-		return PTR_ERR_OR_ZERO(hwmon_dev);
+	if (IS_ERR(hwmon_dev)) {
+		ret = PTR_ERR(hwmon_dev);
+		goto err_put;
+	}
 
+	tsi_dev->hwmon_dev = hwmon_dev;
 	ret = create_misc_tsi_device(tsi_dev, dev);
-	if (ret)
-		return ret;
+	if (ret) {
+		hwmon_device_unregister(tsi_dev->hwmon_dev);
+		goto err_put;
+	}
 
 	/* Register with ALERT_L common system */
 	ret = apml_register_sbtsi_device(tsi_dev);
@@ -562,6 +655,11 @@ static int sbtsi_i2c_probe(struct i2c_client *client)
 		dev_warn(dev, "Failed to register with ALERT_L common system: %d\n", ret);
 
 	return 0;
+
+err_put:
+	dev_set_drvdata(dev, NULL);
+	kref_put(&tsi_dev->refcount, sbtsi_dev_release);
+	return ret;
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 12, 0)
@@ -573,8 +671,17 @@ static void sbtsi_i3c_remove(struct i3c_device *i3cdev)
 	struct apml_sbtsi_device *tsi_dev = dev_get_drvdata(&i3cdev->dev);
 
 	if (tsi_dev) {
+		atomic_set(&tsi_dev->no_new_trans, 1);
 		apml_unregister_sbtsi_device(tsi_dev);
 		misc_deregister(&tsi_dev->sbtsi_misc_dev);
+		if (tsi_dev->hwmon_dev)
+			hwmon_device_unregister(tsi_dev->hwmon_dev);
+		mutex_lock(&tsi_dev->lock);
+		tsi_dev->regmap = NULL;
+		tsi_dev->i3cdev = NULL;
+		mutex_unlock(&tsi_dev->lock);
+		dev_set_drvdata(&i3cdev->dev, NULL);
+		kref_put(&tsi_dev->refcount, sbtsi_dev_release);
 	}
 
 	dev_info(&i3cdev->dev, "Removed sbtsi-i3c driver\n");
@@ -592,8 +699,17 @@ static void sbtsi_i2c_remove(struct i2c_client *client)
 	struct apml_sbtsi_device *tsi_dev = dev_get_drvdata(&client->dev);
 
 	if (tsi_dev) {
+		atomic_set(&tsi_dev->no_new_trans, 1);
 		apml_unregister_sbtsi_device(tsi_dev);
 		misc_deregister(&tsi_dev->sbtsi_misc_dev);
+		if (tsi_dev->hwmon_dev)
+			hwmon_device_unregister(tsi_dev->hwmon_dev);
+		mutex_lock(&tsi_dev->lock);
+		tsi_dev->regmap = NULL;
+		tsi_dev->client = NULL;
+		mutex_unlock(&tsi_dev->lock);
+		dev_set_drvdata(&client->dev, NULL);
+		kref_put(&tsi_dev->refcount, sbtsi_dev_release);
 	}
 
 	dev_info(&client->dev, "Removed sbtsi driver\n");
