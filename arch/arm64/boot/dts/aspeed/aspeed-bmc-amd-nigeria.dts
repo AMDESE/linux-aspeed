@@ -94,6 +94,22 @@
 		i2c133 = &p1_clk;
 		i2c134 = &p1_vr;
 		i2c135 = &p1_sec;
+		i2c180 = &riser1_a;
+		i2c181 = &riser1_b;
+		i2c182 = &riser2_a;
+		i2c183 = &riser2_b;
+		i2c184 = &riser3_a;
+		i2c185 = &riser3_b;
+		i2c192 = &mcio2_p0_ab;
+		i2c193 = &mcio1_p0_cd;
+		i2c186 = &riser4_a;
+		i2c187 = &riser4_b;
+		i2c188 = &riser5_a;
+		i2c189 = &riser5_b;
+		i2c190 = &riser6_a;
+		i2c191 = &riser6_b;
+		i2c194 = &mcio4_p1_ab;
+		i2c195 = &mcio3_p1_cd;
 		i2c203 = &fan_board0;
 		i2c204 = &fan_board1;
 	};
@@ -305,6 +321,54 @@
 			reg = <2>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			i2cswitch@71 {
+				compatible = "nxp,pca9548";
+				reg = <0x71>;
+				i2c-mux-idle-disconnect;
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				riser1_a: i2c@0 {
+					reg = <0>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				riser1_b: i2c@1 {
+					reg = <1>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				riser2_a: i2c@2 {
+					reg = <2>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				riser2_b: i2c@3 {
+					reg = <3>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				riser3_a: i2c@4 {
+					reg = <4>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				riser3_b: i2c@5 {
+					reg = <5>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				mcio2_p0_ab: i2c@6 {
+					reg = <6>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				mcio1_p0_cd: i2c@7 {
+					reg = <7>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+			};
 		};
 
 		NC_3: i2c@3 {
@@ -346,6 +410,7 @@
 	i2cswitch@70 {
 		compatible = "nxp,pca9548";
 		reg = <0x70>;
+		i2c-mux-idle-disconnect;
 		#address-cells = <1>;
 		#size-cells = <0>;
 
@@ -353,6 +418,54 @@
 			reg = <0>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			i2cswitch@71 {
+				compatible = "nxp,pca9548";
+				reg = <0x71>;
+				i2c-mux-idle-disconnect;
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				riser4_a: i2c@0 {
+					reg = <0>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				riser4_b: i2c@1 {
+					reg = <1>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				riser5_a: i2c@2 {
+					reg = <2>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				riser5_b: i2c@3 {
+					reg = <3>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				riser6_a: i2c@4 {
+					reg = <4>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				riser6_b: i2c@5 {
+					reg = <5>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				mcio4_p1_ab: i2c@6 {
+					reg = <6>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+				mcio3_p1_cd: i2c@7 {
+					reg = <7>;
+					#address-cells = <1>;
+					#size-cells = <0>;
+				};
+			};
 		};
 
 		NC_6: i2c@1 {
