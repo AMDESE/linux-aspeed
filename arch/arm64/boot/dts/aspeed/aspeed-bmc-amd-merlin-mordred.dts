@@ -17,7 +17,7 @@
 
 / {
 	model = "AMD Merlin/Mordred VRB";
-	compatible = "amd,merlin-mordred-bmc", "aspeed,ast2700";
+	compatible = "amd,merlin-bmc,mordred-bmc", "aspeed,ast2700";
 
 	chosen {
 		stdout-path = &uart12;
