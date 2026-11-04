@@ -640,6 +640,7 @@ static int update_reg_addr_size(u32 rev, u32 *size)
 		return 0;
 	case 0x21:
 	case 0x31:
+	case 0x33:
 		*size = SBRMI_REG_ADDR_SIZE_TWO_BYTE;
 		return 0;
 	default:
