@@ -24,7 +24,7 @@
 #include <linux/regmap.h>
 #include <linux/version.h>
 
-#include "amd-apml.h"
+#include <linux/amd-apml.h>
 #include "apml_common.h"
 
 /*

@@ -7,7 +7,7 @@
 #define _AMD_APML_SBRMI_H_
 
 #include <linux/miscdevice.h>
-#include "amd-apml.h"
+#include <linux/amd-apml.h>
 
 /* Each client has this additional data */
 /* in_progress: set during any transaction, mailbox/cpuid/mcamsr/readreg,

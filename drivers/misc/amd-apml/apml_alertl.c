@@ -195,9 +195,9 @@ static void handle_apml_alerts(struct device *dev)
 	int ret;
 
 	mutex_lock(&apml_devices_lock);
-	list_for_each_entry(device_node, &apml_devices, list) {
+	list_for_each_entry(device_node, &apml_devices, apml_dev_list) {
 		/* Get a safe reference to the device node */
-		if (!kref_get_unless_zero(&device_node->ref))
+		if (!kref_get_unless_zero(&device_node->refcount))
 			continue;
 
 		/* Device-specific alert processing */
