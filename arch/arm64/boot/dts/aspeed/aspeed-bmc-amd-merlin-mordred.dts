@@ -64,7 +64,6 @@
 		i2c120 = &brd_vr;
 		i2c121 = &temp;
 		i2c122 = &pcie_cem;
-		i2c123 = &tamale;
 		i2c124 = &therm;
 		i2c125 = &adc_pdb;
 		i2c127 = &adc_brd;
@@ -362,12 +361,6 @@
 
 		pcie_cem: i2c@2 {
 			reg = <2>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
-
-		tamale: i2c@5 {
-			reg = <5>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 		};
