@@ -61,6 +61,7 @@
 		i2c106 = &ocp;
 		i2c107 = &pdb;
 #endif
+		i2c182 = &riser_2A;
 		i2c108 = &mcio_1;
 		i2c109 = &mcio_2;
 		i2c110 = &mcio_3;
@@ -246,6 +247,15 @@
 &i2c8 {
 	// Net name SCM_I2C<0>
 	status = "okay";
+	clock-frequency = <100000>;
+
+	multi-master;
+	mctp-controller;
+	mctp@10 {
+		compatible = "mctp-i2c-controller";
+		reg = <(0x10 | I2C_OWN_SLAVE_ADDRESS)>;
+	};
+
 	hpmeeprom@50 {
 		compatible = "microchip,24lc256","atmel,24c256";
 		reg = <0x50>;
@@ -254,9 +264,15 @@
 	i2cswitch@71 {
 		compatible = "nxp,pca9548";
 		reg = <0x71>;
-		i2c-mux-idle-disconnect;
 		#address-cells = <1>;
 		#size-cells = <0>;
+
+		riser_2A: i2c@2 {
+			reg = <2>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			mctp-controller;
+		};
 	};
 
 	i2cswitch@72 {
