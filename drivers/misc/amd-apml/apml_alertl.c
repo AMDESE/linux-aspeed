@@ -278,11 +278,14 @@ static int apml_alertl_probe(struct platform_device *pdev)
 			return -ENOMEM;
 	}
 	dev_info(dev, "APML Alert_L for socket %u, IRQ %u\n", socket_num, oob_alert->irq_num);
-	/* Register threaded IRQ handler */
+	/*
+	 * Level-low + ONESHOT: keep servicing while Alert_L is held low
+	 * (TSI latch / shared open-drain).
+	 */
 	ret = devm_request_threaded_irq(dev, oob_alert->irq_num,
 					NULL,
 					alert_l_irq_thread_handler,
-					IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+					IRQF_TRIGGER_LOW | IRQF_ONESHOT,
 					irq_name,
 					dev);
 	if (ret) {
