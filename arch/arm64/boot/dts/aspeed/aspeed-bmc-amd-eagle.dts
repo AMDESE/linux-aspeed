@@ -469,12 +469,18 @@
 	status = "okay";
 	clock-frequency = <400000>;
 
+	multi-master;
+	mctp-controller;
+	mctp@10 {
+		compatible = "mctp-i2c-controller";
+		reg = <(0x10 | I2C_OWN_SLAVE_ADDRESS)>;
+	};
+
 	i2cswitch@70 {
 		compatible = "nxp,pca9548";
 		reg = <0x70>;
 		#address-cells = <1>;
 		#size-cells = <0>;
-		i2c-mux-idle-disconnect;
 
 		P0_conn_012_cpu: i2c@0 {
 			reg = <0>;
