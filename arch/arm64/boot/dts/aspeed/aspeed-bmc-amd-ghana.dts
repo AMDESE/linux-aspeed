@@ -86,6 +86,14 @@
 		i2c195 = &nearstack_p1_cd;
 		i2c203 = &fan_board0;
 	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		mgmt_chassis_id_led {
+			gpios = <&gpio1 ASPEED_GPIO(B, 5) GPIO_ACTIVE_HIGH>;
+		};
+	};
 };
 
 &mdio0 {

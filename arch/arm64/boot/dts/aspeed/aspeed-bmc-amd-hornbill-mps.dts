@@ -104,6 +104,14 @@
 		i2c206 = &churro_mcu;
 		i2c207 = &NC_15;
 	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		mgmt_chassis_id_led {
+			gpios = <&gpio1 ASPEED_GPIO(B, 5) GPIO_ACTIVE_HIGH>;
+		};
+	};
 };
 
 &mdio0 {
