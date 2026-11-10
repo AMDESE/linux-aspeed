@@ -209,6 +209,14 @@ static int sbrmi_read(struct device *dev, enum hwmon_sensor_types type,
 			ret = rmi_mailbox_xfer(rmi_dev, &msg);
 			if (ret == -EPROTOTYPE)
 				dev_dbg(dev, "FW error code:0x%x\n", msg.fw_ret_code);
+			/*
+			 * ipmid hangs and phosphor-pid-control stops when a
+			 * DIMM read fails, so report 0 instead of the error.
+			 */
+			if (ret < 0) {
+				msg.data_out.mb_out[RD_WR_DATA_INDEX] = 0;
+				ret = 0;
+			}
 			break;
 		default:
 			ret = -EINVAL;
@@ -224,14 +232,13 @@ static int sbrmi_read(struct device *dev, enum hwmon_sensor_types type,
 			 * Temperature is an 11-bit two's complement signed value
 			 * (bits 10:0) with 0.25 deg C resolution. Bit 10 is the
 			 * sign bit; if set, extend the sign by subtracting 0x800.
-			 * Convert to milli-degrees C using integer math (multiply
-			 * by 250) to avoid floating point in the kernel.
+			 * Divide by 4 to convert to whole degrees C.
 			 */
 			*val = msg.data_out.mb_out[RD_WR_DATA_INDEX] >> DIMM_TEMP_OFFSET;
 			if (*val & 0x400)
 				*val -= 0x800;
-			/* Report temperature in mC as per hwmon standards */
-			*val *= 250;
+			/* phosphor-pid-control consumes DIMM temperature in deg C, not mC */
+			*val /= 4;
 		}
 	}
 
