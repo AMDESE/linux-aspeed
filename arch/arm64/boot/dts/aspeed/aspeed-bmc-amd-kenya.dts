@@ -84,6 +84,14 @@
 		i2c127 = &fio;
 		i2c203 = &fan_board;
 	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		mgmt_chassis_id_led {
+			gpios = <&gpio1 ASPEED_GPIO(B, 5) GPIO_ACTIVE_HIGH>;
+		};
+	};
 };
 
 &mdio0 {
