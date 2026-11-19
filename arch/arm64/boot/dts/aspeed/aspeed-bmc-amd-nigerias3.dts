@@ -606,7 +606,10 @@ spd_ ## bus ## _ ## index: spd@addr,4cc5118 ## index ## 000 { \
 	status = "okay";
 };
 
-&uart3 {
+/* P1 UART is on LTPI1 (uart14/ttyS14). Do not enable uart3. It would
+ * create ttyS3 with the same obmc-console host1 id as ttyS14.
+ */
+&uart14 {
 	/delete-property/ pinctrl-names;
 	/delete-property/ pinctrl-0;
 	status = "okay";
