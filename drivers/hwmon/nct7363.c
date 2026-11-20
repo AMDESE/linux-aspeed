@@ -370,6 +370,18 @@ static void nct7362_init_client(struct i2c_client *client,u32 gpio)
 		nct7362_write_value(client, NCT7362_REG_GPIO_10_13_CONFIG, 0xA9);
 		nct7362_write_value(client, NCT7362_REG_GPIO_14_17_CONFIG, 0x6A);
 	}
+	else if(gpio == 0xFE)
+	{
+		nct7362_write_value(client, NCT7362_REG_WDT_CONFIG, 0x00);
+		nct7362_write_value(client, NCT7362_REG_PWM_CTRL1,   0x11); // PWM0 (bit0) + PWM4 (bit4)
+		nct7362_write_value(client, NCT7362_REG_PWM_CTRL2,   0x01); // PWM8 (bit0)
+		nct7362_write_value(client, NCT7362_REG_FANIN_CTRL1, 0x06); // FANIN1 (bit1) + FANIN2 (bit2)
+		nct7362_write_value(client, NCT7362_REG_FANIN_CTRL2, 0x66); // FANIN9 (bit1) + FANIN10 (bit2) + FANIN13 (bit 5) + FANIN14 (bit 6)
+		nct7362_write_value(client, NCT7362_REG_GPIO_00_03_CONFIG, 0x29); // [00][10][10][01] GPIO,FANIN10,FANIN9,PWM0
+		nct7362_write_value(client, NCT7362_REG_GPIO_04_07_CONFIG, 0x29); // [00][10][10][01] GPIO,FANIN14,FANIN13,PWM4
+		nct7362_write_value(client, NCT7362_REG_GPIO_10_13_CONFIG, 0x29); // [00][10][10][01] GPIO,FANIN2,FANIN1,PWM8
+		nct7362_write_value(client, NCT7362_REG_GPIO_14_17_CONFIG, 0x00); // all GPIO (unconnected)
+	}
 	else if(gpio == 0xFF)
 	{
 		// Pump controller default (fan_sel_gpio omitted in DTS):
@@ -450,6 +462,12 @@ static int nct736x_init(struct i2c_client *client,u32 gpio)
 		nct7362_write_value(client, NCT7362_REG_PWM(8), NCT7362_REG_PWM_DEFAULT_VALUE);
 		nct7362_write_value(client, NCT7362_REG_PWM(15), NCT7362_REG_PWM_DEFAULT_VALUE);
 	}
+	if (gpio==0xFE)
+	{
+		// Set Default PWM4 and PWM8 to 50%
+		nct7362_write_value(client, NCT7362_REG_PWM(4), NCT7362_REG_PWM_DEFAULT_VALUE);
+		nct7362_write_value(client, NCT7362_REG_PWM(8), NCT7362_REG_PWM_DEFAULT_VALUE);
+	}
 	if (gpio==0xFF)
 	{
 		// Set Default PWM3 to 50% (PUMP2/P1 node)
@@ -466,6 +484,10 @@ static int nct7362_probe(struct i2c_client *client)
 	struct device *hwmon_dev;
 
 	dev_err(dev,"nct7362_probe Start\n");
+
+	/* Controller may not be populated on this fan board */
+	if (i2c_smbus_read_byte_data(client, NCT7362_REG_PWM_CTRL1) < 0)
+		return -ENODEV;
 
 	if (!(data = devm_kzalloc(dev,sizeof(struct nct7362_data), GFP_KERNEL))) {
 		dev_err(dev,"nct7362_probe: Error allocating memory\n");
