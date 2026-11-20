@@ -81,10 +81,12 @@
 		i2c200 = &arthur_local_fans_0;
 		i2c201 = &arthur_local_fans_1;
 		i2c202 = &arthur_fan_board_ch2;
-		i2c203 = &churro_fans_0_0;
-		i2c204 = &churro_fans_0_1;
-		i2c210 = &churro_id;
-		i2c211 = &churro_mcu;
+		i2c203 = &fan_board_ctrl_0_0;
+		i2c204 = &fan_board_ctrl_0_1;
+		i2c210 = &fan_board_id;
+		i2c211 = &fan_board_mcu;
+		i2c212 = &fan_board_2u_temp;
+		i2c213 = &fan_board_2u_io;
 		i2c214 = &arthur_fan_board_ch3;
 		i2c116 = &P0_id;
 		i2c118 = &P0_vr;
@@ -687,24 +689,27 @@
 					};
 				};
 
-				/*
-				 * TacoBowl mux channel 2 -> Churro/2U fan-board superset path.
-				 * TODO: split DT variants once 0x76 mux type is finalized per board
-				 * (Churro uses TCA9546, 2U fan board uses TCA9548).
-				 */
+				/* Churro and 2U fan controller board superset */
 				arthur_fan_board_ch2: i2c@2 {
 					reg = <2>;
 					#address-cells = <1>;
 					#size-cells = <0>;
 
+					/*
+					 * I2C Mux -
+					 * Churro: TCA9546 (4 channels)
+					 * 2U fan board: TCA9548 (8 channels)
+					 * Churro can only access channel 0 -> 3 since 4 -> 7 DNE
+					 */
 					i2cswitch@76 {
-						compatible = "nxp,pca9546";
+						compatible = "nxp,pca9548";
 						reg = <0x76>;
 						#address-cells = <1>;
 						#size-cells = <0>;
 						i2c-mux-idle-disconnect;
 
-						churro_fans_0_0: i2c@0 {
+						/* Churro: emc2305, 2U fan board: nct7363 */
+						fan_board_ctrl_0_0: i2c@0 {
 							reg = <0>;
 							#address-cells = <1>;
 							#size-cells = <0>;
@@ -735,9 +740,15 @@
 									max-rpm = /bits/ 16 <16000>;
 								};
 							};
+
+							nct7363@21 {
+								compatible = "nct,nct7363";
+								reg = <0x21>;
+								fan_sel_gpio = <254>;
+							};
 						};
 
-						churro_fans_0_1: i2c@1 {
+						fan_board_ctrl_0_1: i2c@1 {
 							reg = <1>;
 							#address-cells = <1>;
 							#size-cells = <0>;
@@ -760,9 +771,15 @@
 									max-rpm = /bits/ 16 <16000>;
 								};
 							};
+
+							nct7363@21 {
+								compatible = "nct,nct7363";
+								reg = <0x21>;
+								fan_sel_gpio = <254>;
+							};
 						};
 
-						churro_id: i2c@2 {
+						fan_board_id: i2c@2 {
 							reg = <2>;
 							#address-cells = <1>;
 							#size-cells = <0>;
@@ -773,8 +790,20 @@
 							};
 						};
 
-						churro_mcu: i2c@3 {
+						fan_board_mcu: i2c@3 {
 							reg = <3>;
+							#address-cells = <1>;
+							#size-cells = <0>;
+						};
+
+						fan_board_2u_temp: i2c@4 {
+							reg = <4>;
+							#address-cells = <1>;
+							#size-cells = <0>;
+						};
+
+						fan_board_2u_io: i2c@5 {
+							reg = <5>;
 							#address-cells = <1>;
 							#size-cells = <0>;
 						};
