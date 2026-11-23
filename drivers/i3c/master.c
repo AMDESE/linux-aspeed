@@ -1850,7 +1850,9 @@ static int i3c_master_retrieve_dev_info(struct i3c_dev_desc *dev)
 		i3c_master_setmwl_locked(master, &dev->info, 128);
 	}
 
-	if (dev->boardinfo && dev->boardinfo->mrl) {
+	i3c_master_getmrl_locked(master, &dev->info);
+	if ((dev->boardinfo && dev->boardinfo->mrl) &&
+		(dev->info.max_read_len < dev->boardinfo->mrl)) {
 		/*
 		 * Broadcast DISEC issued in the beginning of the DAA process
 		 * failed leaving the SIR bit in the target devices set. This is
@@ -1872,13 +1874,15 @@ static int i3c_master_retrieve_dev_info(struct i3c_dev_desc *dev)
 		i3c_master_disec_locked(master, dev->info.dyn_addr, 1);
 		i3c_master_setmrl_locked(master, &dev->info,
 					dev->boardinfo->mrl, dev->info.max_ibi_len);
+		i3c_master_getmrl_locked(master, &dev->info);
 	}
 
-	if (dev->boardinfo && dev->boardinfo->mwl)
-		i3c_master_setmwl_locked(master, &dev->info, dev->boardinfo->mwl);
-
-	i3c_master_getmrl_locked(master, &dev->info);
 	i3c_master_getmwl_locked(master, &dev->info);
+	if ((dev->boardinfo && dev->boardinfo->mwl) &&
+		(dev->info.max_write_len < dev->boardinfo->mwl)) {
+		i3c_master_setmwl_locked(master, &dev->info, dev->boardinfo->mwl);
+		i3c_master_getmwl_locked(master, &dev->info);
+	}
 
 	if (dev->info.bcr & I3C_BCR_HDR_CAP) {
 		ret = i3c_master_gethdrcap_locked(master, &dev->info);
