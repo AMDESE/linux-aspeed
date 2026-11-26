@@ -2,6 +2,7 @@
 /* Copyright 2019 IBM Corp. */
 
 #include <linux/io.h>
+#include <linux/limits.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_platform.h>
@@ -78,6 +79,51 @@ static const char *siliconid_to_rev(u32 siliconid)
 	return "??";
 }
 
+/*
+ * Some boards describe one function twice, e.g. AST2750 port B as a PCIe
+ * EHCI vhub that needs A2 and a PCIe xHCI vhub for A1. Disable every node
+ * whose aspeed,silicon-rev-min/max range excludes this chip. This runs at
+ * early_initcall, before the platform devices are populated, so only the
+ * matching set probes and the sets never contend for pins or resets.
+ */
+#ifdef CONFIG_OF_DYNAMIC
+static void __init aspeed_silicon_rev_fixup(u32 siliconid)
+{
+	unsigned int rev = (siliconid >> 16) & 0xff;
+	struct of_changeset *ocs = NULL;
+	struct device_node *np;
+	u32 min, max;
+
+	for_each_of_allnodes(np) {
+		if (!of_device_is_available(np))
+			continue;
+		if (of_property_read_u32(np, "aspeed,silicon-rev-min", &min))
+			min = 0;
+		if (of_property_read_u32(np, "aspeed,silicon-rev-max", &max))
+			max = U32_MAX;
+		if (rev >= min && rev <= max)
+			continue;
+
+		if (!ocs) {
+			ocs = kzalloc(sizeof(*ocs), GFP_KERNEL);
+			if (!ocs)
+				return;
+			of_changeset_init(ocs);
+		}
+		if (of_changeset_update_prop_string(ocs, np, "status", "disabled"))
+			pr_err("ASPEED: failed to disable %pOF\n", np);
+		else
+			pr_info("ASPEED: %pOF disabled for silicon rev %u\n", np, rev);
+	}
+
+	/* The changeset stays applied for the life of the system. */
+	if (ocs && of_changeset_apply(ocs))
+		pr_err("ASPEED: silicon revision fixup failed\n");
+}
+#else
+static inline void aspeed_silicon_rev_fixup(u32 siliconid) { }
+#endif
+
 static int __init aspeed_socinfo_init(void)
 {
 	struct soc_device_attribute *attrs;
@@ -102,6 +148,8 @@ static int __init aspeed_socinfo_init(void)
 	}
 	siliconid = readl(reg);
 	iounmap(reg);
+
+	aspeed_silicon_rev_fixup(siliconid);
 
 	/* This is optional, the ast2400 does not have it */
 	reg = of_iomap(np, 1);

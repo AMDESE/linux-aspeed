@@ -1219,8 +1219,16 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 	status = "disabled";
 };
 
+/* Port B (P1) has two device paths and one is chosen per boot by
+ * silicon revision (aspeed-socinfo disables the out-of-range set):
+ * - A2+: PCIe EHCI to vhub, vhubb0 (12062000) + usb2bhp, same as port A
+ * - A1:  PCIe xHCI to vhub, vhubb1 (12021000) + usb3bhp, uphy2b, uphy3b;
+ *        A1 port B EHCI never completes host transfers
+ * ehci1 stays disabled; it shares SCU0_RESET_PORTB_VHUB_EHCI with vhubb0.
+ */
 &uphy3b {
 	status = "okay";
+	aspeed,silicon-rev-max = <1>;
 };
 
 &vhuba0 {
@@ -1230,14 +1238,33 @@ pmic_ ## bus ## _ ## index: pmic@addr{ \
 
 &usb3bhp {
 	status = "okay";
+	aspeed,silicon-rev-max = <1>;
 };
 
 &uphy2b {
 	status = "okay";
+	aspeed,silicon-rev-max = <1>;
+};
+
+&vhubb0 {
+	status = "okay";
+	aspeed,silicon-rev-min = <2>;
+	pinctrl-0 = <&pinctrl_usb2bhpd0_default>;
+};
+
+/* USB2BHP pinmux sets SCU410[29:28] = 3, which takes port B away from
+ * the PCIe EHCI to vhub mode vhubb0 needs, so no pinctrl here.
+ */
+&usb2bhp {
+	status = "okay";
+	aspeed,silicon-rev-min = <2>;
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
 };
 
 &vhubb1 {
 	status = "okay";
+	aspeed,silicon-rev-max = <1>;
 };
 
 &xdma0 {
